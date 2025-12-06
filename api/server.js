@@ -12,6 +12,7 @@ import routePlannerRoutes from "./routes/routePlanner.js";
 import phoneVerificationRoutes from "./routes/phoneVerification.js";
 import whatsappMessagingRoutes from "./routes/whatsappMessaging.js";
 import marketplaceRoutes from "./routes/marketplace.js";
+import testRoutes from "./routes/test.js";
 import publicRoutePlannerRoutes from "./routes/publicRoutePlanner.js";
 
 const app = express();
@@ -99,6 +100,7 @@ app.use("/api/route-planner", routePlannerRoutes);
 app.use("/api/phone", phoneVerificationRoutes);
 app.use("/api/whatsapp", whatsappMessagingRoutes);
 app.use("/api/marketplace", marketplaceRoutes);
+app.use("/api/test", testRoutes);
 app.use("/api/public", publicRoutePlannerRoutes);
 
 // 404 handler
