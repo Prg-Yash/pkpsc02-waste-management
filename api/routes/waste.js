@@ -73,6 +73,14 @@ router.post(
   authenticateUser,
   async (req, res) => {
     try {
+      // Validate user has address fields set
+      if (!req.user.city || !req.user.state || !req.user.country) {
+        return res.status(400).json({
+          error:
+            "Please update your profile with city, state, and country before reporting or collecting waste.",
+        });
+      }
+
       const {
         location,
         isLocationLatLng,
@@ -193,7 +201,7 @@ router.post(
         },
       });
 
-      // Step 6: Create notification for the reporter
+      // Step 5: Create notification for the reporter
       await createNotification({
         userId: req.user.id,
         type: "WASTE_REPORTED",

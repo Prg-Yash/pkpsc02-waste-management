@@ -218,7 +218,75 @@ The test interface provides forms for:
 
 The `/api/webhooks/clerk` endpoint is the ONLY place using Clerk authentication to sync users.
 
-## 📡 API Endpoints
+## � User Address Requirements
+
+**IMPORTANT**: Users must set their address before performing location-based operations.
+
+### Required Fields
+
+Before users can:
+- Report waste (`POST /api/waste/report`)
+- Collect waste (`POST /api/waste/:id/collect`)
+- Add waste to route planner (`POST /api/route-planner/add`)
+
+They MUST have these fields set in their profile:
+
+- `city` - User's city (e.g., "Pune")
+- `state` - User's state/province (e.g., "Maharashtra")
+- `country` - User's country (e.g., "India")
+
+### Setting Address
+
+Users update their address via:
+
+```http
+PATCH /api/user/me
+Content-Type: application/json
+x-user-id: user_xxxxx
+
+{
+  "city": "Pune",
+  "state": "Maharashtra",
+  "country": "India"
+}
+```
+
+### Validation Behavior
+
+If any address field (`city`, `state`, or `country`) is missing or null:
+
+**Request**:
+```bash
+curl -X POST http://localhost:3000/api/waste/report \
+  -H "x-user-id: user_without_address" \
+  -F "image=@waste.jpg"
+```
+
+**Response** (400 Bad Request):
+```json
+{
+  "error": "Please update your profile with city, state, and country before reporting or collecting waste."
+}
+```
+
+### Why Address is Required
+
+1. **Location-Aware Operations**: Ensures all waste management activities are tied to specific geographic regions
+2. **Route Optimization**: Helps collectors plan efficient routes within their operational area
+3. **Data Analytics**: Enables regional waste management insights and reporting
+4. **Accountability**: Links users to their home location for better service tracking
+
+### Operations NOT Requiring Address
+
+- ✅ `GET /api/user/me` - View profile
+- ✅ `PATCH /api/user/me` - Update profile (including setting address)
+- ✅ `GET /api/waste/report` - View waste reports
+- ✅ `POST /api/route-planner/remove` - Remove waste from route
+- ✅ `GET /api/route-planner` - View route
+- ✅ All leaderboard endpoints
+- ✅ All notification endpoints
+
+## �📡 API Endpoints
 
 ### User Management
 
@@ -258,13 +326,16 @@ Update user profile.
 x-user-id: user_xxxxx
 ```
 
-**Body**:
+**Body** (all fields optional):
 
 ```json
 {
   "name": "Jane Doe",
   "phone": "+1987654321",
-  "enableCollector": true
+  "enableCollector": true,
+  "city": "Pune",
+  "state": "Maharashtra",
+  "country": "India"
 }
 ```
 
@@ -275,13 +346,21 @@ x-user-id: user_xxxxx
   "user": {
     "id": "user_xxxxx",
     "name": "Jane Doe",
+    "phone": "+1987654321",
     "enableCollector": true,
+    "city": "Pune",
+    "state": "Maharashtra",
+    "country": "India",
     ...
   }
 }
 ```
 
-**Note**: Enabling collector triggers `COLLECTOR_ENABLED` notification.
+**Notes**: 
+- All fields are optional - update any combination
+- Empty strings for address fields are treated as `null`
+- Enabling collector triggers `COLLECTOR_ENABLED` notification
+- **Address fields (city, state, country) are required before reporting/collecting waste**
 
 ---
 
