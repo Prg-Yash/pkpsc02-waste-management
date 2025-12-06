@@ -13,7 +13,7 @@ import {
   Image,
   Spinner,
 } from "tamagui";
-import { Alert } from "react-native";
+import { Alert, Linking } from "react-native";
 import * as ImagePicker from "expo-image-picker";
 import * as Location from "expo-location";
 import { PendingWasteReport } from "../services/wasteCollectionService";
@@ -23,6 +23,10 @@ import {
 } from "../services/geminiSimilarityService";
 import { validateProximity } from "../utils/locationUtils";
 import { submitCollectionVerification } from "../services/wasteCollectionService";
+import {
+  findSuitableDumpingGrounds,
+  DumpingGroundWithDistance,
+} from "../services/dumpingGroundService";
 
 interface CollectorVerificationScreenProps {
   report: PendingWasteReport;
@@ -46,6 +50,13 @@ export default function CollectorVerificationScreen({
   const [verificationMessage, setVerificationMessage] =
     React.useState<string>("");
   const [isLoading, setIsLoading] = React.useState(false);
+  const [nearestDumpingGrounds, setNearestDumpingGrounds] = React.useState<
+    DumpingGroundWithDistance[]
+  >([]);
+  const [collectorLocation, setCollectorLocation] = React.useState<{
+    latitude: number;
+    longitude: number;
+  } | null>(null);
 
   const pickImage = async () => {
     try {
@@ -102,6 +113,12 @@ export default function CollectorVerificationScreen({
       const collectorLat = location.coords.latitude;
       const collectorLon = location.coords.longitude;
 
+      // Store collector location for dumping grounds
+      setCollectorLocation({
+        latitude: collectorLat,
+        longitude: collectorLon,
+      });
+
       // Step 2: Validate proximity
       console.log("📏 Validating proximity...");
       const proximityCheck = validateProximity(
@@ -155,12 +172,19 @@ export default function CollectorVerificationScreen({
       setVerificationMessage(
         `✅ Collection verified! ${validation.reason}\n📍 ${proximityCheck.message}`
       );
+
+      // Find nearest dumping grounds
+      const grounds = findSuitableDumpingGrounds(
+        report.aiAnalysis.wasteType,
+        collectorLat,
+        collectorLon,
+        3
+      );
+      setNearestDumpingGrounds(grounds);
+
       setIsLoading(false);
 
-      // Notify parent after short delay
-      setTimeout(() => {
-        onSuccess();
-      }, 2000);
+      // Don't auto-redirect - let user see dumping grounds first
     } catch (error) {
       console.error("❌ Verification error:", error);
       setStep("failed");
@@ -169,6 +193,11 @@ export default function CollectorVerificationScreen({
       );
       setIsLoading(false);
     }
+  };
+
+  const openInMaps = (ground: DumpingGroundWithDistance) => {
+    const url = `https://www.google.com/maps/dir/?api=1&destination=${ground.latitude},${ground.longitude}`;
+    Linking.openURL(url);
   };
 
   const getWasteTypeColor = (wasteType: string) => {
@@ -210,41 +239,118 @@ export default function CollectorVerificationScreen({
   if (step === "success") {
     return (
       <Theme name="light">
-        <YStack
-          flex={1}
-          backgroundColor="$background"
-          justifyContent="center"
-          alignItems="center"
-          padding="$4"
-        >
-          <Text fontSize={80}>✅</Text>
-          <H2 color="$green10" marginTop="$4" textAlign="center">
-            Verification Successful!
-          </H2>
-          <Paragraph
-            color="$gray11"
-            textAlign="center"
-            marginTop="$3"
-            paddingHorizontal="$4"
-          >
-            {verificationMessage}
-          </Paragraph>
-          <YStack
-            marginTop="$6"
-            padding="$4"
-            backgroundColor="$green2"
-            borderRadius="$4"
-            width="100%"
-          >
-            <Text color="$green11" fontWeight="600" marginBottom="$2">
-              Next Steps:
-            </Text>
-            <Text color="$green11">
-              • Navigate to dumping grounds{"\n"}• Dispose waste properly
-              {"\n"}• Earn your collection points!
-            </Text>
+        <ScrollView flex={1} backgroundColor="$background">
+          <YStack padding="$4" alignItems="center">
+            <Text fontSize={80}>✅</Text>
+            <H2 color="$green10" marginTop="$4" textAlign="center">
+              Verification Successful!
+            </H2>
+            <Paragraph
+              color="$gray11"
+              textAlign="center"
+              marginTop="$3"
+              paddingHorizontal="$4"
+            >
+              {verificationMessage}
+            </Paragraph>
           </YStack>
-        </YStack>
+
+          {/* Nearest Dumping Grounds */}
+          <YStack padding="$4" paddingTop="$0">
+            <H4 color="$gray12" fontWeight="bold" marginBottom="$3">
+              🗑️ Nearest Disposal Facilities
+            </H4>
+            <Paragraph color="$gray10" marginBottom="$4" fontSize="$3">
+              Navigate to one of these facilities to dispose the waste properly:
+            </Paragraph>
+
+            {nearestDumpingGrounds.map((ground, index) => (
+              <YStack
+                key={ground.id}
+                backgroundColor="white"
+                borderRadius="$4"
+                padding="$4"
+                marginBottom="$3"
+                elevation="$2"
+              >
+                <XStack
+                  justifyContent="space-between"
+                  alignItems="flex-start"
+                  marginBottom="$2"
+                >
+                  <YStack flex={1}>
+                    <Text color="$gray12" fontWeight="600" fontSize="$4">
+                      {index + 1}. {ground.name}
+                    </Text>
+                    <XStack alignItems="center" marginTop="$1">
+                      <Text color="$gray10" fontSize="$2">
+                        📍 {ground.formattedDistance} away
+                      </Text>
+                    </XStack>
+                  </YStack>
+                  <YStack
+                    backgroundColor="$blue2"
+                    paddingHorizontal="$2"
+                    paddingVertical="$1"
+                    borderRadius="$2"
+                  >
+                    <Text color="$blue10" fontSize="$1" fontWeight="600">
+                      {ground.type}
+                    </Text>
+                  </YStack>
+                </XStack>
+
+                <Text color="$gray11" fontSize="$2" marginBottom="$2">
+                  {ground.address}
+                </Text>
+
+                <XStack gap="$2" marginBottom="$2" flexWrap="wrap">
+                  {ground.acceptedWaste.slice(0, 3).map((waste, i) => (
+                    <YStack
+                      key={i}
+                      backgroundColor="$gray2"
+                      paddingHorizontal="$2"
+                      paddingVertical="$1"
+                      borderRadius="$2"
+                    >
+                      <Text color="$gray11" fontSize="$1">
+                        {waste}
+                      </Text>
+                    </YStack>
+                  ))}
+                </XStack>
+
+                <Text color="$gray10" fontSize="$2" marginBottom="$3">
+                  ⏰ {ground.openHours}
+                </Text>
+
+                <Button
+                  onPress={() => openInMaps(ground)}
+                  backgroundColor="$blue9"
+                  color="white"
+                  fontWeight="600"
+                  size="$3"
+                  icon={<Text>🗺️</Text>}
+                >
+                  Navigate
+                </Button>
+              </YStack>
+            ))}
+          </YStack>
+
+          {/* Complete Button */}
+          <YStack padding="$4" paddingTop="$0">
+            <Button
+              onPress={onSuccess}
+              backgroundColor="$green9"
+              color="white"
+              fontWeight="600"
+              size="$5"
+            >
+              Complete Collection
+            </Button>
+          </YStack>
+        </ScrollView>
       </Theme>
     );
   }

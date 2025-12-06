@@ -25,6 +25,7 @@ import {
   getDistanceToReport,
   sortByDistance,
 } from "../utils/locationUtils";
+import { addToRoutePlanner } from "../services/routePlannerService";
 import CollectorVerificationScreen from "../components/CollectorVerificationScreen";
 
 export default function CollectWasteScreen() {
@@ -130,6 +131,23 @@ export default function CollectWasteScreen() {
     setSelectedReport(null);
   };
 
+  const handleAddToRoute = async (report: PendingWasteReport) => {
+    if (!user) return;
+
+    try {
+      await addToRoutePlanner(report.id, user.id);
+      Alert.alert(
+        "Added to Route! 🗺️",
+        "This report has been added to your route planner. Check the Route tab to view your collection route.",
+        [{ text: "OK" }]
+      );
+      // Reload reports to remove this one from the list
+      await loadReports();
+    } catch (error: any) {
+      Alert.alert("Error", error.message || "Failed to add to route planner");
+    }
+  };
+
   const getWasteTypeColor = (wasteType: string) => {
     const colors: { [key: string]: string } = {
       Plastic: "$blue9",
@@ -198,15 +216,6 @@ export default function CollectWasteScreen() {
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
         }
       >
-        <YStack backgroundColor="$blue9" padding="$5" paddingTop="$10">
-          <H2 color="white" fontWeight="bold">
-            Collect Waste
-          </H2>
-          <Paragraph color="white" opacity={0.9} marginTop="$1">
-            Find and collect reported waste
-          </Paragraph>
-        </YStack>
-
         <XStack
           margin="$4"
           padding="$4"
@@ -377,20 +386,33 @@ export default function CollectWasteScreen() {
                   justifyContent="space-between"
                   alignItems="center"
                   paddingTop="$2"
+                  gap="$2"
                 >
-                  <Text color="$gray9" fontSize="$2">
+                  <Text color="$gray9" fontSize="$2" flex={1}>
                     Reported {new Date(report.reportedAt).toLocaleDateString()}
                   </Text>
                   <Button
-                    onPress={() => handleCollect(report)}
-                    backgroundColor="$blue9"
-                    paddingHorizontal="$4"
+                    onPress={() => handleAddToRoute(report)}
+                    backgroundColor="$purple9"
+                    paddingHorizontal="$3"
                     paddingVertical="$2"
                     borderRadius="$2"
                     height="unset"
                   >
-                    <Text color="white" fontWeight="600">
-                      Collect
+                    <Text color="white" fontWeight="600" fontSize="$2">
+                      Add to Route
+                    </Text>
+                  </Button>
+                  <Button
+                    onPress={() => handleCollect(report)}
+                    backgroundColor="$blue9"
+                    paddingHorizontal="$3"
+                    paddingVertical="$2"
+                    borderRadius="$2"
+                    height="unset"
+                  >
+                    <Text color="white" fontWeight="600" fontSize="$2">
+                      Collect Now
                     </Text>
                   </Button>
                 </XStack>
