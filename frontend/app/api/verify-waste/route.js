@@ -1,3 +1,68 @@
+/**
+ * WASTE VERIFICATION API
+ * 
+ * This API provides comprehensive waste collection verification using Google Gemini AI.
+ * Supports multiple verification workflows to ensure authentic waste collection.
+ * 
+ * VERIFICATION TYPES:
+ * 
+ * 1. 'legacy' (default) - Single-step verification
+ *    - Compares collector's image with reported image
+ *    - Supports waste category detection (small/large)
+ *    - Category-specific validation (segregation, bin shape, overflow)
+ *    - Location distance verification
+ *    Required: collectedImage, reportedImage
+ * 
+ * 2. 'before-after' - Two-step verification (RECOMMENDED for highest accuracy)
+ *    - BEFORE: Verifies collector is at correct location with same waste
+ *    - AFTER: Verifies waste was actually collected and area is clean
+ *    - Prevents fake collections and ensures genuine cleanup
+ *    Required: reportedImage, beforeImage, afterImage
+ * 
+ * 3. 'before' - Before-only verification
+ *    - Only verifies the before image matches reported waste
+ *    - Useful for starting collection process
+ *    Required: reportedImage, beforeImage
+ * 
+ * 4. 'after' - After-only verification
+ *    - Only verifies waste was removed from before image
+ *    - Useful for completing collection process
+ *    Required: beforeImage, afterImage
+ * 
+ * FEATURES:
+ * - AI-powered image comparison using Gemini 2.0 Flash Exp
+ * - Location verification (GPS distance calculation)
+ * - Confidence scoring (minimum 60% required)
+ * - Landmark and environment matching
+ * - Waste removal verification
+ * - Fake image detection
+ * - Comprehensive validation rules
+ * 
+ * USAGE EXAMPLES:
+ * 
+ * // Legacy single-step (backward compatible)
+ * POST /api/verify-waste
+ * {
+ *   "verificationType": "legacy",
+ *   "collectedImage": "base64 or URL",
+ *   "reportedImage": "base64 or URL",
+ *   "location": { "latitude": 0, "longitude": 0 },
+ *   "reportedLocation": { "latitude": 0, "longitude": 0 },
+ *   "aiAnalysis": { "category": "small waste" }
+ * }
+ * 
+ * // Two-step before-after (most secure)
+ * POST /api/verify-waste
+ * {
+ *   "verificationType": "before-after",
+ *   "reportedImage": "base64 or URL",
+ *   "beforeImage": "base64 or URL",
+ *   "afterImage": "base64 or URL",
+ *   "location": { "latitude": 0, "longitude": 0 },
+ *   "reportedLocation": { "latitude": 0, "longitude": 0 }
+ * }
+ */
+
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import { NextResponse } from 'next/server';
 
@@ -99,13 +164,151 @@ function determineWasteCategory(aiAnalysis) {
 }
 
 /**
- * Compares two waste images to verify they show the same waste instance
+ * Verify "before" image - checks similarity between original report and collector's before image
+ */
+async function verifyBeforeImage(originalImageData, beforeImageData) {
+  console.log('🔍 Verifying BEFORE image with Gemini...');
+
+  const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash-exp' });
+
+  const prompt = `You are an expert waste management verification system. Compare these two images:
+
+IMAGE 1 (ORIGINAL REPORT): The first image shows the waste that was originally reported.
+IMAGE 2 (COLLECTOR'S BEFORE IMAGE): The second image is taken by the collector before starting collection.
+
+Your task is to verify if these images show THE SAME LOCATION and THE SAME WASTE.
+
+Analyze and check:
+✔ Is this the SAME LOCATION? (Check landmarks, buildings, surroundings, ground texture)
+✔ Is this the SAME WASTE? (Check waste type, size, color, shape, position)
+✔ Are the LANDMARKS/SURROUNDINGS the same? (Trees, walls, roads, buildings)
+✔ Is the waste in the SAME POSITION relative to surroundings?
+✔ Could these images be taken at the same place at different times?
+
+IMPORTANT RULES:
+- Minor differences in lighting, angle, or time of day are acceptable
+- The waste should be clearly visible in BOTH images
+- Background landmarks should be recognizable in both images
+- If waste has been slightly moved (wind, animals) but location matches, it's still valid
+- If these are completely different locations or different waste, mark as INVALID
+
+Respond ONLY with this exact JSON format (no markdown, no additional text):
+{
+  "isValid": true/false,
+  "confidence": 0.0-1.0,
+  "message": "Brief explanation of your decision",
+  "locationMatch": true/false,
+  "wasteMatch": true/false,
+  "landmarksMatch": true/false
+}`;
+
+  const result = await model.generateContent([
+    prompt,
+    originalImageData,
+    beforeImageData,
+  ]);
+
+  const responseText = result.response.text();
+  console.log('📊 Gemini before response:', responseText);
+
+  const cleanedResponse = responseText
+    .replace(/```json\n?/g, '')
+    .replace(/```\n?/g, '')
+    .trim();
+
+  const verification = JSON.parse(cleanedResponse);
+
+  return {
+    isValid: verification.isValid === true,
+    confidence: Math.max(0, Math.min(1, verification.confidence || 0)),
+    message: verification.message || 'Before verification completed',
+    locationMatch: verification.locationMatch || false,
+    wasteMatch: verification.wasteMatch || false,
+    landmarksMatch: verification.landmarksMatch || false,
+  };
+}
+
+/**
+ * Verify "after" image - checks if waste has been removed and location is clean
+ */
+async function verifyAfterImage(beforeImageData, afterImageData) {
+  console.log('🧹 Verifying AFTER image with Gemini...');
+
+  const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash-exp' });
+
+  const prompt = `You are an expert waste management verification system. Compare these two images:
+
+IMAGE 1 (BEFORE COLLECTION): Shows the waste BEFORE collection started.
+IMAGE 2 (AFTER COLLECTION): Shows the area AFTER collection is claimed to be complete.
+
+Your task is to verify if the waste was GENUINELY COLLECTED and the area is now CLEAN.
+
+Analyze and verify:
+✔ Is the WASTE REMOVED? (The waste visible in Image 1 should be gone in Image 2)
+✔ Is the GROUND CLEAN? (No debris, waste residue, or scattered items remaining)
+✔ Are the LANDMARKS the SAME? (Buildings, trees, walls, roads should be identical)
+✔ Is this the SAME LOCATION? (Background, surroundings, ground texture should match)
+✔ Is the image FRESH? (Not a reused image from elsewhere, proper shadows/lighting for current time)
+✔ Is the LIGHTING CONSISTENT? (Shadows, time of day should be reasonable - allow for time passage)
+
+IMPORTANT RULES:
+- The waste must be COMPLETELY REMOVED (not just moved)
+- The ground should be clean (allow minor natural dirt/stains)
+- Landmarks MUST be identical (this proves same location)
+- Small lighting differences are acceptable (collection takes time)
+- If the waste is still there, or location is different, mark as INVALID
+- If the image appears reused or fake, mark as INVALID
+
+Respond ONLY with this exact JSON format (no markdown, no additional text):
+{
+  "isValid": true/false,
+  "confidence": 0.0-1.0,
+  "message": "Brief explanation of your decision",
+  "wasteRemoved": true/false,
+  "groundClean": true/false,
+  "landmarksMatch": true/false,
+  "sameLocation": true/false,
+  "imageFresh": true/false,
+  "lightingConsistent": true/false
+}`;
+
+  const result = await model.generateContent([
+    prompt,
+    beforeImageData,
+    afterImageData,
+  ]);
+
+  const responseText = result.response.text();
+  console.log('📊 Gemini after response:', responseText);
+
+  const cleanedResponse = responseText
+    .replace(/```json\n?/g, '')
+    .replace(/```\n?/g, '')
+    .trim();
+
+  const verification = JSON.parse(cleanedResponse);
+
+  return {
+    isValid: verification.isValid === true,
+    confidence: Math.max(0, Math.min(1, verification.confidence || 0)),
+    message: verification.message || 'After verification completed',
+    wasteRemoved: verification.wasteRemoved || false,
+    groundClean: verification.groundClean || false,
+    landmarksMatch: verification.landmarksMatch || false,
+    sameLocation: verification.sameLocation || false,
+    imageFresh: verification.imageFresh || false,
+    lightingConsistent: verification.lightingConsistent || false,
+  };
+}
+
+/**
+ * Compares two waste images to verify they show the same waste instance (legacy single-step)
  */
 async function compareWasteImages(originalImageData, collectorImageData, wasteCategory) {
   console.log('🔍 Starting Gemini similarity analysis...');
   console.log('Category:', wasteCategory);
 
-  const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
+  const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash-exp' });
 
   let prompt;
 
@@ -226,26 +429,344 @@ function validateSimilarity(result) {
   };
 }
 
+/**
+ * Handle before-after verification workflow
+ */
+async function handleBeforeAfterVerification({ reportedImage, beforeImage, afterImage, location, reportedLocation, aiAnalysis }) {
+  try {
+    const results = {};
+
+    // Step 1: Prepare images
+    const preparedReported = await prepareImage(reportedImage);
+    const preparedBefore = await prepareImage(beforeImage);
+    const preparedAfter = await prepareImage(afterImage);
+
+    const reportedImageData = {
+      inlineData: {
+        data: preparedReported.data,
+        mimeType: preparedReported.mimeType
+      }
+    };
+
+    const beforeImageData = {
+      inlineData: {
+        data: preparedBefore.data,
+        mimeType: preparedBefore.mimeType
+      }
+    };
+
+    const afterImageData = {
+      inlineData: {
+        data: preparedAfter.data,
+        mimeType: preparedAfter.mimeType
+      }
+    };
+
+    // Step 2: Verify before image
+    const beforeVerification = await verifyBeforeImage(reportedImageData, beforeImageData);
+    results.beforeVerification = beforeVerification;
+
+    // Step 3: Verify after image
+    const afterVerification = await verifyAfterImage(beforeImageData, afterImageData);
+    results.afterVerification = afterVerification;
+
+    // Step 4: Location verification
+    let locationDistance = null;
+    let locationMatch = true;
+    let locationValidation = { isValid: true, reason: 'Location not verified' };
+
+    if (location && reportedLocation && location.latitude && reportedLocation.latitude) {
+      locationDistance = calculateDistance(
+        location.latitude,
+        location.longitude,
+        reportedLocation.latitude,
+        reportedLocation.longitude
+      );
+      
+      locationMatch = locationDistance < 10;
+      
+      if (locationMatch) {
+        locationValidation = {
+          isValid: true,
+          reason: `Location verified: ${(locationDistance * 1000).toFixed(0)}m away`
+        };
+      } else {
+        locationValidation = {
+          isValid: false,
+          reason: `Location too far: ${(locationDistance * 1000).toFixed(0)}m away (max 10km)`
+        };
+      }
+    }
+
+    results.locationVerification = locationValidation;
+    results.locationDistance = locationDistance;
+    results.locationMatch = locationMatch;
+
+    // Step 5: Overall validation
+    let overallValid = true;
+    const failureReasons = [];
+
+    if (!beforeVerification.isValid) {
+      overallValid = false;
+      failureReasons.push('Before image does not match reported waste');
+    } else if (beforeVerification.confidence < 0.6) {
+      overallValid = false;
+      failureReasons.push(`Before image confidence too low (${(beforeVerification.confidence * 100).toFixed(0)}%)`);
+    }
+
+    if (!afterVerification.isValid) {
+      overallValid = false;
+      failureReasons.push('After image verification failed - waste not properly removed');
+    } else if (afterVerification.confidence < 0.6) {
+      overallValid = false;
+      failureReasons.push(`After image confidence too low (${(afterVerification.confidence * 100).toFixed(0)}%)`);
+    }
+
+    if (!locationValidation.isValid) {
+      overallValid = false;
+      failureReasons.push(locationValidation.reason);
+    }
+
+    const overallMessage = overallValid 
+      ? 'Collection verified successfully' 
+      : failureReasons.join('; ');
+
+    return NextResponse.json({
+      success: overallValid,
+      message: overallMessage,
+      verificationType: 'before-after',
+      ...results,
+      overallMatch: overallValid,
+      timestamp: new Date().toISOString()
+    });
+
+  } catch (error) {
+    console.error('❌ Before-after verification error:', error);
+    return NextResponse.json(
+      { 
+        error: 'Before-after verification failed',
+        details: error.message 
+      },
+      { status: 500 }
+    );
+  }
+}
+
+/**
+ * Handle before-only verification
+ */
+async function handleBeforeOnlyVerification({ reportedImage, beforeImage, location, reportedLocation }) {
+  try {
+    const preparedReported = await prepareImage(reportedImage);
+    const preparedBefore = await prepareImage(beforeImage);
+
+    const reportedImageData = {
+      inlineData: {
+        data: preparedReported.data,
+        mimeType: preparedReported.mimeType
+      }
+    };
+
+    const beforeImageData = {
+      inlineData: {
+        data: preparedBefore.data,
+        mimeType: preparedBefore.mimeType
+      }
+    };
+
+    const beforeVerification = await verifyBeforeImage(reportedImageData, beforeImageData);
+
+    // Location verification
+    let locationValidation = { isValid: true, reason: 'Location not verified' };
+    let locationDistance = null;
+
+    if (location && reportedLocation && location.latitude && reportedLocation.latitude) {
+      locationDistance = calculateDistance(
+        location.latitude,
+        location.longitude,
+        reportedLocation.latitude,
+        reportedLocation.longitude
+      );
+      
+      const locationMatch = locationDistance < 10;
+      
+      locationValidation = {
+        isValid: locationMatch,
+        reason: locationMatch 
+          ? `Location verified: ${(locationDistance * 1000).toFixed(0)}m away`
+          : `Location too far: ${(locationDistance * 1000).toFixed(0)}m away (max 10km)`
+      };
+    }
+
+    const overallValid = beforeVerification.isValid && beforeVerification.confidence >= 0.6 && locationValidation.isValid;
+
+    return NextResponse.json({
+      success: overallValid,
+      verificationType: 'before',
+      beforeVerification,
+      locationVerification: locationValidation,
+      locationDistance,
+      overallMatch: overallValid,
+      timestamp: new Date().toISOString()
+    });
+
+  } catch (error) {
+    console.error('❌ Before verification error:', error);
+    return NextResponse.json(
+      { 
+        error: 'Before verification failed',
+        details: error.message 
+      },
+      { status: 500 }
+    );
+  }
+}
+
+/**
+ * Handle after-only verification
+ */
+async function handleAfterOnlyVerification({ beforeImage, afterImage, location, reportedLocation }) {
+  try {
+    const preparedBefore = await prepareImage(beforeImage);
+    const preparedAfter = await prepareImage(afterImage);
+
+    const beforeImageData = {
+      inlineData: {
+        data: preparedBefore.data,
+        mimeType: preparedBefore.mimeType
+      }
+    };
+
+    const afterImageData = {
+      inlineData: {
+        data: preparedAfter.data,
+        mimeType: preparedAfter.mimeType
+      }
+    };
+
+    const afterVerification = await verifyAfterImage(beforeImageData, afterImageData);
+
+    const overallValid = afterVerification.isValid && afterVerification.confidence >= 0.6;
+
+    return NextResponse.json({
+      success: overallValid,
+      verificationType: 'after',
+      afterVerification,
+      overallMatch: overallValid,
+      timestamp: new Date().toISOString()
+    });
+
+  } catch (error) {
+    console.error('❌ After verification error:', error);
+    return NextResponse.json(
+      { 
+        error: 'After verification failed',
+        details: error.message 
+      },
+      { status: 500 }
+    );
+  }
+}
+
 export async function POST(request) {
   try {
-    const { collectedImage, reportedImage, location, reportedLocation, wasteType, amount, aiAnalysis } = await request.json();
+    const { 
+      collectedImage, 
+      reportedImage, 
+      beforeImage,
+      afterImage,
+      location, 
+      reportedLocation, 
+      wasteType, 
+      amount, 
+      aiAnalysis,
+      verificationType = 'legacy' // 'legacy', 'before-after', 'before', 'after'
+    } = await request.json();
 
-    // Validate required fields
-    if (!collectedImage) {
-      return NextResponse.json(
-        { error: 'Collected image is required' },
-        { status: 400 }
-      );
+    console.log('🔍 Verification type:', verificationType);
+
+    // Validate required fields based on verification type
+    if (verificationType === 'before-after') {
+      // Two-step verification: before + after images
+      if (!reportedImage) {
+        return NextResponse.json(
+          { error: 'Reported image is required for before-after verification' },
+          { status: 400 }
+        );
+      }
+      if (!beforeImage) {
+        return NextResponse.json(
+          { error: 'Before image is required for before-after verification' },
+          { status: 400 }
+        );
+      }
+      if (!afterImage) {
+        return NextResponse.json(
+          { error: 'After image is required for before-after verification' },
+          { status: 400 }
+        );
+      }
+    } else if (verificationType === 'before') {
+      if (!reportedImage || !beforeImage) {
+        return NextResponse.json(
+          { error: 'Reported and before images are required' },
+          { status: 400 }
+        );
+      }
+    } else if (verificationType === 'after') {
+      if (!beforeImage || !afterImage) {
+        return NextResponse.json(
+          { error: 'Before and after images are required' },
+          { status: 400 }
+        );
+      }
+    } else {
+      // Legacy single-step verification
+      if (!collectedImage) {
+        return NextResponse.json(
+          { error: 'Collected image is required' },
+          { status: 400 }
+        );
+      }
+
+      if (!reportedImage) {
+        return NextResponse.json(
+          { error: 'Reported image is required for comparison' },
+          { status: 400 }
+        );
+      }
     }
 
-    if (!reportedImage) {
-      return NextResponse.json(
-        { error: 'Reported image is required for comparison' },
-        { status: 400 }
-      );
+    // Handle different verification workflows
+    if (verificationType === 'before-after') {
+      // Two-step verification workflow
+      return await handleBeforeAfterVerification({
+        reportedImage,
+        beforeImage,
+        afterImage,
+        location,
+        reportedLocation,
+        aiAnalysis
+      });
+    } else if (verificationType === 'before') {
+      // Only verify before image
+      return await handleBeforeOnlyVerification({
+        reportedImage,
+        beforeImage,
+        location,
+        reportedLocation
+      });
+    } else if (verificationType === 'after') {
+      // Only verify after image
+      return await handleAfterOnlyVerification({
+        beforeImage,
+        afterImage,
+        location,
+        reportedLocation
+      });
     }
 
-    // Validate and prepare both images (handles URLs and base64)
+    // Legacy single-step verification (existing functionality)
     let collectedImageData, reportedImageData;
     
     try {
