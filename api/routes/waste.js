@@ -1,75 +1,64 @@
-import express from 'express';
-import multer from 'multer';
-import { prisma } from '../lib/prisma.js';
-import { createNotification } from '../lib/notifications.js';
+import express from "express";
+import multer from "multer";
+import { prisma } from "../lib/prisma.js";
+import { createNotification } from "../lib/notifications.js";
 import {
-    uploadToS3,
-    generateWasteReportKey,
-    generateWasteCollectionKey
-} from '../lib/s3Uploader.js';
+  uploadToS3,
+  generateWasteReportKey,
+  generateWasteCollectionKey,
+} from "../lib/s3Uploader.js";
 
 const router = express.Router();
 
 // Configure multer to store files in memory
 const upload = multer({
-    storage: multer.memoryStorage(),
-    limits: {
-        fileSize: 10 * 1024 * 1024 // 10MB limit
-    }
+  storage: multer.memoryStorage(),
+  limits: {
+    fileSize: 10 * 1024 * 1024, // 10MB limit
+  },
 });
-
-const VALID_WASTE_TYPES = [
-    'PLASTIC',
-    'METAL',
-    'ORGANIC',
-    'E_WASTE',
-    'PAPER',
-    'GLASS',
-    'MIXED',
-    'OTHER'
-];
 
 /**
  * Middleware to authenticate user (works with multipart forms)
  */
 const authenticateUser = async (req, res, next) => {
-    try {
-        // Try to get userId from header first
-        let userId = req.get('x-user-id');
+  try {
+    // Try to get userId from header first
+    let userId = req.get("x-user-id");
 
-        // If not in header, try to get from body (works with multer)
-        if (!userId && req.body) {
-            userId = req.body.userId;
-        }
-
-        // Validate userId is present
-        if (!userId) {
-            return res.status(401).json({
-                error: 'Unauthorized: userId is required in header "x-user-id" or body'
-            });
-        }
-
-        // Fetch user from database
-        const user = await prisma.user.findUnique({
-            where: { id: userId }
-        });
-
-        // Validate user exists
-        if (!user) {
-            return res.status(401).json({
-                error: 'Unauthorized: User not found'
-            });
-        }
-
-        // Attach user to request
-        req.user = user;
-        next();
-    } catch (error) {
-        console.error('Error in authentication:', error);
-        return res.status(500).json({
-            error: 'Internal server error during authentication'
-        });
+    // If not in header, try to get from body (works with multer)
+    if (!userId && req.body) {
+      userId = req.body.userId;
     }
+
+    // Validate userId is present
+    if (!userId) {
+      return res.status(401).json({
+        error: 'Unauthorized: userId is required in header "x-user-id" or body',
+      });
+    }
+
+    // Fetch user from database
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+    });
+
+    // Validate user exists
+    if (!user) {
+      return res.status(401).json({
+        error: "Unauthorized: User not found",
+      });
+    }
+
+    // Attach user to request
+    req.user = user;
+    next();
+  } catch (error) {
+    console.error("Error in authentication:", error);
+    return res.status(500).json({
+      error: "Internal server error during authentication",
+    });
+  }
 };
 
 /**
@@ -77,160 +66,204 @@ const authenticateUser = async (req, res, next) => {
  * Create a new waste report with image upload
  * Accepts multipart/form-data with 'image' file field
  */
-router.post('/report', upload.single('image'), authenticateUser, async (req, res) => {
+router.post(
+  "/report",
+  upload.single("image"),
+  authenticateUser,
+  async (req, res) => {
     try {
-        const {
-            location,
-            isLocationLatLng,
-            latitude,
-            longitude,
-            note,
-            wasteType,
-            estimatedAmountKg,
-            city,
-            state,
-            country
-        } = req.body;
+      const {
+        location,
+        isLocationLatLng,
+        latitude,
+        longitude,
+        city,
+        state,
+        country,
+        aiAnalysis, // AI analysis JSON data (contains wasteType, estimatedWeightKg, notes)
+      } = req.body;
 
-        // Validate file upload
-        if (!req.file) {
-            return res.status(400).json({ error: 'image file is required' });
-        }
+      // Debug logging
+      console.log("📝 Waste Report Request Body:", {
+        location,
+        isLocationLatLng,
+        hasFile: !!req.file,
+        aiAnalysisType: typeof aiAnalysis,
+        aiAnalysisPreview: aiAnalysis ? aiAnalysis.substring(0, 100) : "null",
+      });
 
-        // Validate required fields
-        if (!location) {
-            return res.status(400).json({ error: 'location is required' });
-        }
+      // Validate file upload
+      if (!req.file) {
+        return res.status(400).json({ error: "image file is required" });
+      }
 
-        if (!wasteType) {
-            return res.status(400).json({ error: 'wasteType is required' });
-        }
+      // Validate required fields
+      if (!location) {
+        return res.status(400).json({ error: "location is required" });
+      }
 
-        // Validate wasteType enum
-        if (!VALID_WASTE_TYPES.includes(wasteType)) {
-            return res.status(400).json({
-                error: `Invalid wasteType. Must be one of: ${VALID_WASTE_TYPES.join(', ')}`
+      if (!aiAnalysis) {
+        return res.status(400).json({ error: "aiAnalysis is required" });
+      }
+
+      // Parse AI analysis if provided
+      let parsedAiAnalysis = null;
+      if (aiAnalysis) {
+        try {
+          parsedAiAnalysis =
+            typeof aiAnalysis === "string"
+              ? JSON.parse(aiAnalysis)
+              : aiAnalysis;
+
+          console.log("✅ Parsed AI Analysis:", parsedAiAnalysis);
+
+          // Validate AI analysis has required fields
+          if (!parsedAiAnalysis.wasteType || !parsedAiAnalysis.category) {
+            console.error("❌ Missing required fields:", {
+              hasWasteType: !!parsedAiAnalysis.wasteType,
+              hasCategory: !!parsedAiAnalysis.category,
+              actualFields: Object.keys(parsedAiAnalysis),
             });
+            return res.status(400).json({
+              error: "aiAnalysis must contain wasteType and category",
+              received: {
+                wasteType: parsedAiAnalysis.wasteType,
+                category: parsedAiAnalysis.category,
+                allFields: Object.keys(parsedAiAnalysis),
+              },
+            });
+          }
+        } catch (e) {
+          console.error("Failed to parse aiAnalysis:", e);
+          console.error("Raw aiAnalysis value:", aiAnalysis);
+          return res.status(400).json({
+            error: "Invalid aiAnalysis format",
+            details: e.message,
+          });
         }
+      }
 
-        // Step 1: Create waste report WITHOUT imageUrl to get the ID
-        const wasteReport = await prisma.wasteReport.create({
-            data: {
-                reporterId: req.user.id,
-                imageUrl: '', // Temporary empty string
-                locationRaw: location,
-                isLocationLatLng: isLocationLatLng === 'true' || isLocationLatLng === true,
-                latitude: latitude ? parseFloat(latitude) : null,
-                longitude: longitude ? parseFloat(longitude) : null,
-                note: note || null,
-                wasteType,
-                estimatedAmountKg: estimatedAmountKg ? parseFloat(estimatedAmountKg) : null,
-                city: city || null,
-                state: state || null,
-                country: country || null,
-                status: 'PENDING'
-            }
-        });
+      // Step 1: Create waste report WITHOUT imageUrl to get the ID
+      const wasteReport = await prisma.wasteReport.create({
+        data: {
+          reporterId: req.user.id,
+          imageUrl: "", // Temporary empty string
+          locationRaw: location,
+          isLocationLatLng:
+            isLocationLatLng === "true" || isLocationLatLng === true,
+          latitude: latitude ? parseFloat(latitude) : null,
+          longitude: longitude ? parseFloat(longitude) : null,
+          city: city || null,
+          state: state || null,
+          country: country || null,
+          aiAnalysis: parsedAiAnalysis,
+          status: "PENDING",
+        },
+      });
 
-        // Step 2: Generate S3 key using the report ID
-        const s3Key = generateWasteReportKey(wasteReport.id, req.file.originalname);
+      // Step 2: Generate S3 key using the report ID
+      const s3Key = generateWasteReportKey(
+        wasteReport.id,
+        req.file.originalname
+      );
 
-        // Step 3: Upload image to S3
-        const imageUrl = await uploadToS3(
-            req.file.buffer,
-            s3Key,
-            req.file.mimetype
-        );
+      // Step 3: Upload image to S3
+      const imageUrl = await uploadToS3(
+        req.file.buffer,
+        s3Key,
+        req.file.mimetype
+      );
 
-        // Step 4: Update waste report with actual imageUrl
-        const updatedWasteReport = await prisma.wasteReport.update({
-            where: { id: wasteReport.id },
-            data: { imageUrl },
-            include: {
-                reporter: true
-            }
-        });
+      // Step 4: Update waste report with actual imageUrl
+      const updatedWasteReport = await prisma.wasteReport.update({
+        where: { id: wasteReport.id },
+        data: { imageUrl },
+        include: {
+          reporter: true,
+        },
+      });
 
-        // Step 5: Create notification for the reporter
-        await createNotification({
-            userId: req.user.id,
-            type: 'WASTE_REPORTED',
-            title: 'Waste Report Created',
-            body: `Your waste report for ${wasteType} has been created successfully.`,
-            data: {
-                wasteReportId: updatedWasteReport.id
-            }
-        });
+      // Step 5: Create notification for the reporter
+      await createNotification({
+        userId: req.user.id,
+        type: "WASTE_REPORTED",
+        title: "Waste Report Created",
+        body: `Your waste report for ${parsedAiAnalysis.wasteType.toUpperCase()} has been created successfully.`,
+        data: {
+          wasteReportId: updatedWasteReport.id,
+        },
+      });
 
-        res.status(201).json({ waste: updatedWasteReport });
+      res.status(201).json({ waste: updatedWasteReport });
     } catch (error) {
-        console.error('Error creating waste report:', error);
-        res.status(500).json({ error: 'Internal server error' });
+      console.error("Error creating waste report:", error);
+      res.status(500).json({ error: "Internal server error" });
     }
-});
+  }
+);
 
 /**
  * GET /api/waste/report
  * Get waste reports with optional filters
  */
-router.get('/report', async (req, res) => {
-    try {
-        const { status = 'PENDING', city, mine } = req.query;
+router.get("/report", async (req, res) => {
+  try {
+    const { status = "PENDING", city, mine } = req.query;
 
-        // Build query filter
-        const where = {
-            status: status
-        };
+    // Build query filter
+    const where = {
+      status: status,
+    };
 
-        // Add city filter if provided
-        if (city) {
-            where.city = city;
-        }
-
-        // If "mine" is true, filter by user
-        if (mine === 'true') {
-            // Authenticate user for "mine" filter
-            let userId = req.get('x-user-id');
-            if (!userId && req.body) {
-                userId = req.body.userId;
-            }
-
-            if (!userId) {
-                return res.status(401).json({
-                    error: 'Unauthorized: userId is required for "mine" filter'
-                });
-            }
-
-            const user = await prisma.user.findUnique({
-                where: { id: userId }
-            });
-
-            if (!user) {
-                return res.status(401).json({
-                    error: 'Unauthorized: User not found'
-                });
-            }
-
-            where.reporterId = user.id;
-        }
-
-        // Fetch waste reports
-        const wastes = await prisma.wasteReport.findMany({
-            where,
-            include: {
-                reporter: true,
-                collector: true
-            },
-            orderBy: {
-                createdAt: 'desc'
-            }
-        });
-
-        res.json({ wastes });
-    } catch (error) {
-        console.error('Error fetching waste reports:', error);
-        res.status(500).json({ error: 'Internal server error' });
+    // Add city filter if provided
+    if (city) {
+      where.city = city;
     }
+
+    // If "mine" is true, filter by user
+    if (mine === "true") {
+      // Authenticate user for "mine" filter
+      let userId = req.get("x-user-id");
+      if (!userId && req.body) {
+        userId = req.body.userId;
+      }
+
+      if (!userId) {
+        return res.status(401).json({
+          error: 'Unauthorized: userId is required for "mine" filter',
+        });
+      }
+
+      const user = await prisma.user.findUnique({
+        where: { id: userId },
+      });
+
+      if (!user) {
+        return res.status(401).json({
+          error: "Unauthorized: User not found",
+        });
+      }
+
+      where.reporterId = user.id;
+    }
+
+    // Fetch waste reports
+    const wastes = await prisma.wasteReport.findMany({
+      where,
+      include: {
+        reporter: true,
+        collector: true,
+      },
+      orderBy: {
+        createdAt: "desc",
+      },
+    });
+
+    res.json({ wastes });
+  } catch (error) {
+    console.error("Error fetching waste reports:", error);
+    res.status(500).json({ error: "Internal server error" });
+  }
 });
 
 /**
@@ -238,99 +271,108 @@ router.get('/report', async (req, res) => {
  * Collect a waste report with collector image upload
  * Accepts multipart/form-data with 'collectorImage' file field
  */
-router.post('/:id/collect', upload.single('collectorImage'), authenticateUser, async (req, res) => {
+router.post(
+  "/:id/collect",
+  upload.single("collectorImage"),
+  authenticateUser,
+  async (req, res) => {
     try {
-        const wasteId = req.params.id;
-        const {
-            collectorLocation,
-            isLocationLatLng,
-            latitude,
-            longitude
-        } = req.body;
+      const wasteId = req.params.id;
+      const { collectorLocation, isLocationLatLng, latitude, longitude } =
+        req.body;
 
-        // Validate user has collector enabled
-        if (!req.user.enableCollector) {
-            return res.status(403).json({
-                error: 'User must have collector mode enabled to collect waste'
-            });
-        }
-
-        // Fetch waste report
-        const waste = await prisma.wasteReport.findUnique({
-            where: { id: wasteId },
-            include: {
-                reporter: true
-            }
+      // Validate user has collector enabled
+      if (!req.user.enableCollector) {
+        return res.status(403).json({
+          error: "User must have collector mode enabled to collect waste",
         });
+      }
 
-        // Validate waste exists
-        if (!waste) {
-            return res.status(404).json({ error: 'Waste report not found' });
-        }
+      // Fetch waste report
+      const waste = await prisma.wasteReport.findUnique({
+        where: { id: wasteId },
+        include: {
+          reporter: true,
+        },
+      });
 
-        // Validate waste is still pending
-        if (waste.status !== 'PENDING') {
-            return res.status(400).json({
-                error: 'Waste report has already been collected'
-            });
-        }
+      // Validate waste exists
+      if (!waste) {
+        return res.status(404).json({ error: "Waste report not found" });
+      }
 
-        // Upload collector image to S3 if provided
-        let collectorImageUrl = null;
-        if (req.file) {
-            const s3Key = generateWasteCollectionKey(wasteId, req.file.originalname);
-            collectorImageUrl = await uploadToS3(
-                req.file.buffer,
-                s3Key,
-                req.file.mimetype
-            );
-        }
-
-        // Update waste report to collected
-        const updatedWaste = await prisma.wasteReport.update({
-            where: { id: wasteId },
-            data: {
-                status: 'COLLECTED',
-                collectorId: req.user.id,
-                ...(collectorImageUrl && { collectorImageUrl })
-            },
-            include: {
-                reporter: true,
-                collector: true
-            }
+      // Validate waste is still pending
+      if (waste.status !== "PENDING") {
+        return res.status(400).json({
+          error: "Waste report has already been collected",
         });
+      }
 
-        // Notify reporter that their waste was collected
-        await createNotification({
-            userId: waste.reporterId,
-            type: 'WASTE_COLLECTED',
-            title: 'Waste Collected',
-            body: `Your ${waste.wasteType} waste report has been collected by ${req.user.name || 'a collector'}.`,
-            data: {
-                wasteReportId: wasteId,
-                collectorId: req.user.id,
-                collectorName: req.user.name
-            }
-        });
+      // Upload collector image to S3 if provided
+      let collectorImageUrl = null;
+      if (req.file) {
+        const s3Key = generateWasteCollectionKey(
+          wasteId,
+          req.file.originalname
+        );
+        collectorImageUrl = await uploadToS3(
+          req.file.buffer,
+          s3Key,
+          req.file.mimetype
+        );
+      }
 
-        // Notify collector about successful collection
-        await createNotification({
-            userId: req.user.id,
-            type: 'WASTE_COLLECTED',
-            title: 'Collection Confirmed',
-            body: `You have successfully collected ${waste.wasteType} waste reported by ${waste.reporter.name || 'a user'}.`,
-            data: {
-                wasteReportId: wasteId,
-                reporterId: waste.reporterId,
-                reporterName: waste.reporter.name
-            }
-        });
+      // Update waste report to collected
+      const updatedWaste = await prisma.wasteReport.update({
+        where: { id: wasteId },
+        data: {
+          status: "COLLECTED",
+          collectorId: req.user.id,
+          ...(collectorImageUrl && { collectorImageUrl }),
+        },
+        include: {
+          reporter: true,
+          collector: true,
+        },
+      });
 
-        res.json({ waste: updatedWaste });
+      // Notify reporter that their waste was collected
+      const wasteTypeFromAI = waste.aiAnalysis?.wasteType || "unknown";
+      await createNotification({
+        userId: waste.reporterId,
+        type: "WASTE_COLLECTED",
+        title: "Waste Collected",
+        body: `Your ${wasteTypeFromAI.toUpperCase()} waste report has been collected by ${
+          req.user.name || "a collector"
+        }.`,
+        data: {
+          wasteReportId: wasteId,
+          collectorId: req.user.id,
+          collectorName: req.user.name,
+        },
+      });
+
+      // Notify collector about successful collection
+      await createNotification({
+        userId: req.user.id,
+        type: "WASTE_COLLECTED",
+        title: "Collection Confirmed",
+        body: `You have successfully collected ${wasteTypeFromAI.toUpperCase()} waste reported by ${
+          waste.reporter.name || "a user"
+        }.`,
+        data: {
+          wasteReportId: wasteId,
+          reporterId: waste.reporterId,
+          reporterName: waste.reporter.name,
+        },
+      });
+
+      res.json({ waste: updatedWaste });
     } catch (error) {
-        console.error('Error collecting waste:', error);
-        res.status(500).json({ error: 'Internal server error' });
+      console.error("Error collecting waste:", error);
+      res.status(500).json({ error: "Internal server error" });
     }
-});
+  }
+);
 
 export default router;
