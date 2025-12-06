@@ -85,6 +85,15 @@ export default function TabLayout() {
           }}
         />
         <Tabs.Screen
+          name="heatmap"
+          options={{
+            title: "Heatmap",
+            tabBarIcon: ({ color }) => (
+              <IconSymbol size={24} name="flame.fill" color={color} />
+            ),
+          }}
+        />
+        <Tabs.Screen
           name="leaderboard"
           options={{
             title: "Leaderboard",

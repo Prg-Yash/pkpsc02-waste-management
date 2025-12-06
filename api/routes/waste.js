@@ -233,6 +233,55 @@ router.post(
 );
 
 /**
+ * GET /api/waste/pending
+ * Get all pending waste reports (excludes user's own reports)
+ */
+router.get("/pending", async (req, res) => {
+  try {
+    const { excludeUserId } = req.query;
+
+    console.log("📡 Fetching pending waste reports...");
+    console.log("Exclude User ID:", excludeUserId);
+
+    // Build where clause
+    const where = {
+      status: "PENDING",
+    };
+
+    // Exclude user's own reports if excludeUserId is provided
+    if (excludeUserId) {
+      where.reporterId = {
+        not: excludeUserId,
+      };
+    }
+
+    // Fetch pending waste reports
+    const wastes = await prisma.wasteReport.findMany({
+      where,
+      include: {
+        reporter: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+          },
+        },
+      },
+      orderBy: {
+        createdAt: "desc",
+      },
+    });
+
+    console.log(`✅ Found ${wastes.length} pending waste reports`);
+
+    res.json(wastes);
+  } catch (error) {
+    console.error("Error fetching pending waste reports:", error);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+/**
  * GET /api/waste/report
  * Get waste reports with optional filters
  */
@@ -300,12 +349,13 @@ router.get("/report", async (req, res) => {
 
 /**
  * POST /api/waste/:id/collect
- * Collect a waste report with collector image upload
- * Accepts multipart/form-data with 'collectorImage' file field
+ * Collect a waste report with two-factor image verification
+ * Accepts multipart/form-data with 'afterImage' file field
+ * Frontend handles before image verification, backend just stores after image
  */
 router.post(
   "/:id/collect",
-  upload.single("collectorImage"),
+  upload.single("afterImage"),
   authenticateUser,
   async (req, res) => {
     try {
@@ -336,6 +386,13 @@ router.post(
         });
       }
 
+      // Validate after image is provided
+      if (!req.file) {
+        return res.status(400).json({
+          error: "After image is required for collection verification",
+        });
+      }
+
       // Fetch waste report
       const waste = await prisma.wasteReport.findUnique({
         where: { id: wasteId },
@@ -357,15 +414,9 @@ router.post(
         });
       }
 
-      // if (waste.status === "PENDING") {
-      //     return res.status(400).json({
-      //         error: "Waste must be added to route first (status must be IN_PROGRESS)",
-      //     });
-      // }
-
       if (waste.status !== "IN_PROGRESS" && waste.status !== "PENDING") {
         return res.status(400).json({
-          error: `Cannot collect waste with status: ${waste.status}`,
+          error: `Cannot collect waste with status: ${waste.status}. Waste must be IN_PROGRESS (added to route first).`,
         });
       }
 
@@ -386,21 +437,19 @@ router.post(
         });
       }
 
-      // Upload collector image to S3 if provided
-      let collectorImageUrl = null;
-      if (req.file) {
-        const s3Key = generateWasteCollectionKey(
-          wasteId,
-          req.file.originalname
-        );
-        collectorImageUrl = await uploadToS3(
-          req.file.buffer,
-          s3Key,
-          req.file.mimetype
-        );
-      }
+      console.log("📤 Uploading after image to S3...");
 
-      // Update waste report to collected AND award collector points (only if enableCollector is true)
+      // Upload after image to S3
+      const s3Key = generateWasteCollectionKey(wasteId, req.file.originalname);
+      const collectorImageUrl = await uploadToS3(
+        req.file.buffer,
+        s3Key,
+        req.file.mimetype
+      );
+
+      console.log("✅ After image uploaded to S3:", collectorImageUrl);
+
+      // Update waste report to collected AND award collector points
       const [updatedWaste, updatedCollector] = await prisma.$transaction([
         prisma.wasteReport.update({
           where: { id: wasteId },
@@ -409,7 +458,7 @@ router.post(
             collectorId: req.user.id,
             routeCollectorId: null, // Clear route assignment after collection
             collectedAt: new Date(),
-            ...(collectorImageUrl && { collectorImageUrl }),
+            collectorImageUrl,
           },
           include: {
             reporter: true,
@@ -449,19 +498,33 @@ router.post(
         title: "Collection Confirmed",
         body: `You have successfully collected ${wasteTypeFromAI.toUpperCase()} waste reported by ${
           waste.reporter.name || "a user"
-        }. +${COLLECT_POINTS} points!`,
+        }. You earned ${COLLECT_POINTS} points!`,
         data: {
           wasteReportId: wasteId,
           reporterId: waste.reporterId,
-          reporterName: waste.reporter.name,
           pointsEarned: COLLECT_POINTS,
         },
       });
 
-      res.json({ waste: updatedWaste });
+      console.log(
+        `✅ Waste ${wasteId} collected successfully by ${req.user.id}`
+      );
+      console.log(
+        `🎉 +${COLLECT_POINTS} points awarded to ${
+          req.user.name || req.user.id
+        }`
+      );
+
+      res.json({
+        waste: updatedWaste,
+        pointsEarned: COLLECT_POINTS,
+      });
     } catch (error) {
       console.error("Error collecting waste:", error);
-      res.status(500).json({ error: "Internal server error" });
+      res.status(500).json({
+        error: "Failed to collect waste",
+        details: error.message,
+      });
     }
   }
 );

@@ -10,6 +10,7 @@ import webhookRoutes from "./routes/webhooks.js";
 import leaderboardRoutes from "./routes/leaderboard.js";
 import routePlannerRoutes from "./routes/routePlanner.js";
 import phoneVerificationRoutes from "./routes/phoneVerification.js";
+import whatsappMessagingRoutes from "./routes/whatsappMessaging.js";
 
 const app = express();
 
@@ -73,6 +74,7 @@ app.get("/", (req, res) => {
             leaderboard: "/api/leaderboard/global",
             routePlanner: "/api/route-planner",
             phoneVerification: "/api/phone/send-otp",
+            whatsappMessaging: "/api/whatsapp/enable",
         },
     });
 });
@@ -85,6 +87,7 @@ app.use("/api/webhooks", webhookRoutes);
 app.use("/api/leaderboard", leaderboardRoutes);
 app.use("/api/route-planner", routePlannerRoutes);
 app.use("/api/phone", phoneVerificationRoutes);
+app.use("/api/whatsapp", whatsappMessagingRoutes);
 
 // 404 handler
 app.use((req, res) => {

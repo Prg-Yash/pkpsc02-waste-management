@@ -29,13 +29,13 @@ enum UserStatus {
 }
 
 model User {
-  id              String     @id
-  email           String     @unique
-  name            String?
-  phone           String?
-  phoneVerified   Boolean    @default(false)
-  enableCollector Boolean    @default(false)
-  status          UserStatus @default(ACTIVE)
+  id                       String  @id
+  email                    String  @unique
+  name                     String?
+  phone                    String?
+  phoneVerified            Boolean @default(false)
+  whatsappMessagingEnabled Boolean @default(false)
+  enableCollector          Boolean @default(false)
 
   city    String?
   state   String?

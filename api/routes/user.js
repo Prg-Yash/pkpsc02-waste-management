@@ -158,6 +158,29 @@ router.patch('/me', authenticateUser, async (req, res) => {
     try {
         const { name, phone, city, state, country, enableCollector } = req.body;
 
+        // Validate phone number format if provided
+        if (phone !== undefined && phone !== null && phone !== '') {
+            // Remove any whitespace
+            const cleanedPhone = phone.trim();
+
+            // Check format: should be digits only, starting with country code (2-3 digits) + 10 digit phone number
+            // Example: 918097296453 (91 = country code, 8097296453 = 10 digit number)
+            const phoneRegex = /^\d{12,13}$/;
+
+            if (!phoneRegex.test(cleanedPhone)) {
+                return res.status(400).json({
+                    error: 'Invalid phone number format. Please enter phone number as: [country code][10 digit number] (e.g., 918097296453 for India)'
+                });
+            }
+
+            // Additional validation: check if it has at least 2 digits for country code and 10 for phone
+            if (cleanedPhone.length < 12) {
+                return res.status(400).json({
+                    error: 'Phone number too short. Format should be: [country code][10 digit number] (e.g., 918097296453)'
+                });
+            }
+        }
+
         // Track if collector was just enabled
         const wasCollectorEnabled =
             !req.user.enableCollector && enableCollector === true;
@@ -168,7 +191,7 @@ router.patch('/me', authenticateUser, async (req, res) => {
         // Prepare update data
         const updateData = {
             ...(name !== undefined && { name }),
-            ...(phone !== undefined && { phone }),
+            ...(phone !== undefined && { phone: phone ? phone.trim() : phone }),
             ...(enableCollector !== undefined && { enableCollector }),
             ...(city !== undefined && { city: city || null }),
             ...(state !== undefined && { state: state || null }),
