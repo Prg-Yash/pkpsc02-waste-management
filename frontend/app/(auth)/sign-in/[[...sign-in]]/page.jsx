@@ -20,6 +20,10 @@ export default function SignInPage() {
               'text-indigo-600 hover:text-indigo-700 font-medium',
           },
         }}
+        routing="path"
+        path="/sign-in"
+        signUpUrl="/sign-up"
+         forceRedirectUrl="/dashboard"
       />
     </div>
   );
