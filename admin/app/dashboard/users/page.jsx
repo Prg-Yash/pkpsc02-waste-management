@@ -10,7 +10,6 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
-  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import {
@@ -22,7 +21,6 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import {
   Search,
@@ -71,9 +69,8 @@ function StatusBadge({ status }) {
 export default function UsersPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
-  const [banDialogOpen, setBanDialogOpen] = useState(false);
+  const [profileDialogOpen, setProfileDialogOpen] = useState(false);
   const [selectedUser, setSelectedUser] = useState(null);
-  const [banReason, setBanReason] = useState("");
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -97,18 +94,29 @@ export default function UsersPage() {
         const data = await response.json();
         console.log('Users data received:', data);
         
-        // Map API response to UI format
-        const mappedUsers = (data.users || []).map((user) => ({
-          id: user.id,
-          name: user.name || 'Unknown User',
-          email: user.email,
-          avatar: null, // No avatar in API response
-          reports: user.reportsCount || 0,
-          tokens: user.globalPoints || 0,
-          status: "active", // Default status, can be enhanced later
-          flags: 0, // Not available in current schema
-          joinDate: user.createdAt ? new Date(user.createdAt).toISOString().split('T')[0] : 'N/A',
-        }));
+        // Map API response to UI format (matching backend response structure)
+        // Store full user data for profile view
+        const mappedUsers = (data.users || []).map((user) => {
+          // Map backend status: "incomplete" -> "active", keep others as is
+          let displayStatus = user.status || "active";
+          if (displayStatus === "incomplete") {
+            displayStatus = "active";
+          }
+          
+          return {
+            id: user.id,
+            name: user.name || 'Unknown User',
+            email: user.email,
+            avatar: null, // No avatar in API response
+            reports: user.reportCount || 0, // Backend returns 'reportCount'
+            tokens: user.globalPoints || 0,
+            status: displayStatus, // Only active, flagged, or banned
+            flags: 0, // Not available in current schema
+            joinDate: user.joinedAt ? new Date(user.joinedAt).toISOString().split('T')[0] : 'N/A', // Backend returns 'joinedAt'
+            // Store full user data for profile dialog
+            fullData: user,
+          };
+        });
         
         console.log('Mapped users:', mappedUsers);
         setUsers(mappedUsers);
@@ -131,9 +139,46 @@ export default function UsersPage() {
     return matchesSearch && matchesStatus;
   });
 
-  const handleBanUser = (user) => {
+  const handleViewProfile = (user) => {
     setSelectedUser(user);
-    setBanDialogOpen(true);
+    setProfileDialogOpen(true);
+  };
+
+  const handleStatusChange = async (newStatus) => {
+    if (!selectedUser) return;
+    
+    try {
+      // Call API to update status in database
+      const response = await fetch(`/api/users/${selectedUser.id}/status`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ status: newStatus }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to update status');
+      }
+
+      // Update the user's status in the users array
+      setUsers(users.map(u => 
+        u.id === selectedUser.id 
+          ? { ...u, status: newStatus, fullData: { ...u.fullData, status: newStatus } }
+          : u
+      ));
+      
+      // Update the selected user's status
+      setSelectedUser({
+        ...selectedUser,
+        status: newStatus,
+        fullData: { ...selectedUser.fullData, status: newStatus }
+      });
+    } catch (error) {
+      console.error('Error updating user status:', error);
+      alert(`Failed to update status: ${error.message}`);
+    }
   };
 
   // Calculate stats from real data
@@ -307,24 +352,10 @@ export default function UsersPage() {
                             </Button>
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="end">
-                            <DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => handleViewProfile(user)}>
                               <Eye className="mr-2 h-4 w-4" />
                               View Profile
                             </DropdownMenuItem>
-                            {user.status === "banned" ? (
-                              <DropdownMenuItem>
-                                <CheckCircle className="mr-2 h-4 w-4" />
-                                Unban User
-                              </DropdownMenuItem>
-                            ) : (
-                              <>
-                                <DropdownMenuSeparator />
-                                <DropdownMenuItem className="text-destructive" onClick={() => handleBanUser(user)}>
-                                  <Ban className="mr-2 h-4 w-4" />
-                                  Ban User
-                                </DropdownMenuItem>
-                              </>
-                            )}
                           </DropdownMenuContent>
                         </DropdownMenu>
                       </TableCell>
@@ -336,46 +367,202 @@ export default function UsersPage() {
           </CardContent>
         </Card>
 
-        {/* Ban Dialog */}
-        <Dialog open={banDialogOpen} onOpenChange={setBanDialogOpen}>
-          <DialogContent>
+        {/* Profile Dialog */}
+        <Dialog open={profileDialogOpen} onOpenChange={setProfileDialogOpen}>
+          <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
             <DialogHeader>
-              <DialogTitle className="flex items-center gap-2 text-destructive">
-                <Ban className="h-5 w-5" />
-                Ban User
+              <DialogTitle className="flex items-center gap-2">
+                <Eye className="h-5 w-5" />
+                User Profile
               </DialogTitle>
               <DialogDescription>
-                You are about to ban {selectedUser?.name}. This action will prevent them from using the platform.
+                Detailed information about {selectedUser?.name}
               </DialogDescription>
             </DialogHeader>
-            <div className="space-y-4 py-4">
-              <div className="flex items-center gap-3 rounded-lg bg-muted/50 p-3">
-                <Avatar>
-                  {selectedUser?.avatar && <AvatarImage src={selectedUser?.avatar} />}
-                  <AvatarFallback className="bg-primary/10 text-primary">
-                    {selectedUser?.name.split(" ").map((n) => n[0]).join("").toUpperCase()}
-                  </AvatarFallback>
-                </Avatar>
-                <div>
-                  <p className="font-medium">{selectedUser?.name}</p>
-                  <p className="text-sm text-muted-foreground">{selectedUser?.email}</p>
+            {selectedUser?.fullData && (
+              <div className="space-y-6 py-4">
+                {/* User Header */}
+                <div className="flex items-center gap-4 rounded-lg bg-muted/50 p-4">
+                  <Avatar className="h-16 w-16">
+                    {selectedUser?.avatar && <AvatarImage src={selectedUser?.avatar} />}
+                    <AvatarFallback className="bg-primary/10 text-primary text-lg">
+                      {selectedUser?.name.split(" ").map((n) => n[0]).join("").toUpperCase()}
+                    </AvatarFallback>
+                  </Avatar>
+                  <div className="flex-1 min-w-0">
+                    <h3 className="text-xl font-semibold break-words">{selectedUser?.name}</h3>
+                    <p className="text-sm text-muted-foreground break-words">{selectedUser?.email}</p>
+                    <div className="mt-2">
+                      <StatusBadge status={selectedUser?.status} />
+                    </div>
+                  </div>
                 </div>
+
+                {/* Status Change Section */}
+                <Card className="border-primary/20">
+                  <CardHeader className="pb-3">
+                    <CardTitle className="text-sm font-medium">Change Status</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="flex items-center gap-4">
+                      <Label className="text-sm">Status:</Label>
+                      <Select 
+                        value={selectedUser?.status || "active"} 
+                        onValueChange={handleStatusChange}
+                      >
+                        <SelectTrigger className="w-40">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="active">Active</SelectItem>
+                          <SelectItem value="flagged">Flagged</SelectItem>
+                          <SelectItem value="banned">Banned</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </CardContent>
+                </Card>
+
+                {/* User Information Grid */}
+                <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-2">
+                  <Card>
+                    <CardHeader className="pb-3">
+                      <CardTitle className="text-sm font-medium text-muted-foreground">Contact Information</CardTitle>
+                    </CardHeader>
+                    <CardContent className="space-y-2">
+                      <div>
+                        <Label className="text-xs text-muted-foreground">Email</Label>
+                        <p className="text-sm font-medium break-words">{selectedUser?.fullData.email || 'N/A'}</p>
+                      </div>
+                      <div>
+                        <Label className="text-xs text-muted-foreground">Phone</Label>
+                        <p className="text-sm font-medium break-words">{selectedUser?.fullData.phone || 'Not provided'}</p>
+                      </div>
+                      {selectedUser?.fullData.phoneVerified !== undefined && (
+                        <div>
+                          <Label className="text-xs text-muted-foreground">Phone Verified</Label>
+                          <p className="text-sm font-medium">
+                            {selectedUser?.fullData.phoneVerified ? (
+                              <span className="text-green-600">✓ Verified</span>
+                            ) : (
+                              <span className="text-gray-500">Not verified</span>
+                            )}
+                          </p>
+                        </div>
+                      )}
+                    </CardContent>
+                  </Card>
+
+                  <Card>
+                    <CardHeader className="pb-3">
+                      <CardTitle className="text-sm font-medium text-muted-foreground">Address</CardTitle>
+                    </CardHeader>
+                    <CardContent className="space-y-2">
+                      {selectedUser?.fullData.address ? (
+                        <>
+                          <div>
+                            <Label className="text-xs text-muted-foreground">City</Label>
+                            <p className="text-sm font-medium break-words">{selectedUser?.fullData.address.city || 'N/A'}</p>
+                          </div>
+                          <div>
+                            <Label className="text-xs text-muted-foreground">State</Label>
+                            <p className="text-sm font-medium break-words">{selectedUser?.fullData.address.state || 'N/A'}</p>
+                          </div>
+                          <div>
+                            <Label className="text-xs text-muted-foreground">Country</Label>
+                            <p className="text-sm font-medium break-words">{selectedUser?.fullData.address.country || 'N/A'}</p>
+                          </div>
+                        </>
+                      ) : (
+                        <p className="text-sm text-muted-foreground">No address provided</p>
+                      )}
+                    </CardContent>
+                  </Card>
+
+                  <Card>
+                    <CardHeader className="pb-3">
+                      <CardTitle className="text-sm font-medium text-muted-foreground">Activity Statistics</CardTitle>
+                    </CardHeader>
+                    <CardContent className="space-y-2">
+                      <div>
+                        <Label className="text-xs text-muted-foreground">Reports Created</Label>
+                        <p className="text-sm font-medium">{selectedUser?.fullData.reportCount || 0}</p>
+                      </div>
+                      {selectedUser?.fullData.enableCollector && (
+                        <div>
+                          <Label className="text-xs text-muted-foreground">Collections</Label>
+                          <p className="text-sm font-medium">{selectedUser?.fullData.collectionCount || 0}</p>
+                        </div>
+                      )}
+                      <div>
+                        <Label className="text-xs text-muted-foreground">Join Date</Label>
+                        <p className="text-sm font-medium">
+                          {selectedUser?.fullData.joinedAt 
+                            ? new Date(selectedUser.fullData.joinedAt).toLocaleDateString('en-US', {
+                                year: 'numeric',
+                                month: 'long',
+                                day: 'numeric'
+                              })
+                            : 'N/A'}
+                        </p>
+                      </div>
+                    </CardContent>
+                  </Card>
+
+                  <Card>
+                    <CardHeader className="pb-3">
+                      <CardTitle className="text-sm font-medium text-muted-foreground">Points & Rewards</CardTitle>
+                    </CardHeader>
+                    <CardContent className="space-y-2">
+                      <div>
+                        <Label className="text-xs text-muted-foreground">Reporter Points</Label>
+                        <p className="text-sm font-medium flex items-center gap-1">
+                          <Coins className="h-4 w-4 text-primary" />
+                          {selectedUser?.fullData.reporterPoints || 0}
+                        </p>
+                      </div>
+                      {selectedUser?.fullData.enableCollector && (
+                        <div>
+                          <Label className="text-xs text-muted-foreground">Collector Points</Label>
+                          <p className="text-sm font-medium flex items-center gap-1">
+                            <Coins className="h-4 w-4 text-primary" />
+                            {selectedUser?.fullData.collectorPoints || 0}
+                          </p>
+                        </div>
+                      )}
+                      <div>
+                        <Label className="text-xs text-muted-foreground">Total Points</Label>
+                        <p className="text-lg font-bold flex items-center gap-1 text-primary">
+                          <Coins className="h-5 w-5" />
+                          {selectedUser?.fullData.globalPoints || 0}
+                        </p>
+                      </div>
+                    </CardContent>
+                  </Card>
+                </div>
+
+                {/* Collector Status */}
+                {selectedUser?.fullData.enableCollector && (
+                  <Card className="border-primary/20 bg-primary/5">
+                    <CardContent className="pt-6">
+                      <div className="flex items-center gap-2">
+                        <Shield className="h-5 w-5 text-primary" />
+                        <div>
+                          <p className="font-semibold">Collector Mode Enabled</p>
+                          <p className="text-sm text-muted-foreground">
+                            This user can collect waste reports from their area
+                          </p>
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                )}
               </div>
-              <div className="space-y-2">
-                <Label>Reason for Ban</Label>
-                <Textarea
-                  placeholder="Enter the reason for banning this user..."
-                  value={banReason}
-                  onChange={(e) => setBanReason(e.target.value)}
-                  rows={3}
-                />
-              </div>
-            </div>
+            )}
             <DialogFooter>
-              <Button variant="outline" onClick={() => setBanDialogOpen(false)}>
-                Cancel
+              <Button variant="outline" onClick={() => setProfileDialogOpen(false)}>
+                Close
               </Button>
-              <Button variant="destructive">Confirm Ban</Button>
             </DialogFooter>
           </DialogContent>
         </Dialog>

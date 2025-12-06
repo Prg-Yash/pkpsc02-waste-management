@@ -22,13 +22,20 @@ enum NotificationType {
   COLLECTOR_ENABLED
 }
 
+enum UserStatus {
+  ACTIVE
+  FLAGGED
+  BANNED
+}
+
 model User {
-  id              String  @id
-  email           String  @unique
+  id              String     @id
+  email           String     @unique
   name            String?
   phone           String?
-  phoneVerified   Boolean @default(false)
-  enableCollector Boolean @default(false)
+  phoneVerified   Boolean    @default(false)
+  enableCollector Boolean    @default(false)
+  status          UserStatus @default(ACTIVE)
 
   city    String?
   state   String?
