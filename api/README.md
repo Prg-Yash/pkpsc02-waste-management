@@ -2267,11 +2267,15 @@ x-user-id: user_xxxxx (optional)
       "id": "user_xxxxx",
       "name": "John Doe",
       "city": "Mumbai",
-      "state": "Maharashtra"
+      "state": "Maharashtra",
+      "phone": "+919876543210",
+      "email": "john@example.com"
     },
     "winner": {
       "id": "user_yyyyy",
-      "name": "Jane Smith"
+      "name": "Jane Smith",
+      "phone": "+918765432109",
+      "email": "jane@example.com"
     },
     "wasteType": "Plastic",
     "weightKg": 15.5,
@@ -2322,8 +2326,16 @@ x-user-id: user_xxxxx (optional)
 **Auto-Finalization**:
 
 - If auction time has expired and status is ACTIVE, automatically calls `finalizeAuction()`
+- The `finalizeAuction(listingId, manualClose)` function accepts:
+  - `listingId` - The listing to finalize
+  - `manualClose` (boolean, default: false) - If true, skips time check for manual early closure
 - Finds winner (highest bidder), generates QR code, sends notifications
 - Updates status to ENDED
+
+**Contact Information**:
+
+- Seller's phone and email are returned (visible to winner for coordination)
+- Winner's phone and email are returned (visible to seller for coordination)
 
 **Response includes**:
 
@@ -2483,6 +2495,70 @@ curl -X POST http://localhost:3000/api/marketplace/listing_abc123/verify-qr \
 
 ---
 
+#### POST /api/marketplace/:id/close-bid
+
+Close auction early and finalize with current highest bidder (seller only).
+
+**Headers**:
+
+```
+x-user-id: user_seller_xxxxx
+```
+
+**Requirements**:
+
+- Only seller can close auction
+- Listing must be ACTIVE
+- At least one bid must exist
+- Auction will finalize immediately (bypasses time check)
+
+**cURL Example**:
+
+```bash
+curl -X POST http://localhost:3000/api/marketplace/listing_abc123/close-bid \
+  -H "x-user-id: user_seller_xxxxx"
+```
+
+**Response**:
+
+```json
+{
+  "success": true,
+  "message": "Auction closed successfully",
+  "listing": {
+    "id": "listing_abc123",
+    "status": "ENDED",
+    "winnerId": "user_yyyyy",
+    "winner": {
+      "id": "user_yyyyy",
+      "name": "Jane Smith",
+      "phone": "+919876543210",
+      "email": "jane@example.com"
+    },
+    "verificationCode": "A1B2C3D4",
+    "updatedAt": "2025-12-07T15:00:00.000Z"
+  }
+}
+```
+
+**Actions Performed**:
+
+1. Calls `finalizeAuction()` with `manualClose=true`
+2. Finds highest bidder as winner
+3. Generates QR verification code
+4. Updates status to ENDED
+5. Sends notifications to winner and seller
+6. Returns updated listing with winner contact info
+
+**Error Responses**:
+
+- `404` - Listing not found
+- `403` - Only seller can close the bid
+- `400` - Listing is not active
+- `400` - Cannot close auction with no bids (use cancel instead)
+
+---
+
 #### POST /api/marketplace/:id/cancel
 
 Cancel an active listing (seller only).
@@ -2591,11 +2667,15 @@ enum ListingStatus {
 ```prisma
 model User {
   // ... existing fields ...
+  phone        String?              // Used for marketplace coordination
+  email        String?              // Used for marketplace coordination
   listings     MarketplaceListing[] @relation("UserListings")
   bids         Bid[]                @relation("UserBids")
   wonListings  MarketplaceListing[] @relation("WinnerListings")
 }
 ```
+
+**Note**: User phone and email are returned in marketplace listing details to facilitate buyer-seller coordination for waste pickup.
 
 **NotificationType Updates**:
 
