@@ -156,7 +156,11 @@ The test interface provides forms for:
 - `name` (String, optional)
 - `phone` (String, optional)
 - `enableCollector` (Boolean) - Collector mode flag
+- `reporterPoints` (Int) - Points from reporting waste
+- `collectorPoints` (Int) - Points from collecting waste
+- `globalPoints` (Int) - Total points (reporterPoints + collectorPoints)
 - Relations: reportedWastes, collectedWastes, notifications
+- Index: [globalPoints, reporterPoints, collectorPoints] for leaderboard performance
 
 **WasteReport**
 
@@ -570,6 +574,224 @@ svix-signature: v1,xxxxx
 
 ---
 
+### Leaderboard
+
+#### Overview
+
+The leaderboard system tracks user contributions through a point-based reward system. Points are automatically awarded when users report or collect waste.
+
+**Point System:**
+- **Report Waste**: +10 points (added to `reporterPoints` and `globalPoints`)
+- **Collect Waste**: +20 points (added to `collectorPoints` and `globalPoints`, only if `enableCollector === true`)
+
+**Point Fields:**
+- `reporterPoints` (Int) - Points earned from reporting waste
+- `collectorPoints` (Int) - Points earned from collecting waste (shown as `null` when `enableCollector === false` AND `collectorPoints === 0`)
+- `globalPoints` (Int) - Total points (`reporterPoints + collectorPoints`)
+
+**Performance:**
+- Database indexed on `[globalPoints, reporterPoints, collectorPoints]` for fast queries
+- Supports millions of users with pagination
+- Efficient rank calculation using Prisma aggregations
+
+---
+
+#### GET /api/leaderboard/reporters
+
+Get reporters leaderboard ranked by reporter points.
+
+**Headers/Query**:
+```
+x-user-id: user_xxxxx
+OR
+?userId=user_xxxxx
+```
+
+**Query Parameters**:
+- `page` (default: 1) - Page number
+- `pageSize` (default: 20, max: 50) - Items per page
+
+**Ranking Logic**:
+1. `reporterPoints` DESC
+2. `globalPoints` DESC (tie-breaker)
+3. `createdAt` ASC (final tie-breaker)
+
+**Response**:
+```json
+{
+  "leaderboard": [
+    {
+      "id": "user_abc",
+      "name": "John Doe",
+      "email": "john@example.com",
+      "reporterPoints": 150,
+      "rank": 1
+    },
+    {
+      "id": "user_xyz",
+      "name": "Jane Smith",
+      "email": "jane@example.com",
+      "reporterPoints": 120,
+      "rank": 2
+    }
+  ],
+  "me": {
+    "id": "user_current",
+    "name": "Current User",
+    "email": "current@example.com",
+    "reporterPoints": 80,
+    "rank": 15
+  },
+  "pagination": {
+    "currentPage": 1,
+    "pageSize": 20,
+    "totalPages": 5,
+    "totalUsers": 100
+  }
+}
+```
+
+---
+
+#### GET /api/leaderboard/collectors
+
+Get collectors leaderboard ranked by collector points.
+
+**Headers/Query**:
+```
+x-user-id: user_xxxxx
+OR
+?userId=user_xxxxx
+```
+
+**Query Parameters**:
+- `page` (default: 1) - Page number
+- `pageSize` (default: 20, max: 50) - Items per page
+
+**Ranking Logic**:
+1. `collectorPoints` DESC
+2. `globalPoints` DESC (tie-breaker)
+3. `createdAt` ASC (final tie-breaker)
+
+**Special Handling**:
+- `collectorPoints` is shown as `null` when user has `enableCollector === false` AND `collectorPoints === 0`
+- This indicates the user has never enabled collector mode
+
+**Response**:
+```json
+{
+  "leaderboard": [
+    {
+      "id": "user_collector1",
+      "name": "Top Collector",
+      "email": "collector@example.com",
+      "collectorPoints": 240,
+      "rank": 1
+    },
+    {
+      "id": "user_reporter_only",
+      "name": "Reporter Only",
+      "email": "reporter@example.com",
+      "collectorPoints": null,
+      "rank": 50
+    }
+  ],
+  "me": {
+    "id": "user_current",
+    "name": "Current User",
+    "email": "current@example.com",
+    "collectorPoints": 160,
+    "rank": 8
+  },
+  "pagination": {
+    "currentPage": 1,
+    "pageSize": 20,
+    "totalPages": 5,
+    "totalUsers": 100
+  }
+}
+```
+
+---
+
+#### GET /api/leaderboard/global
+
+Get global leaderboard ranked by total points.
+
+**Headers/Query**:
+```
+x-user-id: user_xxxxx
+OR
+?userId=user_xxxxx
+```
+
+**Query Parameters**:
+- `page` (default: 1) - Page number
+- `pageSize` (default: 20, max: 50) - Items per page
+
+**Ranking Logic**:
+1. `globalPoints` DESC
+2. `reporterPoints` DESC (tie-breaker)
+3. `collectorPoints` DESC (tie-breaker)
+4. `createdAt` ASC (final tie-breaker)
+
+**Response**:
+```json
+{
+  "leaderboard": [
+    {
+      "id": "user_top",
+      "name": "Top User",
+      "email": "top@example.com",
+      "globalPoints": 350,
+      "reporterPoints": 150,
+      "collectorPoints": 200,
+      "rank": 1
+    },
+    {
+      "id": "user_second",
+      "name": "Second Place",
+      "email": "second@example.com",
+      "globalPoints": 280,
+      "reporterPoints": 120,
+      "collectorPoints": 160,
+      "rank": 2
+    }
+  ],
+  "me": {
+    "id": "user_current",
+    "name": "Current User",
+    "email": "current@example.com",
+    "globalPoints": 240,
+    "reporterPoints": 80,
+    "collectorPoints": 160,
+    "rank": 5
+  },
+  "pagination": {
+    "currentPage": 1,
+    "pageSize": 20,
+    "totalPages": 5,
+    "totalUsers": 100
+  }
+}
+```
+
+**cURL Examples**:
+```bash
+# Get reporters leaderboard
+curl "http://localhost:3000/api/leaderboard/reporters?page=1&pageSize=20" \
+  -H "x-user-id: user_xxxxx"
+
+# Get collectors leaderboard
+curl "http://localhost:3000/api/leaderboard/collectors?userId=user_xxxxx"
+
+# Get global leaderboard
+curl "http://localhost:3000/api/leaderboard/global" \
+  -H "x-user-id: user_xxxxx"
+```
+
+---
+
 ## 🔧 Error Responses
 
 All endpoints return consistent error format:
@@ -598,12 +820,14 @@ api/
 │   ├── prisma.js           # Prisma client singleton
 │   ├── authUser.js         # User authentication helper (deprecated)
 │   ├── notifications.js    # Notification creation helper
+│   ├── points.js           # Point system configuration
 │   ├── s3.js               # AWS S3 client configuration
 │   └── s3Uploader.js       # S3 upload functions
 ├── routes/
 │   ├── user.js             # User routes (/api/user/*)
 │   ├── waste.js            # Waste routes with file upload (/api/waste/*)
 │   ├── notifications.js    # Notification routes (/api/notifications/*)
+│   ├── leaderboard.js      # Leaderboard routes (/api/leaderboard/*)
 │   └── webhooks.js         # Clerk webhook routes (/api/webhooks/*)
 ├── prisma/
 │   ├── schema.prisma       # Database schema
