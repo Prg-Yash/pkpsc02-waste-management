@@ -1,0 +1,3 @@
+-- AlterTable
+ALTER TABLE "WasteReport" ADD COLUMN     "collectedAt" TIMESTAMP(3),
+ADD COLUMN     "reportedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP;

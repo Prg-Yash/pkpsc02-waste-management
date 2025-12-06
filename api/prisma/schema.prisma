@@ -63,6 +63,9 @@ model WasteReport {
 
   status WasteStatus @default(PENDING)
 
+  reportedAt  DateTime  @default(now())
+  collectedAt DateTime?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
