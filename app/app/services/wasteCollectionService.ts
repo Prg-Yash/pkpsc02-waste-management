@@ -31,7 +31,7 @@ export interface PendingWasteReport {
 export interface CollectionData {
   reportId: string;
   collectorId: string;
-  collectorImageUri: string;
+  afterImageUri: string; // Collector's after image (uploaded to S3)
   collectorLatitude: number;
   collectorLongitude: number;
   verificationData: {
@@ -86,7 +86,7 @@ export async function fetchPendingReports(
 
 /**
  * Submits collection verification to backend
- * @param data - Collection data including verification results
+ * @param data - Collection data including after image (frontend handles before image verification)
  * @returns Updated waste report
  */
 export async function submitCollectionVerification(
@@ -96,14 +96,6 @@ export async function submitCollectionVerification(
     console.log("📡 Submitting collection verification...");
     console.log("Report ID:", data.reportId);
 
-    // Read collector image as base64
-    const imageBase64 = await FileSystem.readAsStringAsync(
-      data.collectorImageUri,
-      {
-        encoding: "base64",
-      }
-    );
-
     const formData = new FormData();
     formData.append("userId", data.collectorId);
     formData.append("collectorId", data.collectorId);
@@ -111,13 +103,14 @@ export async function submitCollectionVerification(
     formData.append("collectorLongitude", data.collectorLongitude.toString());
     formData.append("verificationData", JSON.stringify(data.verificationData));
 
-    // Add image file
-    const imageUri = data.collectorImageUri;
-    const imageType = imageUri.endsWith(".png") ? "image/png" : "image/jpeg";
-    formData.append("collectorImage", {
-      uri: imageUri,
-      type: imageType,
-      name: `collector-${Date.now()}.jpg`,
+    // Add after image (will be uploaded to S3)
+    const afterImageType = data.afterImageUri.endsWith(".png")
+      ? "image/png"
+      : "image/jpeg";
+    formData.append("afterImage", {
+      uri: data.afterImageUri,
+      type: afterImageType,
+      name: `after-${Date.now()}.jpg`,
     } as any);
 
     const response = await fetch(

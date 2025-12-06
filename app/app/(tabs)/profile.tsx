@@ -565,7 +565,7 @@ export default function ProfileScreen() {
           <YStack padding="$8" alignItems="center">
             <Spinner size="large" color="$blue9" />
           </YStack>
-        ) : stats ? (
+        ) : stats && profile ? (
           <>
             <YStack paddingHorizontal="$4">
               <H4 color="$gray12" fontWeight="bold" marginBottom="$3">
@@ -582,13 +582,21 @@ export default function ProfileScreen() {
                 borderColor="$yellow9"
               >
                 <XStack justifyContent="space-between" alignItems="center">
-                  <YStack>
+                  <YStack flex={1}>
                     <Text color="$yellow10" fontSize="$2" fontWeight="600">
                       Total Points
                     </Text>
                     <H2 color="$yellow10" fontWeight="bold" marginTop="$1">
-                      {stats.points}
+                      {profile.globalPoints}
                     </H2>
+                    <XStack gap="$2" marginTop="$2">
+                      <Text color="$yellow11" fontSize="$2">
+                        📝 Reporter: {profile.reporterPoints}
+                      </Text>
+                      <Text color="$yellow11" fontSize="$2">
+                        🗑️ Collector: {profile.collectorPoints}
+                      </Text>
+                    </XStack>
                   </YStack>
                   <Text fontSize={50}>🏆</Text>
                 </XStack>
