@@ -71,6 +71,14 @@ router.post("/add", authenticateUser, async (req, res) => {
       });
     }
 
+    // Validate user has verified phone number
+    if (!req.user.phoneVerified) {
+      return res.status(400).json({
+        error:
+          "Please verify your phone number through WhatsApp before performing this action.",
+      });
+    }
+
     // Validate user has collector enabled
     if (!req.user.enableCollector) {
       return res.status(403).json({

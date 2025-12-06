@@ -9,6 +9,7 @@ import notificationRoutes from "./routes/notifications.js";
 import webhookRoutes from "./routes/webhooks.js";
 import leaderboardRoutes from "./routes/leaderboard.js";
 import routePlannerRoutes from "./routes/routePlanner.js";
+import phoneVerificationRoutes from "./routes/phoneVerification.js";
 
 const app = express();
 
@@ -22,7 +23,7 @@ app.use(
     })
 );
 
-// Additional CORS headers for all requests
+// Additional CORS headers for preflight
 app.use((req, res, next) => {
     res.header("Access-Control-Allow-Origin", "*");
     res.header(
@@ -31,7 +32,7 @@ app.use((req, res, next) => {
     );
     res.header(
         "Access-Control-Allow-Headers",
-        "Content-Type, Accept, x-user-id, Authorization, Origin, X-Requested-With"
+        "Content-Type, Accept, x-user-id, Authorization, Origin, X-Requested-With, ngrok-skip-browser-warning"
     );
 
     // Handle preflight requests
@@ -71,6 +72,7 @@ app.get("/", (req, res) => {
             webhook: "/api/webhooks/clerk",
             leaderboard: "/api/leaderboard/global",
             routePlanner: "/api/route-planner",
+            phoneVerification: "/api/phone/send-otp",
         },
     });
 });
@@ -82,6 +84,7 @@ app.use("/api/notifications", notificationRoutes);
 app.use("/api/webhooks", webhookRoutes);
 app.use("/api/leaderboard", leaderboardRoutes);
 app.use("/api/route-planner", routePlannerRoutes);
+app.use("/api/phone", phoneVerificationRoutes);
 
 // 404 handler
 app.use((req, res) => {

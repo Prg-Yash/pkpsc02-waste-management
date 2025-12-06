@@ -76,14 +76,6 @@ router.post(
   authenticateUser,
   async (req, res) => {
     try {
-      // Validate user has address fields set
-      if (!req.user.city || !req.user.state || !req.user.country) {
-        return res.status(400).json({
-          error:
-            "Please update your profile with city, state, and country before reporting or collecting waste.",
-        });
-      }
-
       const {
         location,
         isLocationLatLng,
@@ -94,6 +86,22 @@ router.post(
         country,
         aiAnalysis, // AI analysis JSON data (contains wasteType, estimatedWeightKg, notes)
       } = req.body;
+
+      // Validate user has address fields set
+      if (!req.user.city || !req.user.state || !req.user.country) {
+        return res.status(400).json({
+          error:
+            "Please update your profile with city, state, and country before reporting or collecting waste.",
+        });
+      }
+
+      // Validate user has verified phone number
+      if (!req.user.phoneVerified) {
+        return res.status(400).json({
+          error:
+            "Please verify your phone number through WhatsApp before performing this action.",
+        });
+      }
 
       // Debug logging
       console.log("📝 Waste Report Request Body:", {
@@ -186,23 +194,23 @@ router.post(
         req.file.mimetype
       );
 
-      // Step 4: Update waste report with actual imageUrl
-      const updatedWasteReport = await prisma.wasteReport.update({
-        where: { id: wasteReport.id },
-        data: { imageUrl },
-        include: {
-          reporter: true,
-        },
-      });
-
-      // Step 5: Award reporter points
-      const updatedUser = await prisma.user.update({
-        where: { id: req.user.id },
-        data: {
-          reporterPoints: { increment: REPORT_POINTS },
-          globalPoints: { increment: REPORT_POINTS },
-        },
-      });
+      // Step 4: Update waste report with actual imageUrl AND award reporter points
+      const [updatedWasteReport, updatedUser] = await prisma.$transaction([
+        prisma.wasteReport.update({
+          where: { id: wasteReport.id },
+          data: { imageUrl },
+          include: {
+            reporter: true,
+          },
+        }),
+        prisma.user.update({
+          where: { id: req.user.id },
+          data: {
+            reporterPoints: { increment: REPORT_POINTS },
+            globalPoints: { increment: REPORT_POINTS },
+          },
+        }),
+      ]);
 
       // Step 5: Create notification for the reporter
       await createNotification({
@@ -216,17 +224,6 @@ router.post(
         },
       });
 
-      // Step 6: Notify all collectors in the same state
-      if (state) {
-        await notifyCollectorsInState({
-          state: state,
-          reporterId: req.user.id,
-          wasteReportId: updatedWasteReport.id,
-          wasteType: parsedAiAnalysis.wasteType,
-          city: city || "Unknown location",
-        });
-      }
-
       res.status(201).json({ waste: updatedWasteReport });
     } catch (error) {
       console.error("Error creating waste report:", error);
@@ -236,55 +233,18 @@ router.post(
 );
 
 /**
- * GET /api/waste/pending
- * Get all pending waste reports (excludes user's own reports)
- */
-router.get("/pending", async (req, res) => {
-  try {
-    const { excludeUserId } = req.query;
-
-    // Build query filter - only PENDING status
-    const where = {
-      status: "PENDING",
-    };
-
-    // Exclude user's own reports if excludeUserId is provided
-    if (excludeUserId) {
-      where.reporterId = {
-        not: excludeUserId,
-      };
-    }
-
-    // Fetch pending waste reports
-    const wastes = await prisma.wasteReport.findMany({
-      where,
-      include: {
-        reporter: true,
-      },
-      orderBy: {
-        createdAt: "desc",
-      },
-    });
-
-    res.json(wastes);
-  } catch (error) {
-    console.error("Error fetching pending waste reports:", error);
-    res.status(500).json({ error: "Internal server error" });
-  }
-});
-
-/**
  * GET /api/waste/report
  * Get waste reports with optional filters
  */
 router.get("/report", async (req, res) => {
   try {
-    const { status = "PENDING", city, mine } = req.query;
+    const { status, city, mine } = req.query;
 
     // Build query filter
-    const where = {
-      status: status,
-    };
+    const where = {};
+    if (status) {
+      where.status = status;
+    }
 
     // Add city filter if provided
     if (city) {
@@ -324,6 +284,7 @@ router.get("/report", async (req, res) => {
       include: {
         reporter: true,
         collector: true,
+        routeCollector: true,
       },
       orderBy: {
         createdAt: "desc",
@@ -352,6 +313,22 @@ router.post(
       const { collectorLocation, isLocationLatLng, latitude, longitude } =
         req.body;
 
+      // Validate user has address fields set
+      if (!req.user.city || !req.user.state || !req.user.country) {
+        return res.status(400).json({
+          error:
+            "Please update your profile with city, state, and country before reporting or collecting waste.",
+        });
+      }
+
+      // Validate user has verified phone number
+      if (!req.user.phoneVerified) {
+        return res.status(400).json({
+          error:
+            "Please verify your phone number through WhatsApp before performing this action.",
+        });
+      }
+
       // Validate user has collector enabled
       if (!req.user.enableCollector) {
         return res.status(403).json({
@@ -364,6 +341,7 @@ router.post(
         where: { id: wasteId },
         include: {
           reporter: true,
+          routeCollector: true,
         },
       });
 
@@ -379,16 +357,32 @@ router.post(
         });
       }
 
-      if (waste.status === "PENDING") {
+      // if (waste.status === "PENDING") {
+      //     return res.status(400).json({
+      //         error: "Waste must be added to route first (status must be IN_PROGRESS)",
+      //     });
+      // }
+
+      if (waste.status !== "IN_PROGRESS" && waste.status !== "PENDING") {
         return res.status(400).json({
-          error:
-            "Waste must be added to route first (status must be IN_PROGRESS)",
+          error: `Cannot collect waste with status: ${waste.status}`,
         });
       }
 
-      if (waste.status !== "IN_PROGRESS") {
-        return res.status(400).json({
-          error: `Cannot collect waste with status: ${waste.status}`,
+      // Validate location: waste must be in user's registered state and country
+      if (waste.state && req.user.state && waste.state !== req.user.state) {
+        return res.status(403).json({
+          error: `Cannot collect waste from ${waste.state}. You are registered in ${req.user.state}. Please update your location in settings.`,
+        });
+      }
+
+      if (
+        waste.country &&
+        req.user.country &&
+        waste.country !== req.user.country
+      ) {
+        return res.status(403).json({
+          error: `Cannot collect waste from ${waste.country}. You are registered in ${req.user.country}. Please update your location in settings.`,
         });
       }
 
@@ -413,13 +407,14 @@ router.post(
           data: {
             status: "COLLECTED",
             collectorId: req.user.id,
+            routeCollectorId: null, // Clear route assignment after collection
             collectedAt: new Date(),
-            routeCollectorId: null, // Remove from route planner after collection
             ...(collectorImageUrl && { collectorImageUrl }),
           },
           include: {
             reporter: true,
             collector: true,
+            routeCollector: true,
           },
         }),
         prisma.user.update({

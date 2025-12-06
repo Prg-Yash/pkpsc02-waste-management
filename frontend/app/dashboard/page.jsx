@@ -7,6 +7,9 @@ import { BarChart, Bar, LineChart, Line, PieChart, Pie, Cell, XAxis, YAxis, Cart
 import { Trash2, Recycle, TrendingUp, MapPin, AlertCircle, CheckCircle, Clock, Users, Leaf, Package, Droplets, Zap } from 'lucide-react';
 
 const EcoFlowDashboard = () => {
+  const { user } = useUser();
+  const [userData, setUserData] = useState(null);
+  const [loading, setLoading] = useState(true);
   const [animatedStats, setAnimatedStats] = useState({
     totalWaste: 0,
     recycled: 0,
@@ -14,18 +17,38 @@ const EcoFlowDashboard = () => {
     efficiency: 0
   });
 
-  // Animate stats on mount
+  // Fetch user data
   useEffect(() => {
-    const timer = setTimeout(() => {
-      setAnimatedStats({
-        totalWaste: 12847,
-        recycled: 8956,
-        pending: 234,
-        efficiency: 89.7
-      });
-    }, 300);
-    return () => clearTimeout(timer);
-  }, []);
+    const fetchUserData = async () => {
+      try {
+        const response = await fetch('/api/user/me');
+        if (response.ok) {
+          const data = await response.json();
+          setUserData(data.user);
+          
+          // Animate stats with real data
+          setTimeout(() => {
+            setAnimatedStats({
+              totalWaste: (data.user.reportedWastes?.length || 0) + (data.user.collectedWastes?.length || 0),
+              recycled: data.user.collectedWastes?.length || 0,
+              pending: data.user.reportedWastes?.filter(w => w.status === 'PENDING').length || 0,
+              efficiency: data.user.collectedWastes?.length > 0 
+                ? ((data.user.collectedWastes.length / ((data.user.reportedWastes?.length || 0) + data.user.collectedWastes.length)) * 100).toFixed(1)
+                : 0
+            });
+          }, 300);
+        }
+      } catch (error) {
+        console.error('Error fetching user data:', error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    if (user?.id) {
+      fetchUserData();
+    }
+  }, [user]);
 
   // Waste collection data over time
   const collectionData = [
@@ -139,34 +162,34 @@ const EcoFlowDashboard = () => {
         <div className="col-span-12 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
           <StatCard 
             icon={Trash2}
-            title="Total Waste"
-            value={animatedStats.totalWaste}
-            subtitle="+12% from last week"
-            gradient="bg-gradient-to-br from-blue-500 to-blue-600"
+            title="Reported Waste"
+            value={userData?.reportedWastes?.length || 0}
+            subtitle={`${userData?.reporterPoints || 0} points earned`}
+            gradient="bg-linear-to-br from-blue-500 to-blue-600"
             delay={100}
           />
           <StatCard 
             icon={Recycle}
-            title="Recycled"
-            value={animatedStats.recycled}
-            subtitle="+18% from last week"
-            gradient="bg-gradient-to-br from-emerald-500 to-emerald-600"
+            title="Collected Waste"
+            value={userData?.collectedWastes?.length || 0}
+            subtitle={`${userData?.collectorPoints || 0} points earned`}
+            gradient="bg-linear-to-br from-emerald-500 to-emerald-600"
             delay={200}
           />
           <StatCard 
-            icon={Clock}
-            title="Pending"
-            value={animatedStats.pending}
-            subtitle="6 bins need attention"
-            gradient="bg-gradient-to-br from-amber-500 to-amber-600"
+            icon={TrendingUp}
+            title="Global Points"
+            value={userData?.globalPoints || 0}
+            subtitle="Total impact score"
+            gradient="bg-linear-to-br from-purple-500 to-purple-600"
             delay={300}
           />
           <StatCard 
-            icon={TrendingUp}
-            title="Efficiency"
-            value={`${animatedStats.efficiency}%`}
-            subtitle="+4.2% this month"
-            gradient="bg-gradient-to-br from-purple-500 to-purple-600"
+            icon={MapPin}
+            title="Location"
+            value={userData?.city || 'Not Set'}
+            subtitle={`${userData?.state || ''}, ${userData?.country || ''}`}
+            gradient="bg-linear-to-br from-amber-500 to-amber-600"
             delay={400}
           />
         </div>

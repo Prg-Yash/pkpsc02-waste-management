@@ -27,6 +27,7 @@ model User {
   email           String  @unique
   name            String?
   phone           String?
+  phoneVerified   Boolean @default(false)
   enableCollector Boolean @default(false)
 
   city    String?
@@ -44,6 +45,7 @@ model User {
   collectedWastes   WasteReport[]  @relation("UserCollectedWastes")
   routePlannerWaste WasteReport[]  @relation("RoutePlannerCollector")
   notifications     Notification[]
+  phoneOTPs         PhoneOTP[]
 
   @@index([globalPoints, reporterPoints, collectorPoints])
 }
@@ -97,4 +99,16 @@ model Notification {
   read  Boolean          @default(false)
 
   createdAt DateTime @default(now())
+}
+
+model PhoneOTP {
+  id        String   @id @default(cuid())
+  userId    String
+  otpHash   String
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@index([userId])
 }
