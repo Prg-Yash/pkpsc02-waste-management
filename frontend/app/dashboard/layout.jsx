@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { useUser } from '@clerk/nextjs';
-import { LayoutDashboard, BarChart3, Trash2, User, MapPin, Users, Trophy, Route } from 'lucide-react';
+import { LayoutDashboard, BarChart3, Trash2, User, MapPin, Users, Trophy, Route, Flame } from 'lucide-react';
 import { EcoFlowSidebar } from '@/components/ui/sidebar';
 import { GoogleMapsProvider } from '@/app/providers/GoogleMapsProvider';
 
@@ -67,6 +67,15 @@ export default function DashboardLayout({ children }) {
     },
   ];
 
+  // Analytics links
+  const analyticsLinks = [
+    {
+      label: 'Heatmap',
+      href: '/dashboard/heatmap',
+      icon: Flame,
+    },
+  ];
+
   // Bottom links
   const bottomLinks = [
     {
@@ -87,6 +96,7 @@ export default function DashboardLayout({ children }) {
     ...(isCollector ? collectorLinks : []),
     ...commonLinks,
     ...(isCollector ? routeLinks : []),
+    ...analyticsLinks,
     ...bottomLinks,
   ];
 

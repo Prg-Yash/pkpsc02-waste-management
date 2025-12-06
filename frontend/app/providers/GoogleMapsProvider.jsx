@@ -3,7 +3,7 @@
 import { useLoadScript } from '@react-google-maps/api';
 import { createContext, useContext } from 'react';
 
-const libraries = ['places'];
+const libraries = ['places', 'visualization'];
 
 const GoogleMapsContext = createContext({
   isLoaded: false,
