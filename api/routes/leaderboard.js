@@ -5,10 +5,10 @@ const router = express.Router();
 
 /**
  * Helper function to get userId from request
- * Checks header and query params
+ * Checks header, query params, and body
  */
 const getUserId = (req) => {
-    return req.get('x-user-id') || req.query.userId;
+    return req.get('x-user-id') || req.query.userId || req.body?.userId;
 };
 
 /**
@@ -113,6 +113,7 @@ const calculateRank = async (userId, orderBy) => {
 /**
  * GET /api/leaderboard/reporters
  * Reporters leaderboard - ranked by reporterPoints
+ * Accepts userId in header (x-user-id) or query param
  */
 router.get('/reporters', async (req, res) => {
     try {
@@ -194,7 +195,11 @@ router.get('/reporters', async (req, res) => {
         });
     } catch (error) {
         console.error('Error fetching reporters leaderboard:', error);
-        res.status(500).json({ error: 'Internal server error' });
+        res.status(500).json({ 
+            error: 'Internal server error',
+            message: error.message,
+            stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
+        });
     }
 });
 
@@ -202,6 +207,7 @@ router.get('/reporters', async (req, res) => {
  * GET /api/leaderboard/collectors
  * Collectors leaderboard - ranked by collectorPoints
  * Shows collectorPoints as null when enableCollector === false AND collectorPoints === 0
+ * Accepts userId in header (x-user-id) or query param
  */
 router.get('/collectors', async (req, res) => {
     try {
@@ -294,13 +300,18 @@ router.get('/collectors', async (req, res) => {
         });
     } catch (error) {
         console.error('Error fetching collectors leaderboard:', error);
-        res.status(500).json({ error: 'Internal server error' });
+        res.status(500).json({ 
+            error: 'Internal server error',
+            message: error.message,
+            stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
+        });
     }
 });
 
 /**
  * GET /api/leaderboard/global
  * Global leaderboard - ranked by globalPoints
+ * Accepts userId in header (x-user-id) or query param
  */
 router.get('/global', async (req, res) => {
     try {
@@ -401,7 +412,11 @@ router.get('/global', async (req, res) => {
         });
     } catch (error) {
         console.error('Error fetching global leaderboard:', error);
-        res.status(500).json({ error: 'Internal server error' });
+        res.status(500).json({ 
+            error: 'Internal server error',
+            message: error.message,
+            stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
+        });
     }
 });
 

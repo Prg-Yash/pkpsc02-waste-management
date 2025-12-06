@@ -15,7 +15,7 @@ app.use(
     cors({
         origin: "*", // allow all origins
         methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-        allowedHeaders: ["Content-Type", "Accept", "x-user-id", "Authorization"],
+        allowedHeaders: ["Content-Type", "Accept", "x-user-id", "Authorization", "ngrok-skip-browser-warning"],
         exposedHeaders: ["Content-Type"],
         credentials: false,
     })
@@ -30,7 +30,7 @@ app.use((req, res, next) => {
     );
     res.header(
         "Access-Control-Allow-Headers",
-        "Content-Type, Accept, x-user-id, Authorization, Origin, X-Requested-With"
+        "Content-Type, Accept, x-user-id, Authorization, Origin, X-Requested-With, ngrok-skip-browser-warning"
     );
 
     // Handle preflight requests
