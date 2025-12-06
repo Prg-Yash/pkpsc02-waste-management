@@ -20,6 +20,14 @@ function createTransporter() {
   if (useCustomSMTP) {
     // Use custom SMTP server
     console.log("📧 Using custom SMTP server:", process.env.SMTP_HOST);
+    
+    // Validate credentials
+    if (!process.env.SMTP_USER || !process.env.SMTP_PASS) {
+      throw new Error(
+        "❌ Missing SMTP credentials. Please set SMTP_USER and SMTP_PASS in .env file"
+      );
+    }
+    
     transporter = nodemailer.createTransport({
       host: process.env.SMTP_HOST,
       port: parseInt(process.env.SMTP_PORT),
@@ -31,12 +39,23 @@ function createTransporter() {
     });
   } else {
     // Use Gmail by default
-    console.log("📧 Using Gmail SMTP server");
+    const emailUser = process.env.EMAIL_USER || process.env.GMAIL_USER;
+    const emailPass = process.env.EMAIL_PASS || process.env.GMAIL_APP_PASSWORD;
+    
+    // Validate credentials
+    if (!emailUser || !emailPass) {
+      throw new Error(
+        "❌ Missing email credentials. Please set EMAIL_USER and EMAIL_PASS in .env file.\n" +
+        "For Gmail, create an App Password at: https://myaccount.google.com/apppasswords"
+      );
+    }
+    
+    console.log("📧 Using Gmail SMTP server with user:", emailUser);
     transporter = nodemailer.createTransport({
       service: "gmail",
       auth: {
-        user: process.env.EMAIL_USER || process.env.GMAIL_USER,
-        pass: process.env.EMAIL_PASS || process.env.GMAIL_APP_PASSWORD,
+        user: emailUser,
+        pass: emailPass,
       },
     });
   }
