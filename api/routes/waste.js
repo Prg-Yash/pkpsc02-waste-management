@@ -458,4 +458,50 @@ router.post(
     }
 );
 
+/**
+ * DELETE /api/waste/:id
+ * Delete a waste report
+ */
+router.delete("/:id", async (req, res) => {
+    try {
+        const wasteId = req.params.id;
+        console.log(`🗑️ DELETE request for waste report: ${wasteId}`);
+
+        // Check if waste report exists
+        const waste = await prisma.wasteReport.findUnique({
+            where: { id: wasteId },
+        });
+
+        if (!waste) {
+            console.log(`❌ Waste report not found: ${wasteId}`);
+            return res.status(404).json({ error: "Waste report not found" });
+        }
+
+        console.log(`✅ Found waste report: ${wasteId}, status: ${waste.status}`);
+
+        // Delete the waste report
+        await prisma.wasteReport.delete({
+            where: { id: wasteId },
+        });
+
+        console.log(`✅ Successfully deleted waste report: ${wasteId}`);
+
+        res.json({ 
+            success: true,
+            message: "Waste report deleted successfully" 
+        });
+    } catch (error) {
+        console.error("❌ Error deleting waste report:", error);
+        console.error("Error details:", {
+            message: error.message,
+            code: error.code,
+            meta: error.meta,
+        });
+        res.status(500).json({ 
+            error: "Internal server error",
+            details: error.message 
+        });
+    }
+});
+
 export default router;

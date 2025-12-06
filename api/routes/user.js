@@ -74,6 +74,38 @@ router.get('/me', authenticateUser, async (req, res) => {
 });
 
 /**
+ * GET /api/user/all
+ * Get all users (for admin dashboard)
+ */
+router.get('/all', async (req, res) => {
+    try {
+        const users = await prisma.user.findMany({
+            include: {
+                _count: {
+                    select: {
+                        reportedWastes: true
+                    }
+                }
+            },
+            orderBy: {
+                createdAt: 'desc'
+            }
+        });
+
+        // Map users to include report count and remove _count field
+        const usersWithCounts = users.map(({ _count, ...user }) => ({
+            ...user,
+            reportsCount: _count.reportedWastes
+        }));
+
+        res.json({ users: usersWithCounts });
+    } catch (error) {
+        console.error('Error fetching all users:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+/**
  * PATCH /api/user/me
  * Update current user profile
  */

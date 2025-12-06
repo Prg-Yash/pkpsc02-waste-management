@@ -1,5 +1,6 @@
 "use client";
-import { useState } from "react";
+
+import { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -37,75 +38,6 @@ import {
   Coins,
 } from "lucide-react";
 
-const users = [
-  {
-    id: 1,
-    name: "John Doe",
-    email: "john.doe@email.com",
-    avatar: "/thoughtful-man-portrait.png",
-    reports: 45,
-    tokens: 1250,
-    status: "active",
-    flags: 0,
-    joinDate: "2024-01-15",
-  },
-  {
-    id: 2,
-    name: "Jane Smith",
-    email: "jane.smith@email.com",
-    avatar: "/woman-portrait-1.png",
-    reports: 32,
-    tokens: 890,
-    status: "active",
-    flags: 1,
-    joinDate: "2024-02-20",
-  },
-  {
-    id: 3,
-    name: "Mike Johnson",
-    email: "mike.j@email.com",
-    avatar: "/thoughtful-man-portrait.png",
-    reports: 78,
-    tokens: 2100,
-    status: "active",
-    flags: 0,
-    joinDate: "2023-11-10",
-  },
-  {
-    id: 4,
-    name: "Sarah Wilson",
-    email: "sarah.w@email.com",
-    avatar: "/woman-portrait-2.png",
-    reports: 15,
-    tokens: 320,
-    status: "flagged",
-    flags: 3,
-    joinDate: "2024-03-05",
-  },
-  {
-    id: 5,
-    name: "Tom Brown",
-    email: "tom.brown@email.com",
-    avatar: "/man-portrait-3.png",
-    reports: 5,
-    tokens: 0,
-    status: "banned",
-    flags: 5,
-    joinDate: "2024-04-12",
-  },
-  {
-    id: 6,
-    name: "Emily Davis",
-    email: "emily.d@email.com",
-    avatar: "/woman-portrait-3.png",
-    reports: 62,
-    tokens: 1680,
-    status: "active",
-    flags: 0,
-    joinDate: "2023-12-01",
-  },
-];
-
 function StatusBadge({ status }) {
   const config = {
     active: {
@@ -142,6 +74,54 @@ export default function UsersPage() {
   const [banDialogOpen, setBanDialogOpen] = useState(false);
   const [selectedUser, setSelectedUser] = useState(null);
   const [banReason, setBanReason] = useState("");
+  const [users, setUsers] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+
+  // Fetch users from API (using Next.js API route to avoid CORS/auth issues)
+  useEffect(() => {
+    const fetchUsers = async () => {
+      try {
+        setLoading(true);
+        setError(null);
+        
+        console.log('Fetching users from /api/users');
+        const response = await fetch("/api/users");
+        
+        if (!response.ok) {
+          const errorText = await response.text();
+          console.error('API Error Response:', errorText);
+          throw new Error(`Failed to fetch users: ${response.status}`);
+        }
+
+        const data = await response.json();
+        console.log('Users data received:', data);
+        
+        // Map API response to UI format
+        const mappedUsers = (data.users || []).map((user) => ({
+          id: user.id,
+          name: user.name || 'Unknown User',
+          email: user.email,
+          avatar: null, // No avatar in API response
+          reports: user.reportsCount || 0,
+          tokens: user.globalPoints || 0,
+          status: "active", // Default status, can be enhanced later
+          flags: 0, // Not available in current schema
+          joinDate: user.createdAt ? new Date(user.createdAt).toISOString().split('T')[0] : 'N/A',
+        }));
+        
+        console.log('Mapped users:', mappedUsers);
+        setUsers(mappedUsers);
+      } catch (err) {
+        console.error("Error fetching users:", err);
+        setError(err.message || "Failed to load users");
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchUsers();
+  }, []);
 
   const filteredUsers = users.filter((user) => {
     const matchesSearch =
@@ -156,12 +136,59 @@ export default function UsersPage() {
     setBanDialogOpen(true);
   };
 
+  // Calculate stats from real data
   const stats = [
-    { icon: Users, label: "Total Users", value: "8,432", color: "bg-primary/10 text-primary" },
-    { icon: Shield, label: "Active Users", value: "7,891", color: "bg-primary/10 text-primary" },
-    { icon: AlertTriangle, label: "Flagged Users", value: "48", color: "bg-warning/10 text-warning-foreground" },
-    { icon: UserX, label: "Banned Users", value: "23", color: "bg-destructive/10 text-destructive" },
+    { 
+      icon: Users, 
+      label: "Total Users", 
+      value: users.length.toLocaleString(), 
+      color: "bg-primary/10 text-primary" 
+    },
+    { 
+      icon: Shield, 
+      label: "Active Users", 
+      value: users.filter(u => u.status === "active").length.toLocaleString(), 
+      color: "bg-primary/10 text-primary" 
+    },
+    { 
+      icon: AlertTriangle, 
+      label: "Flagged Users", 
+      value: users.filter(u => u.status === "flagged").length.toLocaleString(), 
+      color: "bg-warning/10 text-warning-foreground" 
+    },
+    { 
+      icon: UserX, 
+      label: "Banned Users", 
+      value: users.filter(u => u.status === "banned").length.toLocaleString(), 
+      color: "bg-destructive/10 text-destructive" 
+    },
   ];
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-white p-6">
+        <div className="mx-auto max-w-7xl space-y-6">
+          <div className="space-y-2">
+            <h1 className="text-3xl font-bold tracking-tight">Manage Users</h1>
+            <p className="text-muted-foreground">Loading users...</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="min-h-screen bg-white p-6">
+        <div className="mx-auto max-w-7xl space-y-6">
+          <div className="space-y-2">
+            <h1 className="text-3xl font-bold tracking-tight">Manage Users</h1>
+            <p className="text-destructive">Error: {error}</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-white p-6">
@@ -245,9 +272,9 @@ export default function UsersPage() {
                       <TableCell>
                         <div className="flex items-center gap-3">
                           <Avatar className="h-10 w-10">
-                            <AvatarImage src={user.avatar} />
+                            {user.avatar && <AvatarImage src={user.avatar} />}
                             <AvatarFallback className="bg-primary/10 text-primary">
-                              {user.name.split(" ").map((n) => n[0]).join("")}
+                              {user.name.split(" ").map((n) => n[0]).join("").toUpperCase()}
                             </AvatarFallback>
                           </Avatar>
                           <div>
@@ -324,9 +351,9 @@ export default function UsersPage() {
             <div className="space-y-4 py-4">
               <div className="flex items-center gap-3 rounded-lg bg-muted/50 p-3">
                 <Avatar>
-                  <AvatarImage src={selectedUser?.avatar} />
+                  {selectedUser?.avatar && <AvatarImage src={selectedUser?.avatar} />}
                   <AvatarFallback className="bg-primary/10 text-primary">
-                    {selectedUser?.name.split(" ").map((n) => n[0]).join("")}
+                    {selectedUser?.name.split(" ").map((n) => n[0]).join("").toUpperCase()}
                   </AvatarFallback>
                 </Avatar>
                 <div>
