@@ -1,11 +1,16 @@
-import {
-  StyleSheet,
-  ScrollView,
-  View,
-  Text,
-  TouchableOpacity,
-} from "react-native";
 import { useUser } from "@clerk/clerk-expo";
+import {
+  ScrollView,
+  YStack,
+  XStack,
+  Text,
+  Button,
+  H2,
+  H4,
+  Paragraph,
+  Theme,
+  Circle,
+} from "tamagui";
 
 export default function LeaderboardScreen() {
   const { user } = useUser();
@@ -97,323 +102,214 @@ export default function LeaderboardScreen() {
   ];
 
   return (
-    <ScrollView style={styles.container}>
-      <View style={styles.header}>
-        <Text style={styles.headerTitle}>Leaderboard</Text>
-        <Text style={styles.headerSubtitle}>Compete and earn rewards</Text>
-      </View>
+    <Theme name="light">
+      <ScrollView flex={1} backgroundColor="$background">
+        <YStack backgroundColor="$yellow9" padding="$5" paddingTop="$10">
+          <H2 color="white" fontWeight="bold">
+            Leaderboard
+          </H2>
+          <Paragraph color="white" opacity={0.9} marginTop="$1">
+            Compete and earn rewards
+          </Paragraph>
+        </YStack>
 
-      <View style={styles.tabContainer}>
-        <TouchableOpacity style={[styles.tab, styles.tabActive]}>
-          <Text style={[styles.tabText, styles.tabTextActive]}>This Week</Text>
-        </TouchableOpacity>
-        <TouchableOpacity style={styles.tab}>
-          <Text style={styles.tabText}>All Time</Text>
-        </TouchableOpacity>
-        <TouchableOpacity style={styles.tab}>
-          <Text style={styles.tabText}>This Month</Text>
-        </TouchableOpacity>
-      </View>
-
-      <View style={styles.podium}>
-        <View style={styles.podiumPlace}>
-          <Text style={styles.podiumRank}>🥈</Text>
-          <View style={styles.podiumCard}>
-            <Text style={styles.podiumName}>{topUsers[1].name}</Text>
-            <Text style={styles.podiumPoints}>{topUsers[1].points}</Text>
-            <Text style={styles.podiumLabel}>points</Text>
-          </View>
-        </View>
-        <View style={[styles.podiumPlace, styles.podiumFirst]}>
-          <Text style={styles.podiumRank}>🏆</Text>
-          <View style={[styles.podiumCard, styles.podiumCardFirst]}>
-            <Text style={styles.podiumName}>{topUsers[0].name}</Text>
-            <Text style={[styles.podiumPoints, styles.podiumPointsFirst]}>
-              {topUsers[0].points}
-            </Text>
-            <Text style={styles.podiumLabel}>points</Text>
-          </View>
-        </View>
-        <View style={styles.podiumPlace}>
-          <Text style={styles.podiumRank}>🥉</Text>
-          <View style={styles.podiumCard}>
-            <Text style={styles.podiumName}>{topUsers[2].name}</Text>
-            <Text style={styles.podiumPoints}>{topUsers[2].points}</Text>
-            <Text style={styles.podiumLabel}>points</Text>
-          </View>
-        </View>
-      </View>
-
-      <View style={styles.listSection}>
-        {topUsers.slice(3).map((user) => (
-          <View
-            key={user.rank}
-            style={[
-              styles.userCard,
-              user.name === "You" && styles.userCardHighlight,
-            ]}
+        <XStack padding="$4" gap="$2">
+          <Button
+            flex={1}
+            backgroundColor="$yellow9"
+            borderRadius="$4"
+            height="$4"
           >
-            <View style={styles.userRank}>
-              <Text style={styles.rankNumber}>{user.rank}</Text>
-            </View>
-            <View style={styles.userInfo}>
-              <Text
-                style={[
-                  styles.userName,
-                  user.name === "You" && styles.userNameHighlight,
-                ]}
-              >
-                {user.name}
-              </Text>
-              <View style={styles.userStats}>
-                <Text style={styles.userStat}>📍 {user.reports} reports</Text>
-                <Text style={styles.userStat}>
-                  🚛 {user.collected} collected
-                </Text>
-              </View>
-            </View>
-            <View style={styles.userPoints}>
-              <Text
-                style={[
-                  styles.pointsValue,
-                  user.name === "You" && styles.pointsValueHighlight,
-                ]}
-              >
-                {user.points}
-              </Text>
-              <Text style={styles.pointsLabel}>pts</Text>
-            </View>
-          </View>
-        ))}
-      </View>
+            <Text color="white" fontWeight="600">
+              This Week
+            </Text>
+          </Button>
+          <Button
+            flex={1}
+            backgroundColor="white"
+            borderRadius="$4"
+            height="$4"
+          >
+            <Text color="$gray10" fontWeight="600">
+              All Time
+            </Text>
+          </Button>
+          <Button
+            flex={1}
+            backgroundColor="white"
+            borderRadius="$4"
+            height="$4"
+          >
+            <Text color="$gray10" fontWeight="600">
+              This Month
+            </Text>
+          </Button>
+        </XStack>
 
-      <View style={styles.achievementsSection}>
-        <Text style={styles.sectionTitle}>🏅 Achievements</Text>
-        <View style={styles.achievementsGrid}>
-          {achievements.map((achievement, index) => (
-            <View key={index} style={styles.achievementCard}>
-              <Text style={styles.achievementIcon}>{achievement.icon}</Text>
-              <Text style={styles.achievementTitle}>{achievement.title}</Text>
-              <Text style={styles.achievementDescription}>
-                {achievement.description}
+        <XStack
+          justifyContent="center"
+          alignItems="flex-end"
+          paddingHorizontal="$4"
+          marginBottom="$6"
+          gap="$2"
+        >
+          <YStack flex={1} alignItems="center">
+            <Text fontSize="$8" marginBottom="$2">
+              🥈
+            </Text>
+            <YStack
+              backgroundColor="white"
+              borderRadius="$4"
+              padding="$3"
+              width="100%"
+              alignItems="center"
+              elevation="$2"
+            >
+              <Text color="$gray12" fontWeight="600" marginBottom="$1">
+                {topUsers[1].name}
               </Text>
-            </View>
+              <H2 color="$yellow9" fontWeight="bold">
+                {topUsers[1].points}
+              </H2>
+              <Text color="$gray10" fontSize="$1">
+                points
+              </Text>
+            </YStack>
+          </YStack>
+          <YStack flex={1} alignItems="center" marginBottom="$4">
+            <Text fontSize="$8" marginBottom="$2">
+              🏆
+            </Text>
+            <YStack
+              backgroundColor="$yellow2"
+              borderColor="$yellow9"
+              borderWidth={2}
+              borderRadius="$4"
+              padding="$3"
+              width="100%"
+              alignItems="center"
+              elevation="$2"
+            >
+              <Text color="$gray12" fontWeight="600" marginBottom="$1">
+                {topUsers[0].name}
+              </Text>
+              <H2 color="$yellow9" fontWeight="bold" fontSize="$8">
+                {topUsers[0].points}
+              </H2>
+              <Text color="$gray10" fontSize="$1">
+                points
+              </Text>
+            </YStack>
+          </YStack>
+          <YStack flex={1} alignItems="center">
+            <Text fontSize="$8" marginBottom="$2">
+              🥉
+            </Text>
+            <YStack
+              backgroundColor="white"
+              borderRadius="$4"
+              padding="$3"
+              width="100%"
+              alignItems="center"
+              elevation="$2"
+            >
+              <Text color="$gray12" fontWeight="600" marginBottom="$1">
+                {topUsers[2].name}
+              </Text>
+              <H2 color="$yellow9" fontWeight="bold">
+                {topUsers[2].points}
+              </H2>
+              <Text color="$gray10" fontSize="$1">
+                points
+              </Text>
+            </YStack>
+          </YStack>
+        </XStack>
+
+        <YStack paddingHorizontal="$4" gap="$2">
+          {topUsers.slice(3).map((user) => (
+            <XStack
+              key={user.rank}
+              backgroundColor={user.name === "You" ? "$green2" : "white"}
+              borderColor={user.name === "You" ? "$green9" : "transparent"}
+              borderWidth={user.name === "You" ? 2 : 0}
+              borderRadius="$4"
+              padding="$3"
+              alignItems="center"
+              elevation="$1"
+            >
+              <Circle size="$4" backgroundColor="$gray3" marginRight="$3">
+                <Text color="$gray10" fontWeight="bold">
+                  {user.rank}
+                </Text>
+              </Circle>
+              <YStack flex={1}>
+                <Text
+                  color={user.name === "You" ? "$green9" : "$gray12"}
+                  fontWeight="600"
+                  marginBottom="$1"
+                >
+                  {user.name}
+                </Text>
+                <XStack gap="$3">
+                  <Text color="$gray10" fontSize="$2">
+                    📍 {user.reports} reports
+                  </Text>
+                  <Text color="$gray10" fontSize="$2">
+                    🚛 {user.collected} collected
+                  </Text>
+                </XStack>
+              </YStack>
+              <YStack alignItems="flex-end">
+                <Text
+                  color={user.name === "You" ? "$green9" : "$yellow9"}
+                  fontWeight="bold"
+                  fontSize="$5"
+                >
+                  {user.points}
+                </Text>
+                <Text color="$gray10" fontSize="$1">
+                  pts
+                </Text>
+              </YStack>
+            </XStack>
           ))}
-        </View>
-      </View>
-    </ScrollView>
+        </YStack>
+
+        <YStack padding="$4" marginTop="$2">
+          <H4 color="$gray12" fontWeight="bold" marginBottom="$3">
+            🏅 Achievements
+          </H4>
+          <XStack flexWrap="wrap" gap="$3">
+            {achievements.map((achievement, index) => (
+              <YStack
+                key={index}
+                width="48%"
+                backgroundColor="white"
+                borderRadius="$4"
+                padding="$3"
+                alignItems="center"
+                elevation="$1"
+              >
+                <Text fontSize="$8" marginBottom="$2">
+                  {achievement.icon}
+                </Text>
+                <Text
+                  color="$gray12"
+                  fontWeight="600"
+                  textAlign="center"
+                  marginBottom="$1"
+                >
+                  {achievement.title}
+                </Text>
+                <Text color="$gray10" fontSize="$1" textAlign="center">
+                  {achievement.description}
+                </Text>
+              </YStack>
+            ))}
+          </XStack>
+        </YStack>
+      </ScrollView>
+    </Theme>
   );
 }
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: "#f5f5f5",
-  },
-  header: {
-    backgroundColor: "#f59e0b",
-    padding: 30,
-    paddingTop: 60,
-  },
-  headerTitle: {
-    fontSize: 28,
-    fontWeight: "bold",
-    color: "white",
-  },
-  headerSubtitle: {
-    fontSize: 16,
-    color: "white",
-    opacity: 0.9,
-    marginTop: 4,
-  },
-  tabContainer: {
-    flexDirection: "row",
-    padding: 20,
-    gap: 10,
-  },
-  tab: {
-    flex: 1,
-    padding: 12,
-    borderRadius: 12,
-    backgroundColor: "white",
-    alignItems: "center",
-  },
-  tabActive: {
-    backgroundColor: "#f59e0b",
-  },
-  tabText: {
-    fontSize: 14,
-    color: "#666",
-    fontWeight: "600",
-  },
-  tabTextActive: {
-    color: "white",
-  },
-  podium: {
-    flexDirection: "row",
-    justifyContent: "center",
-    alignItems: "flex-end",
-    paddingHorizontal: 20,
-    marginBottom: 30,
-    gap: 10,
-  },
-  podiumPlace: {
-    flex: 1,
-    alignItems: "center",
-  },
-  podiumFirst: {
-    marginBottom: 20,
-  },
-  podiumRank: {
-    fontSize: 32,
-    marginBottom: 8,
-  },
-  podiumCard: {
-    backgroundColor: "white",
-    borderRadius: 12,
-    padding: 16,
-    width: "100%",
-    alignItems: "center",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
-  },
-  podiumCardFirst: {
-    backgroundColor: "#fef3c7",
-    borderWidth: 2,
-    borderColor: "#f59e0b",
-  },
-  podiumName: {
-    fontSize: 14,
-    fontWeight: "600",
-    color: "#333",
-    marginBottom: 4,
-  },
-  podiumPoints: {
-    fontSize: 24,
-    fontWeight: "bold",
-    color: "#f59e0b",
-  },
-  podiumPointsFirst: {
-    fontSize: 28,
-  },
-  podiumLabel: {
-    fontSize: 10,
-    color: "#666",
-  },
-  listSection: {
-    paddingHorizontal: 20,
-  },
-  userCard: {
-    flexDirection: "row",
-    backgroundColor: "white",
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 10,
-    alignItems: "center",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.1,
-    shadowRadius: 3,
-    elevation: 2,
-  },
-  userCardHighlight: {
-    backgroundColor: "#dcfce7",
-    borderWidth: 2,
-    borderColor: "#22c55e",
-  },
-  userRank: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: "#f3f4f6",
-    justifyContent: "center",
-    alignItems: "center",
-    marginRight: 12,
-  },
-  rankNumber: {
-    fontSize: 16,
-    fontWeight: "bold",
-    color: "#666",
-  },
-  userInfo: {
-    flex: 1,
-  },
-  userName: {
-    fontSize: 16,
-    fontWeight: "600",
-    color: "#333",
-    marginBottom: 4,
-  },
-  userNameHighlight: {
-    color: "#22c55e",
-  },
-  userStats: {
-    flexDirection: "row",
-    gap: 12,
-  },
-  userStat: {
-    fontSize: 12,
-    color: "#666",
-  },
-  userPoints: {
-    alignItems: "flex-end",
-  },
-  pointsValue: {
-    fontSize: 20,
-    fontWeight: "bold",
-    color: "#f59e0b",
-  },
-  pointsValueHighlight: {
-    color: "#22c55e",
-  },
-  pointsLabel: {
-    fontSize: 10,
-    color: "#666",
-  },
-  achievementsSection: {
-    padding: 20,
-    marginTop: 10,
-  },
-  sectionTitle: {
-    fontSize: 20,
-    fontWeight: "bold",
-    color: "#333",
-    marginBottom: 16,
-  },
-  achievementsGrid: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 12,
-  },
-  achievementCard: {
-    width: "48%",
-    backgroundColor: "white",
-    borderRadius: 12,
-    padding: 16,
-    alignItems: "center",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.1,
-    shadowRadius: 3,
-    elevation: 2,
-  },
-  achievementIcon: {
-    fontSize: 32,
-    marginBottom: 8,
-  },
-  achievementTitle: {
-    fontSize: 14,
-    fontWeight: "600",
-    color: "#333",
-    marginBottom: 4,
-    textAlign: "center",
-  },
-  achievementDescription: {
-    fontSize: 11,
-    color: "#666",
-    textAlign: "center",
-  },
-});

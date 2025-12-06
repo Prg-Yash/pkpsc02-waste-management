@@ -1,6 +1,6 @@
 import { useClerk } from "@clerk/clerk-expo";
 import { useRouter } from "expo-router";
-import { Text, TouchableOpacity, StyleSheet } from "react-native";
+import { Button, Text } from "tamagui";
 
 export const SignOutButton = () => {
   const { signOut } = useClerk();
@@ -16,24 +16,20 @@ export const SignOutButton = () => {
   };
 
   return (
-    <TouchableOpacity onPress={handleSignOut} style={styles.button}>
-      <Text style={styles.text}>Sign Out</Text>
-    </TouchableOpacity>
+    <Button
+      onPress={handleSignOut}
+      backgroundColor="rgba(255, 255, 255, 0.2)"
+      paddingHorizontal="$3"
+      paddingVertical="$2"
+      borderRadius="$3"
+      borderWidth={1}
+      borderColor="rgba(255, 255, 255, 0.5)"
+      pressStyle={{ opacity: 0.7, backgroundColor: "rgba(255, 255, 255, 0.3)" }}
+      height="unset"
+    >
+      <Text color="white" fontWeight="600" fontSize="$3">
+        Sign Out
+      </Text>
+    </Button>
   );
 };
-
-const styles = StyleSheet.create({
-  button: {
-    backgroundColor: "rgba(255, 255, 255, 0.2)",
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: "rgba(255, 255, 255, 0.5)",
-  },
-  text: {
-    color: "white",
-    fontWeight: "600",
-    fontSize: 14,
-  },
-});
