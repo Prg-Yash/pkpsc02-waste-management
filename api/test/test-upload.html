@@ -1,0 +1,528 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>EcoFlow Waste Management - Test Interface</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        h1 {
+            color: white;
+            text-align: center;
+            margin-bottom: 30px;
+            font-size: 2.5rem;
+            text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.2);
+        }
+
+        .cards {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(500px, 1fr));
+            gap: 30px;
+            margin-bottom: 30px;
+        }
+
+        .card {
+            background: white;
+            border-radius: 15px;
+            padding: 30px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+        }
+
+        .card h2 {
+            color: #667eea;
+            margin-bottom: 20px;
+            font-size: 1.8rem;
+            border-bottom: 3px solid #667eea;
+            padding-bottom: 10px;
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 8px;
+            color: #333;
+            font-weight: 600;
+            font-size: 0.95rem;
+        }
+
+        input[type="text"],
+        input[type="number"],
+        input[type="file"],
+        select,
+        textarea {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            font-size: 1rem;
+            transition: border-color 0.3s;
+        }
+
+        input[type="text"]:focus,
+        input[type="number"]:focus,
+        select:focus,
+        textarea:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        textarea {
+            resize: vertical;
+            min-height: 80px;
+        }
+
+        .checkbox-group {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        input[type="checkbox"] {
+            width: 20px;
+            height: 20px;
+            cursor: pointer;
+        }
+
+        button {
+            width: 100%;
+            padding: 15px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-size: 1.1rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+
+        button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+        }
+
+        button:active {
+            transform: translateY(0);
+        }
+
+        button:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .response {
+            background: white;
+            border-radius: 15px;
+            padding: 30px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+            margin-top: 30px;
+        }
+
+        .response h3 {
+            color: #667eea;
+            margin-bottom: 15px;
+            font-size: 1.5rem;
+        }
+
+        .response pre {
+            background: #f5f5f5;
+            padding: 20px;
+            border-radius: 8px;
+            overflow-x: auto;
+            font-size: 0.9rem;
+            line-height: 1.5;
+        }
+
+        .loading {
+            display: none;
+            text-align: center;
+            margin-top: 10px;
+            color: #667eea;
+            font-weight: 600;
+        }
+
+        .loading.show {
+            display: block;
+        }
+
+        .success {
+            color: #10b981;
+        }
+
+        .error {
+            color: #ef4444;
+        }
+
+        .row {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 15px;
+        }
+
+        .file-preview {
+            margin-top: 10px;
+            max-width: 200px;
+            border-radius: 8px;
+            display: none;
+        }
+
+        .file-preview.show {
+            display: block;
+        }
+
+        .required {
+            color: #ef4444;
+        }
+
+        .info-box {
+            background: #eff6ff;
+            border-left: 4px solid #667eea;
+            padding: 15px;
+            margin-bottom: 20px;
+            border-radius: 5px;
+        }
+
+        .info-box p {
+            margin: 5px 0;
+            color: #1e40af;
+            font-size: 0.9rem;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <h1>🌱 EcoFlow Waste Management - Test Interface</h1>
+
+        <div class="cards">
+            <!-- Report Waste Card -->
+            <div class="card">
+                <h2>📸 Report Waste</h2>
+
+                <div class="info-box">
+                    <p><strong>API Endpoint:</strong> POST /api/waste/report</p>
+                    <p><strong>Content-Type:</strong> multipart/form-data</p>
+                </div>
+
+                <form id="reportForm">
+                    <div class="form-group">
+                        <label>User ID <span class="required">*</span></label>
+                        <input type="text" id="reportUserId" placeholder="user_xxxxx" required>
+                    </div>
+
+                    <div class="form-group">
+                        <label>Waste Image <span class="required">*</span></label>
+                        <input type="file" id="reportImage" accept="image/*" required>
+                        <img id="reportImagePreview" class="file-preview" alt="Preview">
+                    </div>
+
+                    <div class="form-group">
+                        <label>Location <span class="required">*</span></label>
+                        <input type="text" id="reportLocation" placeholder="123 Main Street, City" required>
+                    </div>
+
+                    <div class="form-group">
+                        <label>Waste Type <span class="required">*</span></label>
+                        <select id="reportWasteType" required>
+                            <option value="">Select waste type</option>
+                            <option value="PLASTIC">Plastic</option>
+                            <option value="METAL">Metal</option>
+                            <option value="ORGANIC">Organic</option>
+                            <option value="E_WASTE">E-Waste</option>
+                            <option value="PAPER">Paper</option>
+                            <option value="GLASS">Glass</option>
+                            <option value="MIXED">Mixed</option>
+                            <option value="OTHER">Other</option>
+                        </select>
+                    </div>
+
+                    <div class="row">
+                        <div class="form-group">
+                            <label>Estimated Amount (kg)</label>
+                            <input type="number" id="reportAmount" step="0.1" placeholder="5.5">
+                        </div>
+
+                        <div class="form-group">
+                            <label>City</label>
+                            <input type="text" id="reportCity" placeholder="Mumbai">
+                        </div>
+                    </div>
+
+                    <div class="row">
+                        <div class="form-group">
+                            <label>State</label>
+                            <input type="text" id="reportState" placeholder="Maharashtra">
+                        </div>
+
+                        <div class="form-group">
+                            <label>Country</label>
+                            <input type="text" id="reportCountry" placeholder="India">
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label>Note</label>
+                        <textarea id="reportNote" placeholder="Additional details about the waste..."></textarea>
+                    </div>
+
+                    <div class="form-group">
+                        <div class="checkbox-group">
+                            <input type="checkbox" id="reportIsLatLng">
+                            <label style="margin: 0;">Is Lat/Lng coordinates?</label>
+                        </div>
+                    </div>
+
+                    <div class="row">
+                        <div class="form-group">
+                            <label>Latitude</label>
+                            <input type="number" id="reportLatitude" step="any" placeholder="19.0760">
+                        </div>
+
+                        <div class="form-group">
+                            <label>Longitude</label>
+                            <input type="number" id="reportLongitude" step="any" placeholder="72.8777">
+                        </div>
+                    </div>
+
+                    <button type="submit">Report Waste</button>
+                    <div class="loading" id="reportLoading">Uploading...</div>
+                </form>
+            </div>
+
+            <!-- Collect Waste Card -->
+            <div class="card">
+                <h2>♻️ Collect Waste</h2>
+
+                <div class="info-box">
+                    <p><strong>API Endpoint:</strong> POST /api/waste/:id/collect</p>
+                    <p><strong>Content-Type:</strong> multipart/form-data</p>
+                </div>
+
+                <form id="collectForm">
+                    <div class="form-group">
+                        <label>Waste Report ID <span class="required">*</span></label>
+                        <input type="text" id="collectWasteId" placeholder="clxxx123..." required>
+                    </div>
+
+                    <div class="form-group">
+                        <label>Collector User ID <span class="required">*</span></label>
+                        <input type="text" id="collectUserId" placeholder="user_collector_xxxxx" required>
+                    </div>
+
+                    <div class="form-group">
+                        <label>Collection Proof Image</label>
+                        <input type="file" id="collectImage" accept="image/*">
+                        <img id="collectImagePreview" class="file-preview" alt="Preview">
+                    </div>
+
+                    <div class="form-group">
+                        <label>Collection Location</label>
+                        <input type="text" id="collectLocation" placeholder="Collected from 123 Main Street">
+                    </div>
+
+                    <div class="form-group">
+                        <div class="checkbox-group">
+                            <input type="checkbox" id="collectIsLatLng">
+                            <label style="margin: 0;">Is Lat/Lng coordinates?</label>
+                        </div>
+                    </div>
+
+                    <div class="row">
+                        <div class="form-group">
+                            <label>Latitude</label>
+                            <input type="number" id="collectLatitude" step="any" placeholder="19.0760">
+                        </div>
+
+                        <div class="form-group">
+                            <label>Longitude</label>
+                            <input type="number" id="collectLongitude" step="any" placeholder="72.8777">
+                        </div>
+                    </div>
+
+                    <button type="submit">Collect Waste</button>
+                    <div class="loading" id="collectLoading">Uploading...</div>
+                </form>
+            </div>
+        </div>
+
+        <!-- Response Display -->
+        <div class="response">
+            <h3>📋 API Response</h3>
+            <pre id="responseOutput">No requests sent yet. Fill out a form above and submit.</pre>
+        </div>
+    </div>
+
+    <script>
+        const API_BASE_URL = 'http://localhost:3000/api';
+
+        // Image preview handlers
+        document.getElementById('reportImage').addEventListener('change', function (e) {
+            const file = e.target.files[0];
+            if (file) {
+                const preview = document.getElementById('reportImagePreview');
+                preview.src = URL.createObjectURL(file);
+                preview.classList.add('show');
+            }
+        });
+
+        document.getElementById('collectImage').addEventListener('change', function (e) {
+            const file = e.target.files[0];
+            if (file) {
+                const preview = document.getElementById('collectImagePreview');
+                preview.src = URL.createObjectURL(file);
+                preview.classList.add('show');
+            }
+        });
+
+        // Report Waste Form
+        document.getElementById('reportForm').addEventListener('submit', async function (e) {
+            e.preventDefault();
+
+            const loading = document.getElementById('reportLoading');
+            const output = document.getElementById('responseOutput');
+            const submitButton = e.target.querySelector('button[type="submit"]');
+
+            try {
+                loading.classList.add('show');
+                submitButton.disabled = true;
+                output.textContent = 'Sending request...';
+
+                const formData = new FormData();
+                formData.append('userId', document.getElementById('reportUserId').value);
+                formData.append('image', document.getElementById('reportImage').files[0]);
+                formData.append('location', document.getElementById('reportLocation').value);
+                formData.append('wasteType', document.getElementById('reportWasteType').value);
+
+                const amount = document.getElementById('reportAmount').value;
+                if (amount) formData.append('estimatedAmountKg', amount);
+
+                const city = document.getElementById('reportCity').value;
+                if (city) formData.append('city', city);
+
+                const state = document.getElementById('reportState').value;
+                if (state) formData.append('state', state);
+
+                const country = document.getElementById('reportCountry').value;
+                if (country) formData.append('country', country);
+
+                const note = document.getElementById('reportNote').value;
+                if (note) formData.append('note', note);
+
+                formData.append('isLocationLatLng', document.getElementById('reportIsLatLng').checked);
+
+                const latitude = document.getElementById('reportLatitude').value;
+                if (latitude) formData.append('latitude', latitude);
+
+                const longitude = document.getElementById('reportLongitude').value;
+                if (longitude) formData.append('longitude', longitude);
+
+                const response = await fetch(`${API_BASE_URL}/waste/report`, {
+                    method: 'POST',
+                    headers: {
+                        'x-user-id': document.getElementById('reportUserId').value
+                    },
+                    body: formData
+                });
+
+                const data = await response.json();
+
+                output.className = response.ok ? 'success' : 'error';
+                output.textContent = JSON.stringify(data, null, 2);
+
+                if (response.ok) {
+                    alert('✅ Waste reported successfully! Check the response below.');
+                    // Optionally pre-fill collect form with the waste ID
+                    document.getElementById('collectWasteId').value = data.waste.id;
+                }
+            } catch (error) {
+                output.className = 'error';
+                output.textContent = `Error: ${error.message}`;
+            } finally {
+                loading.classList.remove('show');
+                submitButton.disabled = false;
+            }
+        });
+
+        // Collect Waste Form
+        document.getElementById('collectForm').addEventListener('submit', async function (e) {
+            e.preventDefault();
+
+            const loading = document.getElementById('collectLoading');
+            const output = document.getElementById('responseOutput');
+            const submitButton = e.target.querySelector('button[type="submit"]');
+
+            try {
+                loading.classList.add('show');
+                submitButton.disabled = true;
+                output.textContent = 'Sending request...';
+
+                const formData = new FormData();
+                formData.append('userId', document.getElementById('collectUserId').value);
+
+                const imageFile = document.getElementById('collectImage').files[0];
+                if (imageFile) {
+                    formData.append('collectorImage', imageFile);
+                }
+
+                const location = document.getElementById('collectLocation').value;
+                if (location) formData.append('collectorLocation', location);
+
+                formData.append('isLocationLatLng', document.getElementById('collectIsLatLng').checked);
+
+                const latitude = document.getElementById('collectLatitude').value;
+                if (latitude) formData.append('latitude', latitude);
+
+                const longitude = document.getElementById('collectLongitude').value;
+                if (longitude) formData.append('longitude', longitude);
+
+                const wasteId = document.getElementById('collectWasteId').value;
+                const response = await fetch(`${API_BASE_URL}/waste/${wasteId}/collect`, {
+                    method: 'POST',
+                    headers: {
+                        'x-user-id': document.getElementById('collectUserId').value
+                    },
+                    body: formData
+                });
+
+                const data = await response.json();
+
+                output.className = response.ok ? 'success' : 'error';
+                output.textContent = JSON.stringify(data, null, 2);
+
+                if (response.ok) {
+                    alert('✅ Waste collected successfully! Check the response below.');
+                }
+            } catch (error) {
+                output.className = 'error';
+                output.textContent = `Error: ${error.message}`;
+            } finally {
+                loading.classList.remove('show');
+                submitButton.disabled = false;
+            }
+        });
+    </script>
+</body>
+
+</html>
