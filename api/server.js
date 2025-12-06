@@ -14,8 +14,7 @@ import whatsappMessagingRoutes from "./routes/whatsappMessaging.js";
 import publicRoutePlannerRoutes from "./routes/publicRoutePlanner.js";
 import newsletterRoutes from "./routes/newsletter.js";
 import marketplaceRoutes from "./routes/marketplace.js";
-import marketplaceRoutes from "./routes/marketplace.js";
-import publicRoutePlannerRoutes from "./routes/publicRoutePlanner.js";
+
 
 const app = express();
 

@@ -31,11 +31,18 @@ router.get("/generate/:userId", async (req, res) => {
         reporterPoints: true,
         collectorPoints: true,
         globalPoints: true,
+        newsletterEnabled: true,
       },
     });
 
     if (!user) {
       return res.status(404).json({ error: "User not found" });
+    }
+
+    if (!user.newsletterEnabled) {
+      return res.status(403).json({ 
+        error: "Newsletter is disabled for this user. Please enable newsletter in profile settings." 
+      });
     }
 
     if (!user.city || !user.state) {
