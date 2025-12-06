@@ -1,100 +1,21 @@
-"use client";
-
 'use client';
 
 import React, { useState, useEffect } from 'react';
+import { useUser } from '@clerk/nextjs';
 import { Trash2, MapPin, CheckCircle, Clock, Upload, Loader, Calendar, Weight, Search, X, Award, TrendingUp } from 'lucide-react';
+import { API_CONFIG } from '@/lib/api-config';
 
-// Mock data for demonstration
-const mockTasks = [
-  { 
-    id: 1, 
-    location: 'Park Avenue, Zone A', 
-    wasteType: 'Plastic Bottles', 
-    amount: '15 kg', 
-    status: 'pending', 
-    date: '2024-12-06', 
-    collectorId: null,
-    reportedImage: null,
-    reportedLocation: { latitude: 40.7128, longitude: -74.0060 }
-  },
-  { 
-    id: 2, 
-    location: 'Main Street Market', 
-    wasteType: 'Organic Waste', 
-    amount: '25 kg', 
-    status: 'in_progress', 
-    date: '2024-12-06', 
-    collectorId: 1,
-    reportedImage: null,
-    reportedLocation: { latitude: 40.7580, longitude: -73.9855 }
-  },
-  { 
-    id: 3, 
-    location: 'Green Plaza', 
-    wasteType: 'Paper & Cardboard', 
-    amount: '12 kg', 
-    status: 'pending', 
-    date: '2024-12-06', 
-    collectorId: null,
-    reportedImage: null,
-    reportedLocation: { latitude: 40.7489, longitude: -73.9680 }
-  },
-  { 
-    id: 4, 
-    location: 'River Road Residential', 
-    wasteType: 'Glass Containers', 
-    amount: '8 kg', 
-    status: 'verified', 
-    date: '2024-12-05', 
-    collectorId: 1,
-    reportedImage: null,
-    reportedLocation: { latitude: 40.7614, longitude: -73.9776 }
-  },
-  { 
-    id: 5, 
-    location: 'Tech Hub District', 
-    wasteType: 'E-Waste', 
-    amount: '5 kg', 
-    status: 'pending', 
-    date: '2024-12-06', 
-    collectorId: null,
-    reportedImage: null,
-    reportedLocation: { latitude: 40.7484, longitude: -73.9857 }
-  },
-  { 
-    id: 6, 
-    location: 'Market Square', 
-    wasteType: 'Metal Cans', 
-    amount: '18 kg', 
-    status: 'in_progress', 
-    date: '2024-12-06', 
-    collectorId: 2,
-    reportedImage: null,
-    reportedLocation: { latitude: 40.7589, longitude: -73.9851 }
-  },
-  { 
-    id: 7, 
-    location: 'Central Park', 
-    wasteType: 'Mixed Recyclables', 
-    amount: '30 kg', 
-    status: 'pending', 
-    date: '2024-12-06', 
-    collectorId: null,
-    reportedImage: null,
-    reportedLocation: { latitude: 40.7829, longitude: -73.9654 }
-  },
-];
+
 
 const ITEMS_PER_PAGE = 5;
 
 const CollectPage = () => {
-  const [tasks, setTasks] = useState(mockTasks);
-  const [loading, setLoading] = useState(false);
+  const { user } = useUser();
+  const [tasks, setTasks] = useState([]);
+  const [loading, setLoading] = useState(true);
   const [hoveredWasteType, setHoveredWasteType] = useState(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
-  const [user, setUser] = useState({ id: 1, email: 'user@example.com', name: 'John Doe' });
   const [selectedTask, setSelectedTask] = useState(null);
   const [verificationImage, setVerificationImage] = useState(null);
   const [verificationStatus, setVerificationStatus] = useState('idle');
@@ -104,10 +25,96 @@ const CollectPage = () => {
   const [currentLocation, setCurrentLocation] = useState(null);
   const [locationError, setLocationError] = useState('');
   const [geminiAnalysis, setGeminiAnalysis] = useState(null);
+  const [filterStatus, setFilterStatus] = useState('PENDING');
+  const [filterCity, setFilterCity] = useState('');
 
+  // Fetch waste reports from API
   useEffect(() => {
+    fetchWasteReports();
     setIsVisible(true);
-  }, []);
+  }, [filterStatus, filterCity]);
+
+  const fetchWasteReports = async () => {
+    try {
+      setLoading(true);
+      
+      // Build query parameters
+      const params = new URLSearchParams();
+      if (filterStatus) params.append('status', filterStatus);
+      if (filterCity) params.append('city', filterCity);
+      
+      // Use local proxy to avoid ngrok CORS and browser warning issues
+      const apiUrl = `/api/waste-proxy?${params.toString()}`;
+      
+      const response = await fetch(apiUrl, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('API Error Response:', errorText);
+        throw new Error(`Failed to fetch waste reports: ${response.status}`);
+      }
+
+      // Check if response is JSON
+      const contentType = response.headers.get('content-type');
+      if (!contentType || !contentType.includes('application/json')) {
+        const text = await response.text();
+        console.error('Non-JSON response:', text);
+        throw new Error('Server returned non-JSON response');
+      }
+
+      const data = await response.json();
+      
+      console.log('API Response:', data); // Debug log
+      
+      // Handle both array and object with wastes property
+      const wastesArray = Array.isArray(data) ? data : (data.wastes || []);
+      
+      if (!Array.isArray(wastesArray)) {
+        console.error('Invalid data format:', data);
+        throw new Error('API returned invalid data format');
+      }
+      
+      // Transform API data to component format
+      const transformedTasks = wastesArray.map(waste => ({
+        id: waste.id,
+        location: waste.location || `${waste.city || ''}, ${waste.state || ''}`.trim() || 'Location not specified',
+        wasteType: waste.wasteType,
+        amount: `${waste.estimatedAmountKg || 0} kg`,
+        status: waste.status.toLowerCase(),
+        date: new Date(waste.createdAt).toISOString().split('T')[0],
+        collectorId: waste.collector?.id || null,
+        reportedImage: waste.imageUrl,
+        reportedLocation: {
+          latitude: waste.latitude,
+          longitude: waste.longitude
+        },
+        reporter: waste.reporter,
+        city: waste.city,
+        state: waste.state,
+        country: waste.country,
+        note: waste.note,
+        estimatedAmountKg: waste.estimatedAmountKg
+      }));
+      
+      console.log('Transformed tasks:', transformedTasks); // Debug log
+      setTasks(transformedTasks);
+    } catch (error) {
+      console.error('Error fetching waste reports:', error);
+      
+      // Show user-friendly error message
+      alert(`Failed to load waste reports. Please check:\n1. Backend API is running\n2. Network connection is active\n3. ngrok URL is correct\n\nError: ${error.message}`);
+      
+      // Set empty array to show "No Waste Reports Found" UI
+      setTasks([]);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const handleStatusChange = (taskId, newStatus) => {
     setTasks(tasks.map(task => 
@@ -202,14 +209,52 @@ const CollectPage = () => {
       const result = data.parsedResult;
       
       setVerificationResult(result);
-      setVerificationStatus('success');
       
       if (result.overallMatch) {
-        handleStatusChange(selectedTask.id, 'verified');
+        // Convert base64 to blob for API submission
+        const base64Response = await fetch(verificationImage);
+        const blob = await base64Response.blob();
+        const file = new File([blob], 'collection-proof.jpg', { type: 'image/jpeg' });
+
+        // Submit collection to backend API via proxy
+        const formData = new FormData();
+        formData.append('userId', user.id);
+        formData.append('collectorImage', file);
+        formData.append('latitude', currentLocation.latitude.toString());
+        formData.append('longitude', currentLocation.longitude.toString());
+
+        const collectResponse = await fetch(`${API_CONFIG.BASE_URL}/api/waste/${selectedTask.id}/collect`, {
+          method: 'POST',
+          headers: {
+            'x-user-id': user.id,
+          },
+          body: formData,
+        });
+
+        if (!collectResponse.ok) {
+          const errorData = await collectResponse.json();
+          throw new Error(errorData.error || 'Failed to submit collection');
+        }
+
+        const collectData = await collectResponse.json();
+        console.log('Collection submitted:', collectData);
+        
+        setVerificationStatus('success');
+        
         // Calculate reward based on confidence and amount
         const baseReward = parseInt(selectedTask.amount) * 2;
         const earnedReward = Math.floor(baseReward * result.confidence);
         setReward(earnedReward);
+
+        // Refresh the tasks list
+        await fetchWasteReports();
+        
+        // Close modal after short delay
+        setTimeout(() => {
+          setSelectedTask(null);
+          setVerificationImage(null);
+          setVerificationResult(null);
+        }, 3000);
       } else {
         setVerificationStatus('failure');
       }
@@ -251,19 +296,28 @@ const CollectPage = () => {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-emerald-50 to-teal-50 p-6">
+    <div className="min-h-screen bg-linear-to-br from-slate-50 via-emerald-50 to-teal-50 p-6">
       <div className="max-w-7xl mx-auto">
         {/* Header */}
         <div className={`mb-8 transform transition-all duration-700 ${isVisible ? 'translate-y-0 opacity-100' : 'translate-y-4 opacity-0'}`}>
           <div className="bg-white rounded-2xl shadow-lg p-8 border border-gray-100">
-            <div className="grid grid-cols-1 lg:grid-cols-[1fr_auto] gap-6 items-center">
+            <div className="grid grid-cols-1 lg:grid-cols-[1fr_auto_auto] gap-6 items-center">
               <div>
-                <h1 className="text-4xl font-bold bg-gradient-to-r from-emerald-600 to-teal-600 bg-clip-text text-transparent mb-2">
+                <h1 className="text-4xl font-bold bg-linear-to-r from-emerald-600 to-teal-600 bg-clip-text text-transparent mb-2">
                   Waste Collection Tasks
                 </h1>
                 <p className="text-gray-600">Start collecting waste and earn rewards for verified collections</p>
               </div>
-              <div className="bg-gradient-to-br from-emerald-500 to-teal-600 rounded-xl p-6 text-white shadow-lg">
+              <div className="bg-linear-to-br from-blue-500 to-blue-600 rounded-xl p-6 text-white shadow-lg">
+                <div className="flex items-center gap-3">
+                  <Trash2 className="w-8 h-8" />
+                  <div>
+                    <p className="text-sm opacity-90">Available Tasks</p>
+                    <p className="text-2xl font-bold">{tasks.length}</p>
+                  </div>
+                </div>
+              </div>
+              <div className="bg-linear-to-br from-emerald-500 to-teal-600 rounded-xl p-6 text-white shadow-lg">
                 <div className="flex items-center gap-3">
                   <Award className="w-8 h-8" />
                   <div>
@@ -276,11 +330,31 @@ const CollectPage = () => {
           </div>
         </div>
 
-        {/* Search Bar */}
+        {/* Filters and Search Bar */}
         <div className={`mb-6 transform transition-all duration-700 delay-100 ${isVisible ? 'translate-y-0 opacity-100' : 'translate-y-4 opacity-0'}`}>
           <div className="bg-white rounded-xl shadow-lg p-4 border border-gray-100">
-            <div className="flex items-center gap-3">
-              <div className="flex-1 relative">
+            <div className="grid grid-cols-1 md:grid-cols-[200px_200px_1fr_auto] gap-3">
+              {/* Status Filter */}
+              <select
+                value={filterStatus}
+                onChange={(e) => setFilterStatus(e.target.value)}
+                className="px-4 py-3 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition-all duration-300"
+              >
+                <option value="PENDING">Pending</option>
+                <option value="COLLECTED">Collected</option>
+              </select>
+
+              {/* City Filter */}
+              <input
+                type="text"
+                placeholder="Filter by city..."
+                value={filterCity}
+                onChange={(e) => setFilterCity(e.target.value)}
+                className="px-4 py-3 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition-all duration-300"
+              />
+
+              {/* Search Bar */}
+              <div className="relative">
                 <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
                 <input
                   type="text"
@@ -290,8 +364,13 @@ const CollectPage = () => {
                   className="w-full pl-10 pr-4 py-3 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition-all duration-300"
                 />
               </div>
-              <button className="px-6 py-3 bg-gradient-to-r from-emerald-500 to-teal-600 text-white rounded-lg font-semibold hover:from-emerald-600 hover:to-teal-700 transition-all duration-300 transform hover:scale-105 shadow-md hover:shadow-lg">
-                Search
+
+              {/* Refresh Button */}
+              <button 
+                onClick={fetchWasteReports}
+                className="px-6 py-3 bg-linear-to-r from-emerald-500 to-teal-600 text-white rounded-lg font-semibold hover:from-emerald-600 hover:to-teal-700 transition-all duration-300 transform hover:scale-105 shadow-md hover:shadow-lg"
+              >
+                Refresh
               </button>
             </div>
           </div>
@@ -301,6 +380,28 @@ const CollectPage = () => {
         {loading ? (
           <div className="flex justify-center items-center h-64">
             <Loader className="animate-spin h-12 w-12 text-emerald-600" />
+          </div>
+        ) : filteredTasks.length === 0 ? (
+          <div className="bg-white rounded-xl shadow-lg p-12 text-center border border-gray-100">
+            <div className="w-20 h-20 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
+              <Trash2 className="w-10 h-10 text-gray-400" />
+            </div>
+            <h3 className="text-xl font-bold text-gray-800 mb-2">No Waste Reports Found</h3>
+            <p className="text-gray-600 mb-4">
+              {filterStatus === 'PENDING' 
+                ? 'All pending waste has been collected! Check back later for new reports.'
+                : `No ${filterStatus.toLowerCase()} waste reports found.`}
+            </p>
+            <button 
+              onClick={() => {
+                setFilterStatus('PENDING');
+                setFilterCity('');
+                setSearchTerm('');
+              }}
+              className="px-6 py-3 bg-linear-to-r from-emerald-500 to-teal-600 text-white rounded-lg font-semibold hover:from-emerald-600 hover:to-teal-700 transition-all duration-300"
+            >
+              Reset Filters
+            </button>
           </div>
         ) : (
           <>
@@ -322,6 +423,11 @@ const CollectPage = () => {
                           </div>
                           {task.location}
                         </h2>
+                        {task.reporter && (
+                          <p className="text-sm text-gray-600 ml-11">
+                            Reported by: <span className="font-semibold text-gray-800">{task.reporter.name || task.reporter.id}</span>
+                          </p>
+                        )}
                       </div>
                       <StatusBadge status={task.status} />
                     </div>
@@ -367,7 +473,7 @@ const CollectPage = () => {
                       {task.status === 'pending' && (
                         <button 
                           onClick={() => handleStatusChange(task.id, 'in_progress')}
-                          className="px-6 py-2.5 bg-gradient-to-r from-emerald-500 to-teal-600 text-white rounded-lg font-semibold hover:from-emerald-600 hover:to-teal-700 transition-all duration-300 transform hover:scale-105 shadow-md hover:shadow-lg"
+                          className="px-6 py-2.5 bg-linear-to-r from-emerald-500 to-teal-600 text-white rounded-lg font-semibold hover:from-emerald-600 hover:to-teal-700 transition-all duration-300 transform hover:scale-105 shadow-md hover:shadow-lg"
                         >
                           Start Collection
                         </button>
@@ -375,7 +481,7 @@ const CollectPage = () => {
                       {task.status === 'in_progress' && task.collectorId === user?.id && (
                         <button 
                           onClick={() => setSelectedTask(task)}
-                          className="px-6 py-2.5 bg-gradient-to-r from-emerald-500 to-teal-600 text-white rounded-lg font-semibold hover:from-emerald-600 hover:to-teal-700 transition-all duration-300 transform hover:scale-105 shadow-md hover:shadow-lg"
+                          className="px-6 py-2.5 bg-linear-to-r from-emerald-500 to-teal-600 text-white rounded-lg font-semibold hover:from-emerald-600 hover:to-teal-700 transition-all duration-300 transform hover:scale-105 shadow-md hover:shadow-lg"
                         >
                           Complete & Verify
                         </button>
@@ -496,7 +602,7 @@ const CollectPage = () => {
                 <button
                   onClick={handleVerify}
                   disabled={!verificationImage || verificationStatus === 'verifying'}
-                  className="w-full py-4 bg-gradient-to-r from-emerald-500 to-teal-600 text-white rounded-xl font-semibold hover:from-emerald-600 hover:to-teal-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-300 transform hover:scale-105 shadow-lg hover:shadow-xl flex items-center justify-center gap-2"
+                  className="w-full py-4 bg-linear-to-r from-emerald-500 to-teal-600 text-white rounded-xl font-semibold hover:from-emerald-600 hover:to-teal-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-300 transform hover:scale-105 shadow-lg hover:shadow-xl flex items-center justify-center gap-2"
                 >
                   {verificationStatus === 'verifying' ? (
                     <>

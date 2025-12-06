@@ -16,12 +16,16 @@ export async function POST(request) {
     }
 
     // Initialize Gemini Pro Vision model
-    const model = genAI.getGenerativeModel({ model: 'gemini-3-pro-preview' });
+    const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
 
-    // Prepare the images for comparison
+    // Prepare the images for comparison - handle both base64 with and without prefix
+    const cleanCollectedImage = collectedImage.includes(',') 
+      ? collectedImage.split(',')[1] 
+      : collectedImage;
+    
     const collectedImageData = {
       inlineData: {
-        data: collectedImage.split(',')[1], // Remove data:image/... prefix
+        data: cleanCollectedImage,
         mimeType: 'image/jpeg'
       }
     };
