@@ -18,7 +18,10 @@ export default function ProfilePage() {
   const [phoneVerified, setPhoneVerified] = useState(false);
   const [selectedWasteDetail, setSelectedWasteDetail] = useState(null);
   const [showWasteDetailModal, setShowWasteDetailModal] = useState(false);
-  
+  const [whatsappEnabled, setWhatsappEnabled] = useState(false);
+  const [enablingWhatsapp, setEnablingWhatsapp] = useState(false);
+  const [disablingWhatsapp, setDisablingWhatsapp] = useState(false);
+
   const [userData, setUserData] = useState({
     name: '',
     email: '',
@@ -59,7 +62,7 @@ export default function ProfilePage() {
       console.log('=== NOTIFICATIONS DATA ===');
       console.log(data);
       console.log('========================');
-      
+
       // Store notifications in state
       setNotifications(data.notifications || []);
     } catch (error) {
@@ -81,8 +84,8 @@ export default function ProfilePage() {
 
       if (response.ok) {
         // Update local state
-        setNotifications(prev => 
-          prev.map(notif => 
+        setNotifications(prev =>
+          prev.map(notif =>
             notif.id === notificationId ? { ...notif, isRead: true } : notif
           )
         );
@@ -93,7 +96,7 @@ export default function ProfilePage() {
   };
 
   const getNotificationIcon = (type) => {
-    switch(type) {
+    switch (type) {
       case 'WASTE_COLLECTED':
         return <CheckCircle className="w-5 h-5 text-emerald-600" />;
       case 'WASTE_REPORTED':
@@ -106,7 +109,7 @@ export default function ProfilePage() {
   };
 
   const getNotificationColor = (type) => {
-    switch(type) {
+    switch (type) {
       case 'WASTE_COLLECTED':
         return 'from-emerald-50 to-emerald-100 border-emerald-200';
       case 'WASTE_REPORTED':
@@ -121,7 +124,7 @@ export default function ProfilePage() {
   const fetchUserData = async () => {
     try {
       setLoading(true);
-      
+
       // Set default data from Clerk user immediately
       setUserData(prev => ({
         ...prev,
@@ -145,13 +148,13 @@ export default function ProfilePage() {
       }
 
       const data = await response.json();
-      
+
       // Console log complete user data
       console.log('=== COMPLETE USER DATA ===');
       console.log('Clerk User:', clerkUser);
       console.log('Backend User Data:', data.user);
       console.log('========================');
-      
+
       setUserData({
         name: data.user.name || clerkUser.fullName || '',
         email: data.user.email || clerkUser.primaryEmailAddress?.emailAddress || '',
@@ -167,15 +170,18 @@ export default function ProfilePage() {
         collectedWastes: data.user.collectedWastes || [],
         createdAt: data.user.createdAt || '',
       });
-      
+
       // Set phone verification status from backend
       setPhoneVerified(data.user.phoneVerified || false);
-      
+
+      // Set WhatsApp messaging status from backend
+      setWhatsappEnabled(data.user.whatsappMessagingEnabled || false);
+
       // Clear any previous error messages
       setMessage({ type: '', text: '' });
     } catch (error) {
       console.error('Error fetching user data:', error);
-      const errorMessage = error.message === 'Failed to fetch' 
+      const errorMessage = error.message === 'Failed to fetch'
         ? 'Cannot connect to backend server. Please ensure the API is running.'
         : `Failed to load user data: ${error.message}`;
       setMessage({ type: 'error', text: errorMessage });
@@ -214,20 +220,20 @@ export default function ProfilePage() {
       }
 
       const data = await response.json();
-      
+
       // Check if phone verification was reset
       const phoneVerificationReset = data.user?.phoneVerified === false && phoneVerified === true;
-      
+
       if (phoneVerificationReset) {
-        setMessage({ 
-          type: 'success', 
-          text: 'Settings saved! Phone number changed - please verify your new number.' 
+        setMessage({
+          type: 'success',
+          text: 'Settings saved! Phone number changed - please verify your new number.'
         });
         setPhoneVerified(false);
       } else {
         setMessage({ type: 'success', text: data.message || 'Settings saved successfully!' });
       }
-      
+
       // Update local state with response
       if (data.user) {
         setUserData(prev => ({
@@ -239,7 +245,7 @@ export default function ProfilePage() {
           country: data.user.country || prev.country,
           enableCollector: data.user.enableCollector !== undefined ? data.user.enableCollector : prev.enableCollector,
         }));
-        
+
         // Update phone verification status
         if (data.user.phoneVerified !== undefined) {
           setPhoneVerified(data.user.phoneVerified);
@@ -272,7 +278,7 @@ export default function ProfilePage() {
     try {
       setSendingOtp(true);
       setMessage({ type: '', text: '' });
-      
+
       const response = await fetch('https://jeanene-unexposed-ingrid.ngrok-free.dev/api/phone/send-otp', {
         method: 'POST',
         headers: {
@@ -286,7 +292,7 @@ export default function ProfilePage() {
       if (!response.ok) {
         throw new Error(data.error || 'Failed to send OTP');
       }
-      
+
       setShowOtpModal(true);
       setMessage({ type: 'success', text: data.message || 'OTP sent to WhatsApp successfully. Valid for 5 minutes.' });
       setTimeout(() => setMessage({ type: '', text: '' }), 5000);
@@ -308,7 +314,7 @@ export default function ProfilePage() {
     try {
       setVerifyingOtp(true);
       setMessage({ type: '', text: '' });
-      
+
       const response = await fetch('https://jeanene-unexposed-ingrid.ngrok-free.dev/api/phone/verify-otp', {
         method: 'POST',
         headers: {
@@ -323,14 +329,14 @@ export default function ProfilePage() {
       if (!response.ok) {
         throw new Error(data.error || 'Failed to verify OTP');
       }
-      
+
       // Verification successful
       setPhoneVerified(true);
       setShowOtpModal(false);
       setOtp(['', '', '', '', '', '']); // Reset OTP inputs
       setMessage({ type: 'success', text: data.message || 'Phone number verified successfully!' });
       setTimeout(() => setMessage({ type: '', text: '' }), 5000);
-      
+
       // Refresh user data to get updated phoneVerified status
       await fetchUserData();
     } catch (error) {
@@ -372,6 +378,72 @@ export default function ProfilePage() {
   const closeWasteDetail = () => {
     setSelectedWasteDetail(null);
     setShowWasteDetailModal(false);
+  };
+
+  const enableWhatsappMessaging = async () => {
+    try {
+      setEnablingWhatsapp(true);
+      setMessage({ type: '', text: '' });
+
+      const response = await fetch('https://jeanene-unexposed-ingrid.ngrok-free.dev/api/whatsapp/enable', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-user-id': clerkUser.id,
+        },
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to enable WhatsApp messaging');
+      }
+
+      setWhatsappEnabled(true);
+      setMessage({
+        type: 'success',
+        text: data.message || 'WhatsApp messaging enabled! You will receive a confirmation message.'
+      });
+      setTimeout(() => setMessage({ type: '', text: '' }), 5000);
+    } catch (error) {
+      console.error('Error enabling WhatsApp messaging:', error);
+      setMessage({ type: 'error', text: error.message || 'Failed to enable WhatsApp messaging' });
+    } finally {
+      setEnablingWhatsapp(false);
+    }
+  };
+
+  const disableWhatsappMessaging = async () => {
+    try {
+      setDisablingWhatsapp(true);
+      setMessage({ type: '', text: '' });
+
+      const response = await fetch('https://jeanene-unexposed-ingrid.ngrok-free.dev/api/whatsapp/disable', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-user-id': clerkUser.id,
+        },
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to disable WhatsApp messaging');
+      }
+
+      setWhatsappEnabled(false);
+      setMessage({
+        type: 'success',
+        text: data.message || 'WhatsApp messaging disabled successfully!'
+      });
+      setTimeout(() => setMessage({ type: '', text: '' }), 5000);
+    } catch (error) {
+      console.error('Error disabling WhatsApp messaging:', error);
+      setMessage({ type: 'error', text: error.message || 'Failed to disable WhatsApp messaging' });
+    } finally {
+      setDisablingWhatsapp(false);
+    }
   };
 
   if (loading) {
@@ -416,7 +488,7 @@ export default function ProfilePage() {
                 </div>
               )}
             </div>
-            
+
             {/* Quick Stats Grid */}
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-4 mt-6">
               <div className="bg-white/15 backdrop-blur-md rounded-2xl p-4 border border-white/20 shadow-lg">
@@ -516,7 +588,7 @@ export default function ProfilePage() {
             <div className="flex items-center justify-between text-xs pt-3 border-t border-gray-100">
               <span className="text-gray-500">Success Rate</span>
               <span className="font-bold text-purple-600">
-                {userData.reportedWastes?.length > 0 
+                {userData.reportedWastes?.length > 0
                   ? Math.round((userData.reportedWastes.filter(w => w.status === 'COLLECTED').length / userData.reportedWastes.length) * 100)
                   : 0}%
               </span>
@@ -548,8 +620,8 @@ export default function ProfilePage() {
                         {/* Waste Image */}
                         {waste.imageUrl && (
                           <div className="w-20 h-20 rounded-lg overflow-hidden bg-gray-100 shrink-0">
-                            <img 
-                              src={waste.imageUrl} 
+                            <img
+                              src={waste.imageUrl}
                               alt={waste.wasteType}
                               className="w-full h-full object-cover"
                               onError={(e) => e.target.style.display = 'none'}
@@ -566,11 +638,10 @@ export default function ProfilePage() {
                                 {waste.address || `${waste.city || 'Unknown'}, ${waste.state || ''}`}
                               </p>
                             </div>
-                            <span className={`text-xs px-2 py-1 rounded-full font-bold whitespace-nowrap ${
-                              waste.status === 'COLLECTED' ? 'bg-emerald-500 text-white' :
-                              waste.status === 'IN_PROGRESS' ? 'bg-yellow-500 text-white' :
-                              'bg-blue-500 text-white'
-                            }`}>
+                            <span className={`text-xs px-2 py-1 rounded-full font-bold whitespace-nowrap ${waste.status === 'COLLECTED' ? 'bg-emerald-500 text-white' :
+                                waste.status === 'IN_PROGRESS' ? 'bg-yellow-500 text-white' :
+                                  'bg-blue-500 text-white'
+                              }`}>
                               {waste.status}
                             </span>
                           </div>
@@ -643,8 +714,8 @@ export default function ProfilePage() {
                         {/* Waste Image */}
                         {waste.imageUrl && (
                           <div className="w-20 h-20 rounded-lg overflow-hidden bg-gray-100 shrink-0">
-                            <img 
-                              src={waste.imageUrl} 
+                            <img
+                              src={waste.imageUrl}
                               alt={waste.wasteType}
                               className="w-full h-full object-cover"
                               onError={(e) => e.target.style.display = 'none'}
@@ -726,19 +797,17 @@ export default function ProfilePage() {
 
         {/* Message Alert */}
         {message.text && (
-          <div className={`rounded-2xl p-4 flex items-center gap-3 shadow-lg ${
-            message.type === 'success' 
-              ? 'bg-emerald-50 border-2 border-emerald-300' 
+          <div className={`rounded-2xl p-4 flex items-center gap-3 shadow-lg ${message.type === 'success'
+              ? 'bg-emerald-50 border-2 border-emerald-300'
               : 'bg-red-50 border-2 border-red-300'
-          }`}>
+            }`}>
             {message.type === 'success' ? (
               <CheckCircle className="w-6 h-6 text-emerald-600" />
             ) : (
               <AlertCircle className="w-6 h-6 text-red-600" />
             )}
-            <p className={`font-semibold ${
-              message.type === 'success' ? 'text-emerald-800' : 'text-red-800'
-            }`}>
+            <p className={`font-semibold ${message.type === 'success' ? 'text-emerald-800' : 'text-red-800'
+              }`}>
               {message.text}
             </p>
           </div>
@@ -746,140 +815,310 @@ export default function ProfilePage() {
 
         {/* Profile Settings */}
         <div className="bg-white rounded-2xl shadow-lg border border-gray-200">
-            <div className="p-5 border-b border-gray-200 bg-linear-to-r from-indigo-50 to-purple-50">
-              <div className="flex items-center gap-3">
-                <div className="w-11 h-11 bg-linear-to-br from-indigo-500 to-purple-600 rounded-xl flex items-center justify-center shadow-md">
-                  <User className="w-6 h-6 text-white" />
-                </div>
-                <div>
-                  <h2 className="text-lg font-bold text-gray-800">Profile Settings</h2>
-                  <p className="text-sm text-gray-600">Manage your information</p>
-                </div>
+          <div className="p-5 border-b border-gray-200 bg-linear-to-r from-indigo-50 to-purple-50">
+            <div className="flex items-center gap-3">
+              <div className="w-11 h-11 bg-linear-to-br from-indigo-500 to-purple-600 rounded-xl flex items-center justify-center shadow-md">
+                <User className="w-6 h-6 text-white" />
+              </div>
+              <div>
+                <h2 className="text-lg font-bold text-gray-800">Profile Settings</h2>
+                <p className="text-sm text-gray-600">Manage your information</p>
               </div>
             </div>
-            <div className="p-5 space-y-4">
-              <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-2">
-                  Full Name
-                </label>
+          </div>
+          <div className="p-5 space-y-4">
+            <div>
+              <label className="block text-sm font-semibold text-gray-700 mb-2">
+                Full Name
+              </label>
+              <input
+                type="text"
+                value={userData.name}
+                onChange={(e) => handleInputChange('name', e.target.value)}
+                className="w-full px-4 py-3 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition-all duration-300"
+                placeholder="Enter your full name"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-semibold text-gray-700 mb-2">
+                Email Address
+              </label>
+              <input
+                type="email"
+                value={userData.email}
+                disabled
+                className="w-full px-4 py-3 border border-gray-200 rounded-lg bg-gray-50 text-gray-500 cursor-not-allowed"
+                placeholder="Email (managed by Clerk)"
+              />
+              <p className="text-xs text-gray-500 mt-1">Email is managed through your Clerk account</p>
+            </div>
+            <div>
+              <label className="block text-sm font-semibold text-gray-700 mb-2">
+                Phone Number
+              </label>
+              <div className="flex gap-2">
                 <input
-                  type="text"
-                  value={userData.name}
-                  onChange={(e) => handleInputChange('name', e.target.value)}
-                  className="w-full px-4 py-3 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition-all duration-300"
-                  placeholder="Enter your full name"
+                  type="tel"
+                  value={userData.phone}
+                  onChange={(e) => handleInputChange('phone', e.target.value)}
+                  className="flex-1 px-4 py-3 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition-all duration-300"
+                  placeholder="+91 98765 43210"
+                  disabled={phoneVerified}
                 />
-              </div>
-              <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-2">
-                  Email Address
-                </label>
-                <input
-                  type="email"
-                  value={userData.email}
-                  disabled
-                  className="w-full px-4 py-3 border border-gray-200 rounded-lg bg-gray-50 text-gray-500 cursor-not-allowed"
-                  placeholder="Email (managed by Clerk)"
-                />
-                <p className="text-xs text-gray-500 mt-1">Email is managed through your Clerk account</p>
-              </div>
-              <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-2">
-                  Phone Number
-                </label>
-                <div className="flex gap-2">
-                  <input
-                    type="tel"
-                    value={userData.phone}
-                    onChange={(e) => handleInputChange('phone', e.target.value)}
-                    className="flex-1 px-4 py-3 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition-all duration-300"
-                    placeholder="+91 98765 43210"
-                    disabled={phoneVerified}
-                  />
-                  {!phoneVerified ? (
-                    <button
-                      type="button"
-                      onClick={sendOtp}
-                      disabled={sendingOtp || !userData.phone}
-                      className="px-6 py-3 bg-linear-to-r from-blue-500 to-blue-600 text-white rounded-lg font-semibold hover:from-blue-600 hover:to-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-300 flex items-center gap-2 whitespace-nowrap"
-                    >
-                      {sendingOtp ? (
-                        <>
-                          <Loader className="w-4 h-4 animate-spin" />
-                          Sending...
-                        </>
-                      ) : (
-                        'Verify'
-                      )}
-                    </button>
-                  ) : (
-                    <div className="px-6 py-3 bg-emerald-100 text-emerald-700 rounded-lg font-semibold flex items-center gap-2 whitespace-nowrap">
-                      <CheckCircle className="w-4 h-4" />
-                      Verified
-                    </div>
-                  )}
-                </div>
-                {phoneVerified && (
-                  <p className="text-xs text-emerald-600 mt-1 flex items-center gap-1">
-                    <CheckCircle className="w-3 h-3" />
-                    Phone number has been verified
-                  </p>
+                {!phoneVerified ? (
+                  <button
+                    type="button"
+                    onClick={sendOtp}
+                    disabled={sendingOtp || !userData.phone}
+                    className="px-6 py-3 bg-linear-to-r from-blue-500 to-blue-600 text-white rounded-lg font-semibold hover:from-blue-600 hover:to-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-300 flex items-center gap-2 whitespace-nowrap"
+                  >
+                    {sendingOtp ? (
+                      <>
+                        <Loader className="w-4 h-4 animate-spin" />
+                        Sending...
+                      </>
+                    ) : (
+                      'Verify'
+                    )}
+                  </button>
+                ) : (
+                  <div className="px-6 py-3 bg-emerald-100 text-emerald-700 rounded-lg font-semibold flex items-center gap-2 whitespace-nowrap">
+                    <CheckCircle className="w-4 h-4" />
+                    Verified
+                  </div>
                 )}
               </div>
-              <div className="pt-4 border-t border-gray-100">
-                <p className="text-sm font-semibold text-gray-700 mb-3">Location Information</p>
-                <div className="space-y-4">
-                  <div>
-                    <label className="block text-sm font-semibold text-gray-700 mb-2">
-                      City <span className="text-red-500">*</span>
-                    </label>
-                    <input
-                      type="text"
-                      value={userData.city}
-                      onChange={(e) => handleInputChange('city', e.target.value)}
-                      className="w-full px-4 py-3 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition-all duration-300"
-                      placeholder="Enter your city"
-                      required
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-semibold text-gray-700 mb-2">
-                      State <span className="text-red-500">*</span>
-                    </label>
-                    <input
-                      type="text"
-                      value={userData.state}
-                      onChange={(e) => handleInputChange('state', e.target.value)}
-                      className="w-full px-4 py-3 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition-all duration-300"
-                      placeholder="Enter your state"
-                      required
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-semibold text-gray-700 mb-2">
-                      Country <span className="text-red-500">*</span>
-                    </label>
-                    <input
-                      type="text"
-                      value={userData.country}
-                      onChange={(e) => handleInputChange('country', e.target.value)}
-                      className="w-full px-4 py-3 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition-all duration-300"
-                      placeholder="Enter your country"
-                      required
-                    />
-                  </div>
+              {phoneVerified && (
+                <p className="text-xs text-emerald-600 mt-1 flex items-center gap-1">
+                  <CheckCircle className="w-3 h-3" />
+                  Phone number has been verified
+                </p>
+              )}
+            </div>
+            <div className="pt-4 border-t border-gray-100">
+              <p className="text-sm font-semibold text-gray-700 mb-3">Location Information</p>
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-2">
+                    City <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={userData.city}
+                    onChange={(e) => handleInputChange('city', e.target.value)}
+                    className="w-full px-4 py-3 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition-all duration-300"
+                    placeholder="Enter your city"
+                    required
+                  />
                 </div>
-                <div className="mt-3 p-3 bg-blue-50 border border-blue-200 rounded-lg">
-                  <p className="text-xs text-blue-700">
-                    <strong>Required:</strong> Please update your location before reporting or collecting waste.
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-2">
+                    State <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={userData.state}
+                    onChange={(e) => handleInputChange('state', e.target.value)}
+                    className="w-full px-4 py-3 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition-all duration-300"
+                    placeholder="Enter your state"
+                    required
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-2">
+                    Country <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={userData.country}
+                    onChange={(e) => handleInputChange('country', e.target.value)}
+                    className="w-full px-4 py-3 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition-all duration-300"
+                    placeholder="Enter your country"
+                    required
+                  />
+                </div>
+              </div>
+              <div className="mt-3 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                <p className="text-xs text-blue-700">
+                  <strong>Required:</strong> Please update your location before reporting or collecting waste.
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+
+
+
+        {/* WhatsApp Notifications */}
+        <div className="bg-white rounded-2xl shadow-lg border border-gray-200">
+          <div className="p-5 border-b border-gray-200 bg-linear-to-r from-green-50 to-teal-50">
+            <div className="flex items-center gap-3">
+              <div className="w-11 h-11 bg-linear-to-br from-green-500 to-teal-600 rounded-xl flex items-center justify-center shadow-md">
+                <svg className="w-6 h-6 text-white" fill="currentColor" viewBox="0 0 24 24">
+                  <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z" />
+                </svg>
+              </div>
+              <div>
+                <h2 className="text-lg font-bold text-gray-800">WhatsApp Notifications</h2>
+                <p className="text-sm text-gray-600">Receive updates via WhatsApp</p>
+              </div>
+            </div>
+          </div>
+          <div className="p-5">
+            <div className="bg-linear-to-br from-green-50 to-teal-50 rounded-2xl p-6 border border-green-300">
+              <div className="flex items-start justify-between gap-4 mb-4">
+                <div className="flex-1">
+                  <div className="flex items-center gap-2 mb-2">
+                    <h3 className="text-lg font-bold text-green-800">Enable WhatsApp Messaging</h3>
+                    <span className={`px-3 py-1 rounded-full text-xs font-bold ${whatsappEnabled
+                        ? 'bg-green-500 text-white'
+                        : 'bg-gray-300 text-gray-700'
+                      }`}>
+                      {whatsappEnabled ? 'ENABLED' : 'DISABLED'}
+                    </span>
+                  </div>
+                  <p className="text-sm text-green-700 mb-4">
+                    {whatsappEnabled
+                      ? 'You will receive WhatsApp notifications for waste collection updates, route assignments, and system alerts.'
+                      : 'Get instant WhatsApp notifications for new waste assignments, route updates, collection confirmations, and important system alerts. Stay connected and never miss an update!'
+                    }
                   </p>
                 </div>
               </div>
-            </div>
-        </div>
 
-       
-        
+              {/* Information about what user will receive */}
+              <div className="bg-white/70 rounded-xl p-4 mb-4 border border-green-200">
+                <p className="text-xs font-bold text-green-800 mb-2 flex items-center gap-1">
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                  What you'll receive:
+                </p>
+                <div className="space-y-1.5">
+                  <div className="flex items-center gap-2 text-xs text-green-700">
+                    <CheckCircle className="w-3.5 h-3.5 text-green-600" />
+                    <span>Route updates and navigation assistance</span>
+                  </div>
+                  <div className="flex items-center gap-2 text-xs text-green-700">
+                    <CheckCircle className="w-3.5 h-3.5 text-green-600" />
+                    <span>New waste assignment alerts</span>
+                  </div>
+                  <div className="flex items-center gap-2 text-xs text-green-700">
+                    <CheckCircle className="w-3.5 h-3.5 text-green-600" />
+                    <span>Completed collection confirmations</span>
+                  </div>
+                  <div className="flex items-center gap-2 text-xs text-green-700">
+                    <CheckCircle className="w-3.5 h-3.5 text-green-600" />
+                    <span>System updates and important reminders</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Requirements */}
+              {!whatsappEnabled && (
+                <div className="bg-blue-50 rounded-xl p-4 mb-4 border border-blue-200">
+                  <p className="text-xs font-bold text-blue-800 mb-2 flex items-center gap-1">
+                    <AlertCircle className="w-4 h-4" />
+                    Requirements:
+                  </p>
+                  <div className="space-y-1.5">
+                    <div className="flex items-center gap-2 text-xs text-blue-700">
+                      {userData.phone ? (
+                        <CheckCircle className="w-3.5 h-3.5 text-green-600" />
+                      ) : (
+                        <AlertCircle className="w-3.5 h-3.5 text-red-600" />
+                      )}
+                      <span>Phone number must be set</span>
+                      {!userData.phone && <span className="text-red-600 font-semibold">(Required)</span>}
+                    </div>
+                    <div className="flex items-center gap-2 text-xs text-blue-700">
+                      {phoneVerified ? (
+                        <CheckCircle className="w-3.5 h-3.5 text-green-600" />
+                      ) : (
+                        <AlertCircle className="w-3.5 h-3.5 text-red-600" />
+                      )}
+                      <span>Phone number must be verified</span>
+                      {!phoneVerified && <span className="text-red-600 font-semibold">(Required)</span>}
+                    </div>
+                    <div className="flex items-center gap-2 text-xs text-blue-700">
+                      {userData.city && userData.state && userData.country ? (
+                        <CheckCircle className="w-3.5 h-3.5 text-green-600" />
+                      ) : (
+                        <AlertCircle className="w-3.5 h-3.5 text-red-600" />
+                      )}
+                      <span>Complete address (city, state, country)</span>
+                      {(!userData.city || !userData.state || !userData.country) && <span className="text-red-600 font-semibold">(Required)</span>}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Action Buttons */}
+              <div className="space-y-3">
+                {!whatsappEnabled ? (
+                  <button
+                    onClick={enableWhatsappMessaging}
+                    disabled={enablingWhatsapp || !userData.phone || !phoneVerified || !userData.city || !userData.state || !userData.country}
+                    className="w-full px-6 py-4 bg-linear-to-r from-green-500 to-teal-600 text-white rounded-xl font-bold hover:from-green-600 hover:to-teal-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-300 transform hover:scale-105 shadow-lg hover:shadow-xl flex items-center justify-center gap-2"
+                  >
+                    {enablingWhatsapp ? (
+                      <>
+                        <Loader className="w-5 h-5 animate-spin" />
+                        Enabling WhatsApp...
+                      </>
+                    ) : (
+                      <>
+                        <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
+                          <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z" />
+                        </svg>
+                        Enable WhatsApp Notifications
+                      </>
+                    )}
+                  </button>
+                ) : (
+                  <button
+                    onClick={disableWhatsappMessaging}
+                    disabled={disablingWhatsapp}
+                    className="w-full px-6 py-4 bg-red-500 text-white rounded-xl font-bold hover:bg-red-600 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-300 shadow-lg hover:shadow-xl flex items-center justify-center gap-2"
+                  >
+                    {disablingWhatsapp ? (
+                      <>
+                        <Loader className="w-5 h-5 animate-spin" />
+                        Disabling...
+                      </>
+                    ) : (
+                      <>
+                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                        </svg>
+                        Disable WhatsApp Notifications
+                      </>
+                    )}
+                  </button>
+                )}
+
+                {whatsappEnabled && (
+                  <div className="flex items-center justify-center gap-2 text-green-700 bg-green-100 rounded-lg p-3">
+                    <CheckCircle className="w-5 h-5" />
+                    <span className="text-sm font-semibold">You're connected! You'll receive WhatsApp notifications.</span>
+                  </div>
+                )}
+              </div>
+
+              {/* Privacy Note */}
+              <div className="mt-4 pt-4 border-t border-green-200">
+                <p className="text-xs text-green-700 flex items-start gap-2">
+                  <Shield className="w-4 h-4 mt-0.5 shrink-0" />
+                  <span>
+                    <strong>Privacy:</strong> We will only send you notifications related to your waste management activities.
+                    You can disable WhatsApp notifications anytime from this page. Your phone number is secure and will not be shared with third parties.
+                  </span>
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
 
         {/* Collector Mode */}
         <div className="bg-white rounded-2xl shadow-lg border border-gray-200">
@@ -900,16 +1139,15 @@ export default function ProfilePage() {
                 <div className="flex-1">
                   <div className="flex items-center gap-2 mb-2">
                     <h3 className="text-lg font-bold text-emerald-800">Become a Waste Collector</h3>
-                    <span className={`px-3 py-1 rounded-full text-xs font-bold ${
-                      userData.enableCollector 
-                        ? 'bg-emerald-500 text-white' 
+                    <span className={`px-3 py-1 rounded-full text-xs font-bold ${userData.enableCollector
+                        ? 'bg-emerald-500 text-white'
                         : 'bg-gray-300 text-gray-700'
-                    }`}>
+                      }`}>
                       {userData.enableCollector ? 'ACTIVE' : 'INACTIVE'}
                     </span>
                   </div>
                   <p className="text-sm text-emerald-700 mb-4">
-                    {userData.enableCollector 
+                    {userData.enableCollector
                       ? 'You are currently collecting waste reports. You can verify and collect reported waste to earn rewards!'
                       : 'Enable collector mode to start collecting waste from your area and earn collection points. You can help clean up your community while earning rewards!'
                     }
@@ -978,11 +1216,10 @@ export default function ProfilePage() {
               <div className="bg-linear-to-r from-blue-500 to-emerald-500 rounded-t-2xl p-6 text-white">
                 <h2 className="text-2xl font-bold mb-2">Waste Report Details</h2>
                 <div className="flex items-center gap-2">
-                  <span className={`px-3 py-1 rounded-full text-xs font-bold ${
-                    selectedWasteDetail.status === 'COLLECTED' ? 'bg-emerald-500' :
-                    selectedWasteDetail.status === 'IN_PROGRESS' ? 'bg-yellow-500' :
-                    'bg-blue-500'
-                  }`}>
+                  <span className={`px-3 py-1 rounded-full text-xs font-bold ${selectedWasteDetail.status === 'COLLECTED' ? 'bg-emerald-500' :
+                      selectedWasteDetail.status === 'IN_PROGRESS' ? 'bg-yellow-500' :
+                        'bg-blue-500'
+                    }`}>
                     {selectedWasteDetail.status}
                   </span>
                   <span className="text-sm opacity-90">ID: {selectedWasteDetail.id?.substring(0, 8) || 'N/A'}</span>
@@ -996,8 +1233,8 @@ export default function ProfilePage() {
                   <div className="mb-6">
                     <h3 className="text-sm font-bold text-gray-700 mb-2">Waste Image</h3>
                     <div className="rounded-xl overflow-hidden border-2 border-gray-200">
-                      <img 
-                        src={selectedWasteDetail.imageUrl} 
+                      <img
+                        src={selectedWasteDetail.imageUrl}
                         alt={selectedWasteDetail.wasteType}
                         className="w-full h-64 object-cover"
                       />
@@ -1014,17 +1251,17 @@ export default function ProfilePage() {
                   <div className="bg-gray-50 rounded-xl p-4">
                     <p className="text-xs text-gray-500 mb-1">Estimated Weight</p>
                     <p className="text-sm font-bold text-gray-800">
-                      {selectedWasteDetail.aiAnalysis?.estimatedWeightKg 
-                        ? `${selectedWasteDetail.aiAnalysis.estimatedWeightKg} kg` 
+                      {selectedWasteDetail.aiAnalysis?.estimatedWeightKg
+                        ? `${selectedWasteDetail.aiAnalysis.estimatedWeightKg} kg`
                         : 'Not available'}
                     </p>
                   </div>
                   <div className="bg-gray-50 rounded-xl p-4">
                     <p className="text-xs text-gray-500 mb-1">Reported Date</p>
                     <p className="text-sm font-bold text-gray-800">
-                      {selectedWasteDetail.reportedAt ? new Date(selectedWasteDetail.reportedAt).toLocaleString('en-US', { 
-                        dateStyle: 'medium', 
-                        timeStyle: 'short' 
+                      {selectedWasteDetail.reportedAt ? new Date(selectedWasteDetail.reportedAt).toLocaleString('en-US', {
+                        dateStyle: 'medium',
+                        timeStyle: 'short'
                       }) : 'N/A'}
                     </p>
                   </div>
@@ -1032,8 +1269,8 @@ export default function ProfilePage() {
                     <p className="text-xs text-gray-500 mb-1">Points Earned</p>
                     <p className="text-sm font-bold text-emerald-600 flex items-center gap-1">
                       <Award className="w-4 h-4" />
-                      {selectedWasteDetail.status === 'COLLECTED' && selectedWasteDetail.collectorId === clerkUser?.id 
-                        ? '20 points (Collected)' 
+                      {selectedWasteDetail.status === 'COLLECTED' && selectedWasteDetail.collectorId === clerkUser?.id
+                        ? '20 points (Collected)'
                         : '10 points (Reported)'}
                     </p>
                   </div>
@@ -1085,16 +1322,16 @@ export default function ProfilePage() {
                     </h3>
                     <div className="space-y-2">
                       <p className="text-sm text-gray-700">
-                        <span className="font-semibold">Collected On:</span> {new Date(selectedWasteDetail.collectedAt).toLocaleString('en-US', { 
-                          dateStyle: 'medium', 
-                          timeStyle: 'short' 
+                        <span className="font-semibold">Collected On:</span> {new Date(selectedWasteDetail.collectedAt).toLocaleString('en-US', {
+                          dateStyle: 'medium',
+                          timeStyle: 'short'
                         })}
                       </p>
                       {selectedWasteDetail.verifiedAt && (
                         <p className="text-sm text-gray-700">
-                          <span className="font-semibold">Verified On:</span> {new Date(selectedWasteDetail.verifiedAt).toLocaleString('en-US', { 
-                            dateStyle: 'medium', 
-                            timeStyle: 'short' 
+                          <span className="font-semibold">Verified On:</span> {new Date(selectedWasteDetail.verifiedAt).toLocaleString('en-US', {
+                            dateStyle: 'medium',
+                            timeStyle: 'short'
                           })}
                         </p>
                       )}
