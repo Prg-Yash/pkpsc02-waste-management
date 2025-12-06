@@ -91,6 +91,13 @@ router.post(
                 });
             }
 
+            // Validate user has verified phone number
+            if (!req.user.phoneVerified) {
+                return res.status(400).json({
+                    error: 'Please verify your phone number through WhatsApp before performing this action.'
+                });
+            }
+
             // Debug logging
             console.log("📝 Waste Report Request Body:", {
                 location,
@@ -226,12 +233,13 @@ router.post(
  */
 router.get("/report", async (req, res) => {
     try {
-        const { status = "PENDING", city, mine } = req.query;
+        const { status, city, mine } = req.query;
 
         // Build query filter
-        const where = {
-            status: status,
-        };
+        const where = {};
+        if (status) {
+            where.status = status;
+        }
 
         // Add city filter if provided
         if (city) {
@@ -307,6 +315,13 @@ router.post(
                 });
             }
 
+            // Validate user has verified phone number
+            if (!req.user.phoneVerified) {
+                return res.status(400).json({
+                    error: 'Please verify your phone number through WhatsApp before performing this action.'
+                });
+            }
+
             // Validate user has collector enabled
             if (!req.user.enableCollector) {
                 return res.status(403).json({
@@ -335,13 +350,13 @@ router.post(
                 });
             }
 
-            if (waste.status === "PENDING") {
-                return res.status(400).json({
-                    error: "Waste must be added to route first (status must be IN_PROGRESS)",
-                });
-            }
+            // if (waste.status === "PENDING") {
+            //     return res.status(400).json({
+            //         error: "Waste must be added to route first (status must be IN_PROGRESS)",
+            //     });
+            // }
 
-            if (waste.status !== "IN_PROGRESS") {
+            if (waste.status !== "IN_PROGRESS" && waste.status !== "PENDING") {
                 return res.status(400).json({
                     error: `Cannot collect waste with status: ${waste.status}`,
                 });
