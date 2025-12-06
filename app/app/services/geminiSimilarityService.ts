@@ -1,7 +1,7 @@
 import { GoogleGenerativeAI } from "@google/generative-ai";
-import * as FileSystem from "expo-file-system";
+import * as FileSystem from "expo-file-system/legacy";
 
-const GEMINI_API_KEY = "AIzaSyBSMbr-Coh7YbWh_j-a-qQucn_KtXwuGSw";
+const GEMINI_API_KEY = process.env.EXPO_PUBLIC_GEMINI_API_KEY as string;
 const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
 
 // Similarity analysis for small waste items
@@ -24,9 +24,51 @@ export interface LargeWasteSimilarity {
 export type SimilarityResult = SmallWasteSimilarity | LargeWasteSimilarity;
 
 /**
+ * Downloads an image from URL or reads from local file system
+ * @param uri - Image URI (can be URL or local file path)
+ * @returns Base64 string of the image
+ */
+async function getImageAsBase64(uri: string): Promise<string> {
+  try {
+    // Check if it's a URL (http/https)
+    if (uri.startsWith("http://") || uri.startsWith("https://")) {
+      console.log("📥 Downloading image from URL:", uri);
+      
+      // Download the image to cache directory
+      const filename = uri.split("/").pop() || `temp-${Date.now()}.jpg`;
+      const localUri = `${FileSystem.cacheDirectory}${filename}`;
+      
+      const downloadResult = await FileSystem.downloadAsync(uri, localUri);
+      console.log("✅ Downloaded to:", downloadResult.uri);
+      
+      // Read the downloaded file as base64
+      const base64 = await FileSystem.readAsStringAsync(downloadResult.uri, {
+        encoding: "base64",
+      });
+      
+      return base64;
+    } else {
+      // Local file - read directly
+      console.log("📂 Reading local file:", uri);
+      const base64 = await FileSystem.readAsStringAsync(uri, {
+        encoding: "base64",
+      });
+      return base64;
+    }
+  } catch (error) {
+    console.error("❌ Error reading image:", error);
+    throw new Error(
+      `Failed to read image from ${uri}: ${
+        error instanceof Error ? error.message : "Unknown error"
+      }`
+    );
+  }
+}
+
+/**
  * Analyzes if two waste images show the same waste instance
- * @param originalImageUri - URI of the originally reported waste image
- * @param collectorImageUri - URI of the collector's verification image
+ * @param originalImageUri - URI of the originally reported waste image (can be S3 URL or local)
+ * @param collectorImageUri - URI of the collector's verification image (local file)
  * @param wasteCategory - "small" or "large" from original report
  * @returns Similarity analysis with validation data
  */
@@ -38,22 +80,14 @@ export async function compareWasteImages(
   try {
     console.log("🔍 Starting Gemini similarity analysis...");
     console.log("Category:", wasteCategory);
+    console.log("Original URI:", originalImageUri);
+    console.log("Collector URI:", collectorImageUri);
 
-    // Convert images to base64
-    const originalBase64 = await FileSystem.readAsStringAsync(
-      originalImageUri,
-      {
-        encoding: "base64",
-      }
-    );
-    const collectorBase64 = await FileSystem.readAsStringAsync(
-      collectorImageUri,
-      {
-        encoding: "base64",
-      }
-    );
+    // Convert images to base64 (handles both URLs and local files)
+    const originalBase64 = await getImageAsBase64(originalImageUri);
+    const collectorBase64 = await getImageAsBase64(collectorImageUri);
 
-    const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+    const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
 
     let prompt: string;
     let schema: any;
