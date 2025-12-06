@@ -19,7 +19,7 @@ import {
   MarketplaceListing,
   formatTimeRemaining,
   calculateTimeRemaining,
-} from "../../services/marketplaceService";
+} from "../services/marketplaceService";
 
 export default function MarketplaceScreen() {
   const { user } = useUser();
@@ -56,11 +56,11 @@ export default function MarketplaceScreen() {
   };
 
   const handleListingPress = (listingId: string) => {
-    router.push(`/marketplace/${listingId}` as any);
+    router.push(`/(marketplace)/${listingId}` as any);
   };
 
   const handleCreateListing = () => {
-    router.push("/marketplace/create" as any);
+    router.push("/(marketplace)/create" as any);
   };
 
   const getWasteTypeColor = (wasteType: string) => {
@@ -312,19 +312,6 @@ export default function MarketplaceScreen() {
               );
             })
           )}
-        </YStack>
-
-        {/* My Listings Link */}
-        <YStack padding="$4" paddingTop="$0">
-          <Button
-            onPress={() => router.push("/marketplace/my-listings" as any)}
-            backgroundColor="$gray5"
-            color="$gray12"
-            fontWeight="600"
-            size="$4"
-          >
-            View My Listings
-          </Button>
         </YStack>
       </ScrollView>
     </Theme>

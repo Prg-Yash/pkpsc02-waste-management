@@ -4,8 +4,19 @@ import { prisma } from "../lib/prisma.js";
 import { uploadToS3, generateMarketplaceImageKey } from "../lib/s3Uploader.js";
 import { createNotification } from "../lib/notifications.js";
 import crypto from "crypto";
+import QRCode from "qrcode";
+import nodemailer from "nodemailer";
 
 const router = express.Router();
+
+// Email transporter configuration
+const emailTransporter = nodemailer.createTransport({
+  service: process.env.EMAIL_SERVICE || "gmail", // Default to Gmail
+  auth: {
+    user: process.env.EMAIL_USER,
+    pass: process.env.EMAIL_PASS,
+  },
+});
 
 // Configure multer to store files in memory
 const upload = multer({
@@ -274,12 +285,16 @@ router.get("/:id", async (req, res) => {
             name: true,
             city: true,
             state: true,
+            phone: true,
+            email: true,
           },
         },
         winner: {
           select: {
             id: true,
             name: true,
+            phone: true,
+            email: true,
           },
         },
         bids: {
@@ -446,9 +461,9 @@ router.post("/:id/bid", async (req, res) => {
 });
 
 /**
- * Helper function to finalize auction when time expires
+ * Helper function to finalize auction when time expires or manually closed
  */
-async function finalizeAuction(listingId) {
+async function finalizeAuction(listingId, manualClose = false) {
   try {
     const listing = await prisma.marketplaceListing.findUnique({
       where: { id: listingId },
@@ -468,9 +483,12 @@ async function finalizeAuction(listingId) {
       return;
     }
 
-    const now = new Date();
-    if (new Date(listing.auctionEndTime) > now) {
-      return; // Auction hasn't ended yet
+    // Skip time check if manually closed by seller
+    if (!manualClose) {
+      const now = new Date();
+      if (new Date(listing.auctionEndTime) > now) {
+        return; // Auction hasn't ended yet
+      }
     }
 
     // Find winner (highest bidder)
@@ -479,6 +497,26 @@ async function finalizeAuction(listingId) {
     if (winningBid) {
       // Generate verification code
       const verificationCode = crypto.randomBytes(16).toString("hex");
+      console.log(`🎲 Generated verification code for listing ${listingId}`);
+
+      // Generate QR code as buffer for email attachment
+      let qrCodeBuffer = null;
+      try {
+        qrCodeBuffer = await QRCode.toBuffer(verificationCode, {
+          width: 400,
+          margin: 2,
+          color: {
+            dark: "#000000",
+            light: "#FFFFFF",
+          },
+          type: "png",
+        });
+        console.log(
+          `✅ QR code generated successfully (${qrCodeBuffer.length} bytes)`
+        );
+      } catch (qrError) {
+        console.error("❌ Error generating QR code:", qrError);
+      }
 
       // Update listing with winner
       await prisma.marketplaceListing.update({
@@ -490,7 +528,113 @@ async function finalizeAuction(listingId) {
         },
       });
 
-      // Notify winner
+      // Send email to winner with QR code
+      if (process.env.EMAIL_USER && qrCodeBuffer) {
+        console.log(
+          `📧 Attempting to send email to: ${winningBid.bidder.email}`
+        );
+        console.log(
+          `   Email config: ${process.env.EMAIL_USER} / Pass: ${
+            process.env.EMAIL_PASS
+              ? "***" + process.env.EMAIL_PASS.slice(-4)
+              : "NOT SET"
+          }`
+        );
+        try {
+          const emailHtml = `
+            <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
+              <h1 style="color: #16a34a; text-align: center;">🎉 Congratulations! You Won the Auction! 🎉</h1>
+              
+              <div style="background: #f0fdf4; border-left: 4px solid #16a34a; padding: 15px; margin: 20px 0;">
+                <h2 style="margin-top: 0; color: #15803d;">Auction Details</h2>
+                <p><strong>Item:</strong> ${listing.wasteType}</p>
+                <p><strong>Your Winning Bid:</strong> ₹${winningBid.amount}</p>
+                <p><strong>Quantity:</strong> ${listing.quantity} ${
+            listing.unit
+          }</p>
+                ${
+                  listing.location
+                    ? `<p><strong>Pickup Location:</strong> ${listing.location}</p>`
+                    : ""
+                }
+              </div>
+
+              <div style="background: #eff6ff; border-left: 4px solid #2563eb; padding: 15px; margin: 20px 0;">
+                <h2 style="margin-top: 0; color: #1e40af;">Seller Contact Information</h2>
+                <p><strong>Name:</strong> ${listing.seller.name}</p>
+                ${
+                  listing.seller.phone
+                    ? `<p><strong>Phone:</strong> ${listing.seller.phone}</p>`
+                    : ""
+                }
+                ${
+                  listing.seller.email
+                    ? `<p><strong>Email:</strong> ${listing.seller.email}</p>`
+                    : ""
+                }
+              </div>
+
+              <div style="background: #fef3c7; border-left: 4px solid #f59e0b; padding: 15px; margin: 20px 0;">
+                <h2 style="margin-top: 0; color: #d97706;">📱 Your QR Code for Pickup</h2>
+                <p>Show this QR code to the seller during pickup. The seller will scan it to confirm the transaction and release the points.</p>
+                <div style="text-align: center; margin: 20px 0;">
+                  <img src="cid:qrcode" alt="Verification QR Code" style="max-width: 300px; border: 2px solid #d97706; border-radius: 8px;" />
+                </div>
+                <p style="font-size: 12px; color: #92400e; text-align: center;">Verification Code: ${verificationCode}</p>
+              </div>
+
+              <div style="background: #fee2e2; border-left: 4px solid #dc2626; padding: 15px; margin: 20px 0;">
+                <h3 style="margin-top: 0; color: #991b1b;">⚠️ Important Instructions</h3>
+                <ol>
+                  <li>Contact the seller using the information above to arrange pickup</li>
+                  <li>Bring this QR code (screenshot or show on phone) during pickup</li>
+                  <li>The seller will scan your QR code to verify the transaction</li>
+                  <li>You'll receive <strong>+${BUYER_COMPLETION_POINTS} EcoPoints</strong> after verification</li>
+                  <li>The seller will receive <strong>+${LISTING_COMPLETION_POINTS} EcoPoints</strong></li>
+                </ol>
+              </div>
+
+              <div style="text-align: center; margin-top: 30px; padding-top: 20px; border-top: 1px solid #e5e7eb;">
+                <p style="color: #6b7280; font-size: 14px;">Thank you for participating in our marketplace!</p>
+                <p style="color: #6b7280; font-size: 12px;">This is an automated email. Please do not reply.</p>
+              </div>
+            </div>
+          `;
+
+          await emailTransporter.sendMail({
+            from: process.env.EMAIL_USER,
+            to: winningBid.bidder.email,
+            subject: `🎉 You Won! ${listing.wasteType} Auction - Pickup QR Code Inside`,
+            html: emailHtml,
+            attachments: [
+              {
+                filename: "qr-code.png",
+                content: qrCodeBuffer,
+                contentType: "image/png",
+                cid: "qrcode", // Content ID for embedding in HTML
+              },
+            ],
+          });
+
+          console.log(
+            `✅ Email sent successfully to winner: ${winningBid.bidder.email}`
+          );
+        } catch (emailError) {
+          console.error(
+            "❌ Error sending email to winner:",
+            emailError.message
+          );
+          console.error("   Full error:", emailError);
+          // Continue execution even if email fails
+        }
+      } else {
+        console.log(
+          `⚠️ Email NOT sent - EMAIL_USER: ${!!process.env
+            .EMAIL_USER}, QR Code: ${!!qrCodeDataUrl}`
+        );
+      }
+
+      // Notify winner (in-app notification)
       await createNotification({
         userId: winningBid.bidderId,
         type: "AUCTION_WON",
@@ -653,8 +797,84 @@ router.post("/:id/verify-qr", async (req, res) => {
 });
 
 /**
+ * POST /api/marketplace/:id/close-bid
+ * Close auction early and finalize with current highest bidder (seller only)
+ */
+router.post("/:id/close-bid", async (req, res) => {
+  try {
+    const userId = req.headers["x-user-id"];
+    const { id } = req.params;
+
+    const listing = await prisma.marketplaceListing.findUnique({
+      where: { id },
+      include: {
+        bids: {
+          orderBy: { amount: "desc" },
+          take: 1,
+          include: {
+            bidder: true,
+          },
+        },
+      },
+    });
+
+    if (!listing) {
+      return res.status(404).json({ error: "Listing not found" });
+    }
+
+    if (listing.sellerId !== userId) {
+      return res.status(403).json({ error: "Only seller can close the bid" });
+    }
+
+    if (listing.status !== "ACTIVE") {
+      return res.status(400).json({ error: "Listing is not active" });
+    }
+
+    if (!listing.bids || listing.bids.length === 0) {
+      return res.status(400).json({
+        error: "Cannot close auction with no bids. Use cancel instead.",
+      });
+    }
+
+    // Finalize auction manually (skip time check)
+    await finalizeAuction(id, true);
+
+    const updatedListing = await prisma.marketplaceListing.findUnique({
+      where: { id },
+      include: {
+        seller: {
+          select: {
+            id: true,
+            name: true,
+            phone: true,
+            email: true,
+          },
+        },
+        winner: {
+          select: {
+            id: true,
+            name: true,
+            phone: true,
+            email: true,
+          },
+        },
+      },
+    });
+
+    res.json({
+      success: true,
+      message: "Auction closed successfully",
+      listing: updatedListing,
+    });
+  } catch (error) {
+    console.error("Error closing bid:", error);
+    res.status(500).json({ error: "Failed to close bid" });
+  }
+});
+
+/**
  * POST /api/marketplace/:id/cancel
- * Cancel a listing (only seller, only if no bids)
+ * Cancel listing (seller only, no bids)
  */
 router.post("/:id/cancel", async (req, res) => {
   try {

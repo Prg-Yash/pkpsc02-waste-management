@@ -121,6 +121,7 @@ app.use("/api/public", publicRoutePlannerRoutes);
 app.use("/api/newsletter", newsletterRoutes);
 app.use("/api/marketplace", marketplaceRoutes);
 app.use("/api/marketplace", marketplaceRoutes);
+app.use("/api/test", testRoutes);
 app.use("/api/public", publicRoutePlannerRoutes);
 
 // 404 handler
