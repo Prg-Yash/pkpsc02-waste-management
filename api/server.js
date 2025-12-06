@@ -15,7 +15,6 @@ import publicRoutePlannerRoutes from "./routes/publicRoutePlanner.js";
 import newsletterRoutes from "./routes/newsletter.js";
 import marketplaceRoutes from "./routes/marketplace.js";
 
-
 const app = express();
 
 app.use(
@@ -72,23 +71,23 @@ app.use(express.urlencoded({ extended: true }));
 
 // Health check
 app.get("/", (req, res) => {
-    res.json({
-        status: "ok",
-        message: "EcoFlow Waste Management API",
-        version: "1.0.0",
-        endpoints: {
-            user: "/api/user/me",
-            waste: "/api/waste/report",
-            notifications: "/api/notifications",
-            webhook: "/api/webhooks/clerk",
-            leaderboard: "/api/leaderboard/global",
-            routePlanner: "/api/route-planner",
-            phoneVerification: "/api/phone/send-otp",
-            whatsappMessaging: "/api/whatsapp/enable",
-            publicRoutePlanner: "/api/public/route-planner (no auth)",
-            newsletter: "/api/newsletter/generate/:userId",
-        },
-    });
+  res.json({
+    status: "ok",
+    message: "EcoFlow Waste Management API",
+    version: "1.0.0",
+    endpoints: {
+      user: "/api/user/me",
+      waste: "/api/waste/report",
+      notifications: "/api/notifications",
+      webhook: "/api/webhooks/clerk",
+      leaderboard: "/api/leaderboard/global",
+      routePlanner: "/api/route-planner",
+      phoneVerification: "/api/phone/send-otp",
+      whatsappMessaging: "/api/whatsapp/enable",
+      publicRoutePlanner: "/api/public/route-planner (no auth)",
+      newsletter: "/api/newsletter/generate/:userId",
+    },
+  });
   res.json({
     status: "ok",
     message: "EcoFlow Waste Management API",
@@ -121,7 +120,7 @@ app.use("/api/public", publicRoutePlannerRoutes);
 app.use("/api/newsletter", newsletterRoutes);
 app.use("/api/marketplace", marketplaceRoutes);
 app.use("/api/marketplace", marketplaceRoutes);
-app.use("/api/test", testRoutes);
+// app.use("/api/test", testRoutes);
 app.use("/api/public", publicRoutePlannerRoutes);
 
 // 404 handler
