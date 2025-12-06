@@ -253,7 +253,7 @@ x-user-id: user_xxxxx
 
 ### Validation Behavior
 
-If any address field (`city`, `state`, or `country`) is missing or null:
+If any address field (`city`, `state`, or `country`) is missing or null when attempting restricted operations:
 
 **Request**:
 ```bash
@@ -268,6 +268,11 @@ curl -X POST http://localhost:3000/api/waste/report \
   "error": "Please update your profile with city, state, and country before reporting or collecting waste."
 }
 ```
+
+**Note**: This validation applies to:
+- `POST /api/waste/report` - Report new waste
+- `POST /api/waste/:id/collect` - Collect waste
+- `POST /api/route-planner/add` - Add waste to route planner
 
 ### Why Address is Required
 

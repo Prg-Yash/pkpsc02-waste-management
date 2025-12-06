@@ -84,6 +84,13 @@ router.post(
                 aiAnalysis, // AI analysis JSON data (contains wasteType, estimatedWeightKg, notes)
             } = req.body;
 
+            // Validate user has address fields set
+            if (!req.user.city || !req.user.state || !req.user.country) {
+                return res.status(400).json({
+                    error: 'Please update your profile with city, state, and country before reporting or collecting waste.'
+                });
+            }
+
             // Debug logging
             console.log("📝 Waste Report Request Body:", {
                 location,
@@ -292,6 +299,13 @@ router.post(
             const wasteId = req.params.id;
             const { collectorLocation, isLocationLatLng, latitude, longitude } =
                 req.body;
+
+            // Validate user has address fields set
+            if (!req.user.city || !req.user.state || !req.user.country) {
+                return res.status(400).json({
+                    error: 'Please update your profile with city, state, and country before reporting or collecting waste.'
+                });
+            }
 
             // Validate user has collector enabled
             if (!req.user.enableCollector) {
