@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { AdminHeader } from "@/components/admin-header"
 import { Button } from "@/components/ui/button"
@@ -20,37 +20,115 @@ import {
   Calendar,
   ArrowUpRight,
   ArrowDownRight,
+  Loader2,
 } from "lucide-react"
 import { motion } from "framer-motion"
 import { AnimatedContainer, StaggerContainer, StaggerItem, HoverScale } from "@/components/animated-container"
-
-const cityStats = [
-  { city: "New Delhi", totalWaste: 4250, recycled: 3150, users: 12500, tokens: 45000, trend: "up", change: 12 },
-  { city: "Mumbai", totalWaste: 5800, recycled: 4060, users: 18200, tokens: 62000, trend: "up", change: 8 },
-  { city: "Bangalore", totalWaste: 3200, recycled: 2560, users: 9800, tokens: 38000, trend: "up", change: 15 },
-  { city: "Chennai", totalWaste: 2800, recycled: 1960, users: 7500, tokens: 28000, trend: "down", change: 3 },
-  { city: "Hyderabad", totalWaste: 2400, recycled: 1920, users: 6200, tokens: 24000, trend: "up", change: 10 },
-  { city: "Pune", totalWaste: 1800, recycled: 1440, users: 4800, tokens: 18000, trend: "up", change: 18 },
-]
-
-const monthlyData = [
-  { month: "Jul", waste: 15200, recycled: 11400, tokens: 125000 },
-  { month: "Aug", waste: 16800, recycled: 12600, tokens: 138000 },
-  { month: "Sep", waste: 17500, recycled: 13125, tokens: 145000 },
-  { month: "Oct", waste: 18200, recycled: 14560, tokens: 156000 },
-  { month: "Nov", waste: 19100, recycled: 15280, tokens: 168000 },
-  { month: "Dec", waste: 20250, recycled: 16200, tokens: 182000 },
-]
+import { generateCityReportPDF } from "@/lib/pdfGenerator"
 
 export default function CityReportsPage() {
   const [selectedCity, setSelectedCity] = useState("all")
   const [timeRange, setTimeRange] = useState("6m")
   const [reportType, setReportType] = useState("overview")
+  const [cityStats, setCityStats] = useState([])
+  const [monthlyData, setMonthlyData] = useState([])
+  const [totals, setTotals] = useState({
+    totalWaste: 0,
+    totalRecycled: 0,
+    totalUsers: 0,
+    totalTokens: 0,
+  })
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState(null)
+  const [generatingPDF, setGeneratingPDF] = useState(false)
 
-  const totalWaste = cityStats.reduce((sum, city) => sum + city.totalWaste, 0)
-  const totalRecycled = cityStats.reduce((sum, city) => sum + city.recycled, 0)
-  const totalUsers = cityStats.reduce((sum, city) => sum + city.users, 0)
-  const totalTokens = cityStats.reduce((sum, city) => sum + city.tokens, 0)
+  // Handle PDF generation
+  const handleGeneratePDF = () => {
+    try {
+      setGeneratingPDF(true)
+      generateCityReportPDF({
+        cityStats,
+        monthlyData,
+        totals,
+        timeRange,
+        selectedCity,
+      })
+    } catch (err) {
+      console.error("Error generating PDF:", err)
+      alert("Failed to generate PDF. Please try again.")
+    } finally {
+      setGeneratingPDF(false)
+    }
+  }
+
+  // Fetch city reports data
+  useEffect(() => {
+    const fetchCityReports = async () => {
+      try {
+        setLoading(true)
+        setError(null)
+        
+        const params = new URLSearchParams({
+          timeRange,
+          city: selectedCity,
+        })
+        
+        const response = await fetch(`/api/city-reports?${params.toString()}`)
+        
+        if (!response.ok) {
+          throw new Error("Failed to fetch city reports")
+        }
+        
+        const data = await response.json()
+        setCityStats(data.cityStats || [])
+        setMonthlyData(data.monthlyData || [])
+        setTotals(data.totals || {
+          totalWaste: 0,
+          totalRecycled: 0,
+          totalUsers: 0,
+          totalTokens: 0,
+        })
+      } catch (err) {
+        console.error("Error fetching city reports:", err)
+        setError(err.message || "Failed to load city reports")
+      } finally {
+        setLoading(false)
+      }
+    }
+    
+    fetchCityReports()
+  }, [timeRange, selectedCity])
+
+  const { totalWaste, totalRecycled, totalUsers, totalTokens } = totals
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center min-h-[400px]">
+        <div className="flex flex-col items-center gap-4">
+          <Loader2 className="h-8 w-8 animate-spin text-primary" />
+          <p className="text-muted-foreground">Loading city reports...</p>
+        </div>
+      </div>
+    )
+  }
+
+  if (error) {
+    return (
+      <div className="space-y-6">
+        <AnimatedContainer>
+          <AdminHeader title="City-Level Reports" subtitle="Generate and analyze waste management reports by city" />
+        </AnimatedContainer>
+        <Card className="border-destructive">
+          <CardContent className="p-6">
+            <p className="text-destructive">Error: {error}</p>
+          </CardContent>
+        </Card>
+      </div>
+    )
+  }
+
+  // Get unique cities for dropdown (from all data, not filtered)
+  const allCities = Array.from(new Set(cityStats.map(c => c.city))).sort()
 
   return (
     <div className="space-y-6">
@@ -69,9 +147,9 @@ export default function CityReportsPage() {
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="all">All Cities</SelectItem>
-                    {cityStats.map((city) => (
-                      <SelectItem key={city.city} value={city.city.toLowerCase()}>
-                        {city.city}
+                    {allCities.map((city) => (
+                      <SelectItem key={city} value={city.toLowerCase()}>
+                        {city}
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -101,9 +179,23 @@ export default function CityReportsPage() {
               </div>
               <div className="flex gap-2">
                 <motion.div whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}>
-                  <Button variant="outline" className="bg-transparent">
-                    <FileText className="mr-2 h-4 w-4" />
-                    Generate PDF
+                  <Button 
+                    variant="outline" 
+                    className="bg-transparent"
+                    onClick={handleGeneratePDF}
+                    disabled={generatingPDF || loading}
+                  >
+                    {generatingPDF ? (
+                      <>
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        Generating...
+                      </>
+                    ) : (
+                      <>
+                        <FileText className="mr-2 h-4 w-4" />
+                        Generate PDF
+                      </>
+                    )}
                   </Button>
                 </motion.div>
                 <motion.div whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}>
@@ -123,26 +215,36 @@ export default function CityReportsPage() {
           {
             icon: Trash2,
             label: "Total Waste Collected",
-            value: `${(totalWaste / 1000).toFixed(1)} tons`,
-            change: "+12% from last period",
+            value: totalWaste >= 1000 
+              ? `${(totalWaste / 1000).toFixed(1)} tons`
+              : `${totalWaste} kg`,
+            change: totalWaste > 0 ? "Real-time data" : "No data available",
           },
           {
             icon: TrendingUp,
             label: "Recycling Rate",
-            value: `${((totalRecycled / totalWaste) * 100).toFixed(1)}%`,
-            change: "+5% improvement",
+            value: totalWaste > 0
+              ? `${((totalRecycled / totalWaste) * 100).toFixed(1)}%`
+              : "0%",
+            change: totalWaste > 0 
+              ? `${totalRecycled.toLocaleString()} kg recycled`
+              : "No data available",
           },
           {
             icon: Users,
             label: "Active Users",
-            value: `${(totalUsers / 1000).toFixed(1)}K`,
-            change: "+2.5K new users",
+            value: totalUsers >= 1000
+              ? `${(totalUsers / 1000).toFixed(1)}K`
+              : `${totalUsers}`,
+            change: `${totalUsers} total users`,
           },
           {
             icon: Coins,
             label: "Tokens Distributed",
-            value: `${(totalTokens / 1000).toFixed(0)}K`,
-            change: "+18% this month",
+            value: totalTokens >= 1000
+              ? `${(totalTokens / 1000).toFixed(0)}K`
+              : `${totalTokens}`,
+            change: `${totalTokens.toLocaleString()} total tokens`,
           },
         ].map((stat, index) => (
           <StaggerItem key={stat.label}>
@@ -160,8 +262,7 @@ export default function CityReportsPage() {
                       >
                         {stat.value}
                       </motion.p>
-                      <p className="mt-1 flex items-center gap-1 text-xs font-medium text-primary">
-                        <ArrowUpRight className="h-3 w-3" />
+                      <p className="mt-1 flex items-center gap-1 text-xs font-medium text-muted-foreground">
                         {stat.change}
                       </p>
                     </div>
@@ -191,8 +292,15 @@ export default function CityReportsPage() {
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="space-y-4">
-                {monthlyData.map((data, index) => (
+              {monthlyData.length === 0 ? (
+                <div className="flex items-center justify-center py-8 text-muted-foreground">
+                  <p>No monthly data available for the selected period</p>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {monthlyData.map((data, index) => {
+                    const maxWaste = Math.max(...monthlyData.map(d => d.waste), 1)
+                    return (
                   <motion.div
                     key={data.month}
                     className="space-y-2"
@@ -208,19 +316,21 @@ export default function CityReportsPage() {
                       <motion.div
                         className="rounded-l bg-primary/30"
                         initial={{ width: 0 }}
-                        animate={{ width: `${(data.waste / 25000) * 100}%` }}
+                        animate={{ width: `${(data.waste / maxWaste) * 100}%` }}
                         transition={{ delay: 0.4 + index * 0.08, duration: 0.5 }}
                       />
                       <motion.div
                         className="rounded-r bg-primary"
                         initial={{ width: 0 }}
-                        animate={{ width: `${(data.recycled / 25000) * 100}%` }}
+                        animate={{ width: `${(data.recycled / maxWaste) * 100}%` }}
                         transition={{ delay: 0.5 + index * 0.08, duration: 0.5 }}
                       />
                     </div>
                   </motion.div>
-                ))}
-              </div>
+                    )
+                  })}
+                </div>
+              )}
               <motion.div
                 className="mt-4 flex items-center gap-4 text-sm"
                 initial={{ opacity: 0 }}
@@ -249,8 +359,13 @@ export default function CityReportsPage() {
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="space-y-4">
-                {cityStats.slice(0, 5).map((city, index) => (
+              {cityStats.length === 0 ? (
+                <div className="flex items-center justify-center py-8 text-muted-foreground">
+                  <p>No city data available for the selected period</p>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {cityStats.slice(0, 5).map((city, index) => (
                   <motion.div
                     key={city.city}
                     className="space-y-2"
@@ -291,11 +406,15 @@ export default function CityReportsPage() {
                       transition={{ delay: 0.4 + index * 0.08, duration: 0.5 }}
                       style={{ originX: 0 }}
                     >
-                      <Progress value={(city.recycled / city.totalWaste) * 100} className="h-2" />
+                      <Progress 
+                        value={city.totalWaste > 0 ? (city.recycled / city.totalWaste) * 100 : 0} 
+                        className="h-2" 
+                      />
                     </motion.div>
                   </motion.div>
-                ))}
-              </div>
+                  ))}
+                </div>
+              )}
             </CardContent>
           </Card>
         </AnimatedContainer>
@@ -307,7 +426,7 @@ export default function CityReportsPage() {
             <CardTitle className="text-lg font-semibold">City-wise Breakdown</CardTitle>
             <div className="flex items-center gap-2 text-sm text-muted-foreground">
               <Calendar className="h-4 w-4" />
-              Last updated: Dec 6, 2024
+              Last updated: {new Date().toLocaleDateString()}
             </div>
           </CardHeader>
           <CardContent>
@@ -324,7 +443,14 @@ export default function CityReportsPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {cityStats.map((city, index) => (
+                {cityStats.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
+                      No city data available for the selected period
+                    </TableCell>
+                  </TableRow>
+                ) : (
+                  cityStats.map((city, index) => (
                   <motion.tr
                     key={city.city}
                     initial={{ opacity: 0, y: 20 }}
@@ -349,9 +475,16 @@ export default function CityReportsPage() {
                           transition={{ delay: 0.5 + index * 0.05, duration: 0.3 }}
                           style={{ originX: 0 }}
                         >
-                          <Progress value={(city.recycled / city.totalWaste) * 100} className="h-2 w-20" />
+                          <Progress 
+                            value={city.totalWaste > 0 ? (city.recycled / city.totalWaste) * 100 : 0} 
+                            className="h-2 w-20" 
+                          />
                         </motion.div>
-                        <span className="text-sm">{((city.recycled / city.totalWaste) * 100).toFixed(0)}%</span>
+                        <span className="text-sm">
+                          {city.totalWaste > 0 
+                            ? `${((city.recycled / city.totalWaste) * 100).toFixed(0)}%`
+                            : "0%"}
+                        </span>
                       </div>
                     </TableCell>
                     <TableCell>{city.users.toLocaleString()}</TableCell>
@@ -381,7 +514,8 @@ export default function CityReportsPage() {
                       )}
                     </TableCell>
                   </motion.tr>
-                ))}
+                  ))
+                )}
               </TableBody>
             </Table>
           </CardContent>
