@@ -46,6 +46,7 @@ model User {
   phoneVerified            Boolean @default(false)
   whatsappMessagingEnabled Boolean @default(false)
   enableCollector          Boolean @default(false)
+  newsletterEnabled        Boolean @default(true)
 
   city    String?
   state   String?

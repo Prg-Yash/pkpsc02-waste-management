@@ -156,7 +156,7 @@ router.get("/me", authenticateUser, async (req, res) => {
  */
 router.patch('/me', authenticateUser, async (req, res) => {
     try {
-        const { name, phone, city, state, country, enableCollector } = req.body;
+        const { name, phone, city, state, country, enableCollector, newsletterEnabled } = req.body;
 
         // Validate phone number format if provided
         if (phone !== undefined && phone !== null && phone !== '') {
@@ -193,6 +193,7 @@ router.patch('/me', authenticateUser, async (req, res) => {
             ...(name !== undefined && { name }),
             ...(phone !== undefined && { phone: phone ? phone.trim() : phone }),
             ...(enableCollector !== undefined && { enableCollector }),
+            ...(newsletterEnabled !== undefined && { newsletterEnabled }),
             ...(city !== undefined && { city: city || null }),
             ...(state !== undefined && { state: state || null }),
             ...(country !== undefined && { country: country || null }),
