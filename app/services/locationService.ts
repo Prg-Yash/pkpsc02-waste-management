@@ -1,5 +1,6 @@
 // Location Service - Reverse Geocoding with Google Maps
-const GOOGLE_MAPS_API_KEY = "AIzaSyD-bHNjWHiLo06gzIAPq6R1YqJD5DmQ_SY"; // Normally from env
+const GOOGLE_MAPS_API_KEY = process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY as string;
+; // Normally from env
 
 export interface LocationData {
   latitude: number;

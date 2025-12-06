@@ -1,5 +1,6 @@
 import React from "react";
 import {
+  ScrollView,
   YStack,
   XStack,
   Text,
@@ -299,7 +300,7 @@ export default function CollectorVerificationScreen({
   // Step: "capture"
   return (
     <Theme name="light">
-      <YStack flex={1} backgroundColor="$background">
+      <ScrollView flex={1} backgroundColor="$background">
         {/* Header */}
         <YStack backgroundColor="$blue9" padding="$5" paddingTop="$10">
           <H2 color="white" fontWeight="bold">
@@ -425,7 +426,7 @@ export default function CollectorVerificationScreen({
         </YStack>
 
         {/* Action Buttons */}
-        <YStack padding="$4" gap="$3" marginTop="auto">
+        <YStack padding="$4" gap="$3">
           <Button
             onPress={handleVerify}
             backgroundColor="$green9"
@@ -456,6 +457,7 @@ export default function CollectorVerificationScreen({
           borderRadius="$4"
           borderLeftWidth={4}
           borderLeftColor="$blue9"
+          marginBottom="$4"
         >
           <H4 color="$blue11" fontWeight="bold" marginBottom="$2" fontSize="$3">
             ℹ️ Verification Process
@@ -465,7 +467,7 @@ export default function CollectorVerificationScreen({
             original{"\n"}• Confidence must be ≥60%
           </Paragraph>
         </YStack>
-      </YStack>
+      </ScrollView>
     </Theme>
   );
 }
