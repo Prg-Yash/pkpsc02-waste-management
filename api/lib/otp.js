@@ -58,11 +58,14 @@ export async function sendWhatsAppOTP(phoneNumber, otp) {
             throw new Error('WhatsApp API credentials not configured');
         }
 
+        // Ensure phone number has + prefix for WhatsApp API
+        const formattedPhone = phoneNumber.startsWith('+') ? phoneNumber : `+${phoneNumber}`;
+
         const url = `${WHATSAPP_BASE_URL}/${WHATSAPP_PHONE_NUMBER_ID}/messages`;
 
         const requestBody = {
             messaging_product: 'whatsapp',
-            to: phoneNumber,
+            to: formattedPhone,
             type: 'template',
             template: {
                 name: WHATSAPP_TEMPLATE_NAME,
@@ -94,7 +97,7 @@ export async function sendWhatsAppOTP(phoneNumber, otp) {
             }
         };
 
-        console.log('📱 Sending WhatsApp OTP to:', phoneNumber);
+        console.log('📱 Sending WhatsApp OTP to:', formattedPhone);
         console.log('🔧 Using template:', WHATSAPP_TEMPLATE_NAME);
 
         const response = await fetch(url, {

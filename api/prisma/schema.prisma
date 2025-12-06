@@ -23,12 +23,13 @@ enum NotificationType {
 }
 
 model User {
-  id              String  @id
-  email           String  @unique
-  name            String?
-  phone           String?
-  phoneVerified   Boolean @default(false)
-  enableCollector Boolean @default(false)
+  id                       String  @id
+  email                    String  @unique
+  name                     String?
+  phone                    String?
+  phoneVerified            Boolean @default(false)
+  whatsappMessagingEnabled Boolean @default(false)
+  enableCollector          Boolean @default(false)
 
   city    String?
   state   String?
