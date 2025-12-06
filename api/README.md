@@ -138,7 +138,8 @@ The test interface provides forms for:
 
 **WasteStatus**:
 
-- `PENDING` - Awaiting collection
+- `PENDING` - Awaiting addition to a collector's route
+- `IN_PROGRESS` - Added to a collector's route, ready for collection
 - `COLLECTED` - Successfully collected
 
 **NotificationType**:
@@ -166,7 +167,8 @@ The test interface provides forms for:
 
 - `id` (String, PK)
 - `reporterId` (String, FK → User)
-- `collectorId` (String, optional, FK → User)
+- `collectorId` (String, optional, FK → User) - Who actually collected the waste
+- `routeCollectorId` (String, optional, FK → User) - Who added waste to their route (persists after collection)
 - `imageUrl` (String) - S3 URL of waste image
 - `collectorImageUrl` (String, optional) - S3 URL of collection proof
 - `aiAnalysis` (JSON, optional) - AI-generated waste analysis containing:
@@ -216,7 +218,75 @@ The test interface provides forms for:
 
 The `/api/webhooks/clerk` endpoint is the ONLY place using Clerk authentication to sync users.
 
-## 📡 API Endpoints
+## � User Address Requirements
+
+**IMPORTANT**: Users must set their address before performing location-based operations.
+
+### Required Fields
+
+Before users can:
+- Report waste (`POST /api/waste/report`)
+- Collect waste (`POST /api/waste/:id/collect`)
+- Add waste to route planner (`POST /api/route-planner/add`)
+
+They MUST have these fields set in their profile:
+
+- `city` - User's city (e.g., "Pune")
+- `state` - User's state/province (e.g., "Maharashtra")
+- `country` - User's country (e.g., "India")
+
+### Setting Address
+
+Users update their address via:
+
+```http
+PATCH /api/user/me
+Content-Type: application/json
+x-user-id: user_xxxxx
+
+{
+  "city": "Pune",
+  "state": "Maharashtra",
+  "country": "India"
+}
+```
+
+### Validation Behavior
+
+If any address field (`city`, `state`, or `country`) is missing or null:
+
+**Request**:
+```bash
+curl -X POST http://localhost:3000/api/waste/report \
+  -H "x-user-id: user_without_address" \
+  -F "image=@waste.jpg"
+```
+
+**Response** (400 Bad Request):
+```json
+{
+  "error": "Please update your profile with city, state, and country before reporting or collecting waste."
+}
+```
+
+### Why Address is Required
+
+1. **Location-Aware Operations**: Ensures all waste management activities are tied to specific geographic regions
+2. **Route Optimization**: Helps collectors plan efficient routes within their operational area
+3. **Data Analytics**: Enables regional waste management insights and reporting
+4. **Accountability**: Links users to their home location for better service tracking
+
+### Operations NOT Requiring Address
+
+- ✅ `GET /api/user/me` - View profile
+- ✅ `PATCH /api/user/me` - Update profile (including setting address)
+- ✅ `GET /api/waste/report` - View waste reports
+- ✅ `POST /api/route-planner/remove` - Remove waste from route
+- ✅ `GET /api/route-planner` - View route
+- ✅ All leaderboard endpoints
+- ✅ All notification endpoints
+
+## �📡 API Endpoints
 
 ### User Management
 
@@ -256,13 +326,16 @@ Update user profile.
 x-user-id: user_xxxxx
 ```
 
-**Body**:
+**Body** (all fields optional):
 
 ```json
 {
   "name": "Jane Doe",
   "phone": "+1987654321",
-  "enableCollector": true
+  "enableCollector": true,
+  "city": "Pune",
+  "state": "Maharashtra",
+  "country": "India"
 }
 ```
 
@@ -273,13 +346,21 @@ x-user-id: user_xxxxx
   "user": {
     "id": "user_xxxxx",
     "name": "Jane Doe",
+    "phone": "+1987654321",
     "enableCollector": true,
+    "city": "Pune",
+    "state": "Maharashtra",
+    "country": "India",
     ...
   }
 }
 ```
 
-**Note**: Enabling collector triggers `COLLECTOR_ENABLED` notification.
+**Notes**: 
+- All fields are optional - update any combination
+- Empty strings for address fields are treated as `null`
+- Enabling collector triggers `COLLECTOR_ENABLED` notification
+- **Address fields (city, state, country) are required before reporting/collecting waste**
 
 ---
 
@@ -792,6 +873,268 @@ curl "http://localhost:3000/api/leaderboard/global" \
 
 ---
 
+### Route Planner System
+
+#### Overview
+
+The Route Planner allows collectors to organize their waste collection routes efficiently. Collectors can add pending waste reports to their route, turning them into "IN_PROGRESS" status, and then collect them sequentially.
+
+**Status Workflow:**
+```
+PENDING → IN_PROGRESS → COLLECTED
+```
+
+**Key Concepts:**
+- **PENDING**: Waste has been reported but not yet added to any collector's route
+- **IN_PROGRESS**: Waste has been added to a collector's route and is ready for collection
+- **COLLECTED**: Waste has been successfully collected
+- **routeCollectorId**: Tracks which collector added the waste to their route (persists even after collection for analytics)
+
+**Rules:**
+1. Only collectors (`enableCollector === true`) can add waste to their route
+2. Only PENDING waste can be added to a route
+3. Adding waste to route: `PENDING → IN_PROGRESS` + sets `routeCollectorId`
+4. Removing from route: `IN_PROGRESS → PENDING` + clears `routeCollectorId`
+5. Collection requires waste to be IN_PROGRESS (must be in a route first)
+6. After collection, `routeCollectorId` remains for historical tracking
+
+---
+
+#### POST /api/route-planner/add
+
+Add a waste report to the collector's route.
+
+**Headers**:
+```
+x-user-id: user_collector_xxxxx
+```
+
+**Body**:
+```json
+{
+  "wasteId": "clxxx123"
+}
+```
+
+**Requirements**:
+- User must have `enableCollector === true`
+- Waste must exist
+- Waste status must be `PENDING`
+
+**Response**:
+```json
+{
+  "success": true,
+  "message": "Waste added to route successfully",
+  "waste": {
+    "id": "clxxx123",
+    "status": "IN_PROGRESS",
+    "routeCollectorId": "user_collector_xxxxx",
+    "routeCollector": {
+      "id": "user_collector_xxxxx",
+      "name": "John Collector",
+      "email": "john@example.com"
+    },
+    "reporter": {
+      "id": "user_reporter_xxxxx",
+      "name": "Jane Reporter",
+      "email": "jane@example.com"
+    },
+    "imageUrl": "https://bucket.s3.../waste-reports/clxxx123/image.jpg",
+    "locationRaw": "123 Main St",
+    "city": "Mumbai",
+    "aiAnalysis": {
+      "wasteType": "plastic",
+      "category": "small"
+    },
+    "reportedAt": "2025-12-06T10:00:00Z"
+  }
+}
+```
+
+**Error Responses**:
+- `400` - wasteId is required
+- `403` - Collector mode not enabled
+- `404` - Waste not found
+- `400` - Waste is not PENDING (already in route or collected)
+
+---
+
+#### POST /api/route-planner/remove
+
+Remove a waste report from the collector's route.
+
+**Headers**:
+```
+x-user-id: user_collector_xxxxx
+```
+
+**Body**:
+```json
+{
+  "wasteId": "clxxx123"
+}
+```
+
+**Requirements**:
+- Waste must exist
+- Waste status must be `IN_PROGRESS`
+- `routeCollectorId` must match current user (can only remove from own route)
+
+**Response**:
+```json
+{
+  "success": true,
+  "message": "Waste removed from route successfully",
+  "waste": {
+    "id": "clxxx123",
+    "status": "PENDING",
+    "routeCollectorId": null,
+    "routeCollector": null,
+    "reporter": {
+      "id": "user_reporter_xxxxx",
+      "name": "Jane Reporter",
+      "email": "jane@example.com"
+    },
+    "imageUrl": "https://bucket.s3.../waste-reports/clxxx123/image.jpg",
+    "locationRaw": "123 Main St"
+  }
+}
+```
+
+**Error Responses**:
+- `400` - wasteId is required
+- `404` - Waste not found
+- `400` - Waste is not IN_PROGRESS
+- `403` - Can only remove from your own route
+
+---
+
+#### GET /api/route-planner
+
+Get all waste reports in the collector's route.
+
+**Headers/Query**:
+```
+x-user-id: user_collector_xxxxx
+OR
+?userId=user_collector_xxxxx
+```
+
+**Response**:
+```json
+{
+  "success": true,
+  "count": 5,
+  "route": [
+    {
+      "id": "clxxx123",
+      "status": "IN_PROGRESS",
+      "routeCollectorId": "user_collector_xxxxx",
+      "routeCollector": {
+        "id": "user_collector_xxxxx",
+        "name": "John Collector",
+        "email": "john@example.com"
+      },
+      "reporter": {
+        "id": "user_reporter_1",
+        "name": "Alice",
+        "email": "alice@example.com"
+      },
+      "imageUrl": "https://bucket.s3.../image1.jpg",
+      "locationRaw": "123 Main St",
+      "city": "Mumbai",
+      "latitude": 19.0760,
+      "longitude": 72.8777,
+      "aiAnalysis": {
+        "wasteType": "plastic",
+        "category": "small",
+        "estimatedWeightKg": 2.5
+      },
+      "reportedAt": "2025-12-06T09:00:00Z",
+      "createdAt": "2025-12-06T09:00:00Z"
+    },
+    {
+      "id": "clxxx456",
+      "status": "IN_PROGRESS",
+      "routeCollectorId": "user_collector_xxxxx",
+      "routeCollector": {
+        "id": "user_collector_xxxxx",
+        "name": "John Collector",
+        "email": "john@example.com"
+      },
+      "reporter": {
+        "id": "user_reporter_2",
+        "name": "Bob",
+        "email": "bob@example.com"
+      },
+      "imageUrl": "https://bucket.s3.../image2.jpg",
+      "locationRaw": "456 Oak Ave",
+      "city": "Mumbai",
+      "aiAnalysis": {
+        "wasteType": "metal",
+        "category": "large"
+      },
+      "reportedAt": "2025-12-06T10:30:00Z",
+      "createdAt": "2025-12-06T10:30:00Z"
+    }
+  ]
+}
+```
+
+**Notes**:
+- Results are sorted by `createdAt` ASC (first reported = first in route)
+- Only returns waste with `routeCollectorId` matching the current user
+- Empty route returns `count: 0, route: []`
+
+---
+
+#### Updated Collection Workflow
+
+**POST /api/waste/:id/collect** now requires waste to be IN_PROGRESS:
+
+**Before Route Planner**:
+```
+Report → PENDING → Collect (directly) → COLLECTED
+```
+
+**With Route Planner** (Required):
+```
+Report → PENDING → Add to Route → IN_PROGRESS → Collect → COLLECTED
+```
+
+**Key Changes**:
+- Cannot collect PENDING waste anymore (must add to route first)
+- `routeCollectorId` is preserved after collection for analytics
+- Collection still awards +20 points to collector
+
+**cURL Examples**:
+
+```bash
+# Add waste to route
+curl -X POST http://localhost:3000/api/route-planner/add \
+  -H "Content-Type: application/json" \
+  -H "x-user-id: user_collector_xxxxx" \
+  -d '{"wasteId": "clxxx123"}'
+
+# Get my route
+curl http://localhost:3000/api/route-planner \
+  -H "x-user-id: user_collector_xxxxx"
+
+# Remove waste from route
+curl -X POST http://localhost:3000/api/route-planner/remove \
+  -H "Content-Type: application/json" \
+  -H "x-user-id: user_collector_xxxxx" \
+  -d '{"wasteId": "clxxx123"}'
+
+# Collect waste (must be IN_PROGRESS)
+curl -X POST http://localhost:3000/api/waste/clxxx123/collect \
+  -H "x-user-id: user_collector_xxxxx" \
+  -F "userId=user_collector_xxxxx"
+```
+
+---
+
 ## 🔧 Error Responses
 
 All endpoints return consistent error format:
@@ -828,6 +1171,7 @@ api/
 │   ├── waste.js            # Waste routes with file upload (/api/waste/*)
 │   ├── notifications.js    # Notification routes (/api/notifications/*)
 │   ├── leaderboard.js      # Leaderboard routes (/api/leaderboard/*)
+│   ├── routePlanner.js     # Route planner routes (/api/route-planner/*)
 │   └── webhooks.js         # Clerk webhook routes (/api/webhooks/*)
 ├── prisma/
 │   ├── schema.prisma       # Database schema

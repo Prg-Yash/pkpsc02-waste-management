@@ -41,12 +41,7 @@ export default function HomeScreen() {
   return (
     <Theme name="light">
       <ScrollView flex={1} backgroundColor="$background">
-        <YStack
-          backgroundColor="$green9"
-          padding="$4"
-          paddingTop="$8"
-          paddingBottom="$6"
-        >
+        <YStack backgroundColor="$green9" padding="$4" paddingBottom="$6">
           <XStack justifyContent="space-between" alignItems="center">
             <YStack>
               <Text color="white" opacity={0.9} fontSize="$3">

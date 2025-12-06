@@ -104,15 +104,6 @@ export default function LeaderboardScreen() {
   return (
     <Theme name="light">
       <ScrollView flex={1} backgroundColor="$background">
-        <YStack backgroundColor="$yellow9" padding="$5" paddingTop="$10">
-          <H2 color="white" fontWeight="bold">
-            Leaderboard
-          </H2>
-          <Paragraph color="white" opacity={0.9} marginTop="$1">
-            Compete and earn rewards
-          </Paragraph>
-        </YStack>
-
         <XStack padding="$4" gap="$2">
           <Button
             flex={1}

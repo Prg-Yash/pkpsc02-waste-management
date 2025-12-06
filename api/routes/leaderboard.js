@@ -5,10 +5,10 @@ const router = express.Router();
 
 /**
  * Helper function to get userId from request
- * Checks header, query params, and body
+ * Checks header and body params
  */
 const getUserId = (req) => {
-    return req.get('x-user-id') || req.query.userId || req.body?.userId;
+    return req.get('x-user-id') || req.body.userId;
 };
 
 /**
@@ -16,7 +16,7 @@ const getUserId = (req) => {
  */
 const validateUser = async (userId) => {
     if (!userId) {
-        return { error: 'Unauthorized: userId is required in header "x-user-id" or query param', status: 401 };
+        return { error: 'Unauthorized: userId is required in header "x-user-id" or body param', status: 401 };
     }
 
     const user = await prisma.user.findUnique({
@@ -125,8 +125,8 @@ router.get('/reporters', async (req, res) => {
         }
 
         // Parse pagination
-        const page = Math.max(1, parseInt(req.query.page) || 1);
-        const pageSize = Math.min(50, Math.max(1, parseInt(req.query.pageSize) || 20));
+        const page = Math.max(1, parseInt(req.body.page) || 1);
+        const pageSize = Math.min(50, Math.max(1, parseInt(req.body.pageSize) || 20));
         const skip = (page - 1) * pageSize;
 
         // Get total count
@@ -219,8 +219,8 @@ router.get('/collectors', async (req, res) => {
         }
 
         // Parse pagination
-        const page = Math.max(1, parseInt(req.query.page) || 1);
-        const pageSize = Math.min(50, Math.max(1, parseInt(req.query.pageSize) || 20));
+        const page = Math.max(1, parseInt(req.body.page) || 1);
+        const pageSize = Math.min(50, Math.max(1, parseInt(req.body.pageSize) || 20));
         const skip = (page - 1) * pageSize;
 
         // Get total count
@@ -323,8 +323,8 @@ router.get('/global', async (req, res) => {
         }
 
         // Parse pagination
-        const page = Math.max(1, parseInt(req.query.page) || 1);
-        const pageSize = Math.min(50, Math.max(1, parseInt(req.query.pageSize) || 20));
+        const page = Math.max(1, parseInt(req.body.page) || 1);
+        const pageSize = Math.min(50, Math.max(1, parseInt(req.body.pageSize) || 20));
         const skip = (page - 1) * pageSize;
 
         // Get total count
