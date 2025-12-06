@@ -168,6 +168,9 @@ export default function ProfilePage() {
         createdAt: data.user.createdAt || '',
       });
       
+      // Set phone verification status from backend
+      setPhoneVerified(data.user.phoneVerified || false);
+      
       // Clear any previous error messages
       setMessage({ type: '', text: '' });
     } catch (error) {
@@ -211,7 +214,19 @@ export default function ProfilePage() {
       }
 
       const data = await response.json();
-      setMessage({ type: 'success', text: data.message || 'Settings saved successfully!' });
+      
+      // Check if phone verification was reset
+      const phoneVerificationReset = data.user?.phoneVerified === false && phoneVerified === true;
+      
+      if (phoneVerificationReset) {
+        setMessage({ 
+          type: 'success', 
+          text: 'Settings saved! Phone number changed - please verify your new number.' 
+        });
+        setPhoneVerified(false);
+      } else {
+        setMessage({ type: 'success', text: data.message || 'Settings saved successfully!' });
+      }
       
       // Update local state with response
       if (data.user) {
@@ -224,10 +239,15 @@ export default function ProfilePage() {
           country: data.user.country || prev.country,
           enableCollector: data.user.enableCollector !== undefined ? data.user.enableCollector : prev.enableCollector,
         }));
+        
+        // Update phone verification status
+        if (data.user.phoneVerified !== undefined) {
+          setPhoneVerified(data.user.phoneVerified);
+        }
       }
 
-      // Clear message after 3 seconds
-      setTimeout(() => setMessage({ type: '', text: '' }), 3000);
+      // Clear message after 5 seconds
+      setTimeout(() => setMessage({ type: '', text: '' }), 5000);
     } catch (error) {
       console.error('Error saving settings:', error);
       const errorMessage = error.message === 'Failed to fetch'
@@ -251,14 +271,28 @@ export default function ProfilePage() {
 
     try {
       setSendingOtp(true);
-      // Simulate OTP sending - replace with actual API call
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      setMessage({ type: '', text: '' });
+      
+      const response = await fetch('https://jeanene-unexposed-ingrid.ngrok-free.dev/api/phone/send-otp', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-user-id': clerkUser.id,
+        },
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to send OTP');
+      }
       
       setShowOtpModal(true);
-      setMessage({ type: 'success', text: 'OTP sent to your phone number' });
-      setTimeout(() => setMessage({ type: '', text: '' }), 3000);
+      setMessage({ type: 'success', text: data.message || 'OTP sent to WhatsApp successfully. Valid for 5 minutes.' });
+      setTimeout(() => setMessage({ type: '', text: '' }), 5000);
     } catch (error) {
-      setMessage({ type: 'error', text: 'Failed to send OTP' });
+      console.error('Error sending OTP:', error);
+      setMessage({ type: 'error', text: error.message || 'Failed to send OTP' });
     } finally {
       setSendingOtp(false);
     }
@@ -273,16 +307,36 @@ export default function ProfilePage() {
 
     try {
       setVerifyingOtp(true);
-      // Simulate OTP verification - replace with actual API call
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      setMessage({ type: '', text: '' });
       
-      // For demo, accept any 6-digit OTP
+      const response = await fetch('https://jeanene-unexposed-ingrid.ngrok-free.dev/api/phone/verify-otp', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-user-id': clerkUser.id,
+        },
+        body: JSON.stringify({ otp: otpValue }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to verify OTP');
+      }
+      
+      // Verification successful
       setPhoneVerified(true);
       setShowOtpModal(false);
-      setMessage({ type: 'success', text: 'Phone number verified successfully!' });
-      setTimeout(() => setMessage({ type: '', text: '' }), 3000);
+      setOtp(['', '', '', '', '', '']); // Reset OTP inputs
+      setMessage({ type: 'success', text: data.message || 'Phone number verified successfully!' });
+      setTimeout(() => setMessage({ type: '', text: '' }), 5000);
+      
+      // Refresh user data to get updated phoneVerified status
+      await fetchUserData();
     } catch (error) {
-      setMessage({ type: 'error', text: 'Invalid OTP. Please try again.' });
+      console.error('Error verifying OTP:', error);
+      setMessage({ type: 'error', text: error.message || 'Invalid OTP. Please try again.' });
+      setOtp(['', '', '', '', '', '']); // Reset OTP inputs on error
     } finally {
       setVerifyingOtp(false);
     }
@@ -1083,7 +1137,10 @@ export default function ProfilePage() {
           <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
             <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6 relative">
               <button
-                onClick={() => setShowOtpModal(false)}
+                onClick={() => {
+                  setShowOtpModal(false);
+                  setOtp(['', '', '', '', '', '']);
+                }}
                 className="absolute top-4 right-4 text-gray-400 hover:text-gray-600 transition-colors"
               >
                 <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1092,13 +1149,17 @@ export default function ProfilePage() {
               </button>
 
               <div className="text-center mb-6">
-                <div className="w-16 h-16 bg-linear-to-br from-blue-500 to-blue-600 rounded-full flex items-center justify-center mx-auto mb-4">
-                  <Bell className="w-8 h-8 text-white" />
+                <div className="w-16 h-16 bg-linear-to-br from-emerald-500 to-emerald-600 rounded-full flex items-center justify-center mx-auto mb-4">
+                  <CheckCircle className="w-8 h-8 text-white" />
                 </div>
                 <h2 className="text-2xl font-bold text-gray-800 mb-2">Verify Phone Number</h2>
-                <p className="text-sm text-gray-600">
-                  Enter the 6-digit code sent to <span className="font-semibold">{userData.phone}</span>
+                <p className="text-sm text-gray-600 mb-2">
+                  Enter the 6-digit code sent via <span className="font-semibold text-emerald-600">WhatsApp</span> to
                 </p>
+                <p className="text-base font-bold text-gray-800">{userData.phone}</p>
+                <div className="mt-3 p-2 bg-yellow-50 border border-yellow-200 rounded-lg">
+                  <p className="text-xs text-yellow-800">⏱️ OTP expires in 5 minutes</p>
+                </div>
               </div>
 
               <div className="flex justify-center gap-2 mb-6">

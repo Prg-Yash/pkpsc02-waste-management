@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { useUser } from '@clerk/nextjs';
+import { useRouter } from 'next/navigation';
 import { Trash2, MapPin, CheckCircle, Clock, Upload, Loader, Calendar, Weight, Search, X, Award, TrendingUp, AlertCircle } from 'lucide-react';
 import { API_CONFIG } from '@/lib/api-config';
 
@@ -11,8 +12,10 @@ const ITEMS_PER_PAGE = 5;
 
 const CollectPage = () => {
   const { user } = useUser();
+  const router = useRouter();
   const [tasks, setTasks] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [isCollector, setIsCollector] = useState(null);
   const [hoveredWasteType, setHoveredWasteType] = useState(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
@@ -30,11 +33,39 @@ const CollectPage = () => {
   const [selectedWasteDetail, setSelectedWasteDetail] = useState(null);
   const [showWasteDetailModal, setShowWasteDetailModal] = useState(false);
 
+  // Check if user is a collector
+  useEffect(() => {
+    const checkCollectorStatus = async () => {
+      try {
+        const response = await fetch('/api/user/me');
+        if (response.ok) {
+          const data = await response.json();
+          const collectorStatus = data.user?.enableCollector || false;
+          setIsCollector(collectorStatus);
+          
+          if (!collectorStatus) {
+            // Redirect non-collectors to dashboard
+            router.push('/dashboard');
+          }
+        }
+      } catch (error) {
+        console.error('Error checking collector status:', error);
+        router.push('/dashboard');
+      }
+    };
+
+    if (user?.id) {
+      checkCollectorStatus();
+    }
+  }, [user, router]);
+
   // Fetch waste reports from API
   useEffect(() => {
-    fetchWasteReports();
-    setIsVisible(true);
-  }, [filterStatus, filterCity]);
+    if (isCollector) {
+      fetchWasteReports();
+      setIsVisible(true);
+    }
+  }, [filterStatus, filterCity, isCollector]);
 
   const fetchWasteReports = async () => {
     try {
@@ -425,6 +456,23 @@ const CollectPage = () => {
       </span>
     );
   };
+
+  // Show loading while checking collector status
+  if (isCollector === null) {
+    return (
+      <div className="min-h-screen bg-linear-to-br from-slate-50 via-emerald-50 to-teal-50 flex items-center justify-center">
+        <div className="text-center">
+          <Loader className="w-12 h-12 animate-spin text-emerald-600 mx-auto mb-4" />
+          <p className="text-gray-600 font-medium">Loading...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // Don't render if not a collector (will redirect)
+  if (!isCollector) {
+    return null;
+  }
 
   return (
     <div className="min-h-screen bg-linear-to-br from-slate-50 via-emerald-50 to-teal-50 p-6">

@@ -15,6 +15,7 @@ const EcoFlowDashboard = () => {
   const [segregationData, setSegregationData] = useState([]);
   const [efficiencyData, setEfficiencyData] = useState([]);
   const [totalUsers, setTotalUsers] = useState(0);
+  const [isCollector, setIsCollector] = useState(false);
 
   // Fetch user data and user's waste reports only
   useEffect(() => {
@@ -26,6 +27,7 @@ const EcoFlowDashboard = () => {
           const data = await userResponse.json();
           const userProfile = data.user;
           setUserData(userProfile);
+          setIsCollector(userProfile.enableCollector || false);
           
           // Combine user's reported and collected wastes
           const reportedWastes = userProfile.reportedWastes || [];
@@ -236,8 +238,8 @@ const EcoFlowDashboard = () => {
           </div>
         </div>
 
-        {/* Stats Cards - 4 Column Grid */}
-        <div className="col-span-12 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+        {/* Stats Cards - Dynamic Grid based on collector status */}
+        <div className={`col-span-12 grid grid-cols-1 sm:grid-cols-2 ${isCollector ? 'lg:grid-cols-4' : 'lg:grid-cols-3'} gap-6`}>
           <StatCard 
             icon={Trash2}
             title="Reported Waste"
@@ -246,21 +248,23 @@ const EcoFlowDashboard = () => {
             gradient="bg-linear-to-br from-blue-500 to-blue-600"
             delay={100}
           />
-          <StatCard 
-            icon={Recycle}
-            title="Collected Waste"
-            value={userData?.collectedWastes?.length || 0}
-            subtitle={`${userData?.collectorPoints || 0} points earned`}
-            gradient="bg-linear-to-br from-emerald-500 to-emerald-600"
-            delay={200}
-          />
+          {isCollector && (
+            <StatCard 
+              icon={Recycle}
+              title="Collected Waste"
+              value={userData?.collectedWastes?.length || 0}
+              subtitle={`${userData?.collectorPoints || 0} points earned`}
+              gradient="bg-linear-to-br from-emerald-500 to-emerald-600"
+              delay={200}
+            />
+          )}
           <StatCard 
             icon={TrendingUp}
             title="Global Points"
             value={userData?.globalPoints || 0}
             subtitle="Total impact score"
             gradient="bg-linear-to-br from-purple-500 to-purple-600"
-            delay={300}
+            delay={isCollector ? 300 : 200}
           />
           <StatCard 
             icon={MapPin}
@@ -268,7 +272,7 @@ const EcoFlowDashboard = () => {
             value={userData?.city || 'Not Set'}
             subtitle={`${userData?.state || ''}, ${userData?.country || ''}`}
             gradient="bg-linear-to-br from-amber-500 to-amber-600"
-            delay={400}
+            delay={isCollector ? 400 : 300}
           />
         </div>
 
@@ -279,7 +283,7 @@ const EcoFlowDashboard = () => {
               <div className="p-2 bg-emerald-100 rounded-lg">
                 <BarChart className="w-5 h-5 text-emerald-600" />
               </div>
-              Your Weekly Activity
+              {isCollector ? 'Your Weekly Activity' : 'Your Weekly Reports'}
             </h2>
             <ResponsiveContainer width="100%" height={320}>
               <AreaChart data={collectionData}>
@@ -343,15 +347,16 @@ const EcoFlowDashboard = () => {
           </div>
         </div>
 
-        {/* Efficiency Trend - 8 Columns */}
-        <div className="col-span-12 lg:col-span-8 bg-white rounded-2xl shadow-lg p-6 border border-gray-100 hover:shadow-xl transition-shadow duration-300">
-          <div className="grid gap-4">
-            <h2 className="text-xl font-bold text-gray-800 flex items-center gap-2">
-              <div className="p-2 bg-emerald-100 rounded-lg">
-                <TrendingUp className="w-5 h-5 text-emerald-600" />
-              </div>
-              Your Collection Efficiency
-            </h2>
+        {/* Efficiency Trend - 8 Columns - Only for Collectors */}
+        {isCollector && (
+          <div className="col-span-12 lg:col-span-8 bg-white rounded-2xl shadow-lg p-6 border border-gray-100 hover:shadow-xl transition-shadow duration-300">
+            <div className="grid gap-4">
+              <h2 className="text-xl font-bold text-gray-800 flex items-center gap-2">
+                <div className="p-2 bg-emerald-100 rounded-lg">
+                  <TrendingUp className="w-5 h-5 text-emerald-600" />
+                </div>
+                Your Collection Efficiency
+              </h2>
             <ResponsiveContainer width="100%" height={280}>
               <LineChart data={efficiencyData}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
@@ -384,6 +389,7 @@ const EcoFlowDashboard = () => {
             </ResponsiveContainer>
           </div>
         </div>
+        )}
 
         {/* Quick Actions - 4 Columns */}
         <div className="col-span-12 lg:col-span-4 bg-white rounded-2xl shadow-lg p-6 border border-gray-100 hover:shadow-xl transition-shadow duration-300">
@@ -470,8 +476,8 @@ const EcoFlowDashboard = () => {
           </div>
         </div>
 
-        {/* Footer Stats - 3 Column Grid */}
-        <div className="col-span-12 grid grid-cols-1 md:grid-cols-3 gap-6">
+        {/* Footer Stats - Dynamic Grid based on collector status */}
+        <div className={`col-span-12 grid grid-cols-1 ${isCollector ? 'md:grid-cols-3' : 'md:grid-cols-2'} gap-6`}>
           <div className="bg-linear-to-br from-emerald-500 to-teal-600 rounded-2xl p-6 text-white shadow-lg transform transition-all duration-300 hover:scale-105 hover:shadow-2xl">
             <div className="grid gap-3">
               <Trash2 className="w-10 h-10 opacity-80" />
@@ -481,25 +487,32 @@ const EcoFlowDashboard = () => {
               </div>
             </div>
           </div>
-          <div className="bg-linear-to-br from-blue-500 to-cyan-600 rounded-2xl p-6 text-white shadow-lg transform transition-all duration-300 hover:scale-105 hover:shadow-2xl">
-            <div className="grid gap-3">
-              <CheckCircle className="w-10 h-10 opacity-80" />
-              <div className="grid gap-1">
-                <p className="text-sm opacity-90 font-medium">Your Completed Collections</p>
-                <p className="text-4xl font-bold">{allWastes.filter(w => w.status === 'COLLECTED').length.toLocaleString()}</p>
+          {isCollector && (
+            <div className="bg-linear-to-br from-blue-500 to-cyan-600 rounded-2xl p-6 text-white shadow-lg transform transition-all duration-300 hover:scale-105 hover:shadow-2xl">
+              <div className="grid gap-3">
+                <CheckCircle className="w-10 h-10 opacity-80" />
+                <div className="grid gap-1">
+                  <p className="text-sm opacity-90 font-medium">Your Completed Collections</p>
+                  <p className="text-4xl font-bold">{allWastes.filter(w => w.status === 'COLLECTED').length.toLocaleString()}</p>
+                </div>
               </div>
             </div>
-          </div>
+          )}
           <div className="bg-linear-to-br from-purple-500 to-pink-600 rounded-2xl p-6 text-white shadow-lg transform transition-all duration-300 hover:scale-105 hover:shadow-2xl">
             <div className="grid gap-3">
               <Leaf className="w-10 h-10 opacity-80" />
               <div className="grid gap-1">
-                <p className="text-sm opacity-90 font-medium">Your Total Weight Collected</p>
+                <p className="text-sm opacity-90 font-medium">{isCollector ? 'Your Total Weight Collected' : 'Your Total Weight Reported'}</p>
                 <p className="text-4xl font-bold">
-                  {allWastes
-                    .filter(w => w.status === 'COLLECTED')
-                    .reduce((sum, w) => sum + (w.aiAnalysis?.estimatedWeightKg || 0), 0)
-                    .toFixed(1)} kg
+                  {isCollector
+                    ? allWastes
+                        .filter(w => w.status === 'COLLECTED')
+                        .reduce((sum, w) => sum + (w.aiAnalysis?.estimatedWeightKg || 0), 0)
+                        .toFixed(1)
+                    : allWastes
+                        .reduce((sum, w) => sum + (w.aiAnalysis?.estimatedWeightKg || 0), 0)
+                        .toFixed(1)
+                  } kg
                 </p>
               </div>
             </div>
