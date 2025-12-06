@@ -14,6 +14,8 @@ import whatsappMessagingRoutes from "./routes/whatsappMessaging.js";
 import publicRoutePlannerRoutes from "./routes/publicRoutePlanner.js";
 import newsletterRoutes from "./routes/newsletter.js";
 import marketplaceRoutes from "./routes/marketplace.js";
+import marketplaceRoutes from "./routes/marketplace.js";
+import publicRoutePlannerRoutes from "./routes/publicRoutePlanner.js";
 
 const app = express();
 
@@ -102,6 +104,7 @@ app.get("/", (req, res) => {
       phoneVerification: "/api/phone/send-otp",
       whatsappMessaging: "/api/whatsapp/enable",
       marketplace: "/api/marketplace/listings",
+      publicRoutePlanner: "/api/public/route-planner (no auth)",
     },
   });
 });
@@ -118,6 +121,8 @@ app.use("/api/whatsapp", whatsappMessagingRoutes);
 app.use("/api/public", publicRoutePlannerRoutes);
 app.use("/api/newsletter", newsletterRoutes);
 app.use("/api/marketplace", marketplaceRoutes);
+app.use("/api/marketplace", marketplaceRoutes);
+app.use("/api/public", publicRoutePlannerRoutes);
 
 // 404 handler
 app.use((req, res) => {
