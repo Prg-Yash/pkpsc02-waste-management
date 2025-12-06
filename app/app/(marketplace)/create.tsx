@@ -18,8 +18,8 @@ import { router } from "expo-router";
 import * as ImagePicker from "expo-image-picker";
 import * as Location from "expo-location";
 import { GoogleGenerativeAI } from "@google/generative-ai";
-import { createMarketplaceListing } from "../../services/marketplaceService";
-import { fetchUserProfile } from "../../services/userService";
+import { createMarketplaceListing } from "../services/marketplaceService";
+import { fetchUserProfile } from "../services/userService";
 
 const GEMINI_API_KEY = process.env.EXPO_PUBLIC_GEMINI_API_KEY as string;
 
@@ -276,7 +276,7 @@ Description: [brief description]`;
         wasteType,
         weightKg: parseFloat(weightKg),
         basePrice: parseFloat(basePrice),
-        auctionDuration: parseInt(auctionDuration),
+        auctionDuration: parseFloat(auctionDuration) * 60, // Convert hours to minutes
         description: description.trim() || undefined,
         latitude: location.latitude,
         longitude: location.longitude,

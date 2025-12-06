@@ -274,12 +274,16 @@ router.get("/:id", async (req, res) => {
             name: true,
             city: true,
             state: true,
+            phone: true,
+            email: true,
           },
         },
         winner: {
           select: {
             id: true,
             name: true,
+            phone: true,
+            email: true,
           },
         },
         bids: {
@@ -446,9 +450,9 @@ router.post("/:id/bid", async (req, res) => {
 });
 
 /**
- * Helper function to finalize auction when time expires
+ * Helper function to finalize auction when time expires or manually closed
  */
-async function finalizeAuction(listingId) {
+async function finalizeAuction(listingId, manualClose = false) {
   try {
     const listing = await prisma.marketplaceListing.findUnique({
       where: { id: listingId },
@@ -468,9 +472,12 @@ async function finalizeAuction(listingId) {
       return;
     }
 
-    const now = new Date();
-    if (new Date(listing.auctionEndTime) > now) {
-      return; // Auction hasn't ended yet
+    // Skip time check if manually closed by seller
+    if (!manualClose) {
+      const now = new Date();
+      if (new Date(listing.auctionEndTime) > now) {
+        return; // Auction hasn't ended yet
+      }
     }
 
     // Find winner (highest bidder)
@@ -653,8 +660,84 @@ router.post("/:id/verify-qr", async (req, res) => {
 });
 
 /**
+ * POST /api/marketplace/:id/close-bid
+ * Close auction early and finalize with current highest bidder (seller only)
+ */
+router.post("/:id/close-bid", async (req, res) => {
+  try {
+    const userId = req.headers["x-user-id"];
+    const { id } = req.params;
+
+    const listing = await prisma.marketplaceListing.findUnique({
+      where: { id },
+      include: {
+        bids: {
+          orderBy: { amount: "desc" },
+          take: 1,
+          include: {
+            bidder: true,
+          },
+        },
+      },
+    });
+
+    if (!listing) {
+      return res.status(404).json({ error: "Listing not found" });
+    }
+
+    if (listing.sellerId !== userId) {
+      return res.status(403).json({ error: "Only seller can close the bid" });
+    }
+
+    if (listing.status !== "ACTIVE") {
+      return res.status(400).json({ error: "Listing is not active" });
+    }
+
+    if (!listing.bids || listing.bids.length === 0) {
+      return res.status(400).json({
+        error: "Cannot close auction with no bids. Use cancel instead.",
+      });
+    }
+
+    // Finalize auction manually (skip time check)
+    await finalizeAuction(id, true);
+
+    const updatedListing = await prisma.marketplaceListing.findUnique({
+      where: { id },
+      include: {
+        seller: {
+          select: {
+            id: true,
+            name: true,
+            phone: true,
+            email: true,
+          },
+        },
+        winner: {
+          select: {
+            id: true,
+            name: true,
+            phone: true,
+            email: true,
+          },
+        },
+      },
+    });
+
+    res.json({
+      success: true,
+      message: "Auction closed successfully",
+      listing: updatedListing,
+    });
+  } catch (error) {
+    console.error("Error closing bid:", error);
+    res.status(500).json({ error: "Failed to close bid" });
+  }
+});
+
+/**
  * POST /api/marketplace/:id/cancel
- * Cancel a listing (only seller, only if no bids)
+ * Cancel listing (seller only, no bids)
  */
 router.post("/:id/cancel", async (req, res) => {
   try {

@@ -8,11 +8,15 @@ export interface MarketplaceListing {
     name: string | null;
     city: string | null;
     state: string | null;
+    phone: string | null;
+    email: string | null;
   };
   winnerId: string | null;
   winner: {
     id: string;
     name: string | null;
+    phone: string | null;
+    email: string | null;
   } | null;
   wasteType: string;
   weightKg: number;
@@ -322,6 +326,38 @@ export async function cancelListing(
     return data.listing;
   } catch (error) {
     console.error("Error cancelling listing:", error);
+    throw error;
+  }
+}
+
+/**
+ * Close bid early and finalize auction (seller only)
+ */
+export async function closeBid(
+  userId: string,
+  listingId: string
+): Promise<MarketplaceListing> {
+  try {
+    const response = await fetch(
+      `${API_URL}/api/marketplace/${listingId}/close-bid`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-user-id": userId,
+        },
+      }
+    );
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error || "Failed to close bid");
+    }
+
+    const data = await response.json();
+    return data.listing;
+  } catch (error) {
+    console.error("Error closing bid:", error);
     throw error;
   }
 }
