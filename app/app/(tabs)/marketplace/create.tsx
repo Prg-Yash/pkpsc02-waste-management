@@ -186,10 +186,7 @@ Description: [brief description]`;
 
     const price = parseFloat(basePrice);
     if (isNaN(price) || price < 10) {
-      Alert.alert(
-        "Validation Error",
-        "Minimum base price is ₹10"
-      );
+      Alert.alert("Validation Error", "Minimum base price is ₹10");
       return false;
     }
 
@@ -213,16 +210,12 @@ Description: [brief description]`;
 
       await createMarketplaceListing(user.id, listingData);
 
-      Alert.alert(
-        "Success",
-        "Your listing has been created successfully!",
-        [
-          {
-            text: "OK",
-            onPress: () => router.back(),
-          },
-        ]
-      );
+      Alert.alert("Success", "Your listing has been created successfully!", [
+        {
+          text: "OK",
+          onPress: () => router.back(),
+        },
+      ]);
     } catch (error) {
       console.error("Error creating listing:", error);
       Alert.alert(
@@ -407,9 +400,7 @@ Description: [brief description]`;
                   backgroundColor={
                     auctionDuration === option.value ? "$blue9" : "$gray5"
                   }
-                  color={
-                    auctionDuration === option.value ? "white" : "$gray11"
-                  }
+                  color={auctionDuration === option.value ? "white" : "$gray11"}
                   fontWeight="600"
                   size="$3"
                 >
