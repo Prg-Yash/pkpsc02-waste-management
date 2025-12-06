@@ -32,6 +32,12 @@ enum ListingStatus {
   CANCELLED
 }
 
+enum UserStatus {
+  ACTIVE
+  FLAGGED
+  BANNED
+}
+
 model User {
   id                       String  @id
   email                    String  @unique

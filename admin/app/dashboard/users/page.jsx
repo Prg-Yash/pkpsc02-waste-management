@@ -1,5 +1,6 @@
 "use client";
-import { useState } from "react";
+
+import { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -9,7 +10,6 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
-  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import {
@@ -21,7 +21,6 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import {
   Search,
@@ -36,75 +35,6 @@ import {
   Shield,
   Coins,
 } from "lucide-react";
-
-const users = [
-  {
-    id: 1,
-    name: "John Doe",
-    email: "john.doe@email.com",
-    avatar: "/thoughtful-man-portrait.png",
-    reports: 45,
-    tokens: 1250,
-    status: "active",
-    flags: 0,
-    joinDate: "2024-01-15",
-  },
-  {
-    id: 2,
-    name: "Jane Smith",
-    email: "jane.smith@email.com",
-    avatar: "/woman-portrait-1.png",
-    reports: 32,
-    tokens: 890,
-    status: "active",
-    flags: 1,
-    joinDate: "2024-02-20",
-  },
-  {
-    id: 3,
-    name: "Mike Johnson",
-    email: "mike.j@email.com",
-    avatar: "/thoughtful-man-portrait.png",
-    reports: 78,
-    tokens: 2100,
-    status: "active",
-    flags: 0,
-    joinDate: "2023-11-10",
-  },
-  {
-    id: 4,
-    name: "Sarah Wilson",
-    email: "sarah.w@email.com",
-    avatar: "/woman-portrait-2.png",
-    reports: 15,
-    tokens: 320,
-    status: "flagged",
-    flags: 3,
-    joinDate: "2024-03-05",
-  },
-  {
-    id: 5,
-    name: "Tom Brown",
-    email: "tom.brown@email.com",
-    avatar: "/man-portrait-3.png",
-    reports: 5,
-    tokens: 0,
-    status: "banned",
-    flags: 5,
-    joinDate: "2024-04-12",
-  },
-  {
-    id: 6,
-    name: "Emily Davis",
-    email: "emily.d@email.com",
-    avatar: "/woman-portrait-3.png",
-    reports: 62,
-    tokens: 1680,
-    status: "active",
-    flags: 0,
-    joinDate: "2023-12-01",
-  },
-];
 
 function StatusBadge({ status }) {
   const config = {
@@ -139,9 +69,67 @@ function StatusBadge({ status }) {
 export default function UsersPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
-  const [banDialogOpen, setBanDialogOpen] = useState(false);
+  const [profileDialogOpen, setProfileDialogOpen] = useState(false);
   const [selectedUser, setSelectedUser] = useState(null);
-  const [banReason, setBanReason] = useState("");
+  const [users, setUsers] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+
+  // Fetch users from API (using Next.js API route to avoid CORS/auth issues)
+  useEffect(() => {
+    const fetchUsers = async () => {
+      try {
+        setLoading(true);
+        setError(null);
+        
+        console.log('Fetching users from /api/users');
+        const response = await fetch("/api/users");
+        
+        if (!response.ok) {
+          const errorText = await response.text();
+          console.error('API Error Response:', errorText);
+          throw new Error(`Failed to fetch users: ${response.status}`);
+        }
+
+        const data = await response.json();
+        console.log('Users data received:', data);
+        
+        // Map API response to UI format (matching backend response structure)
+        // Store full user data for profile view
+        const mappedUsers = (data.users || []).map((user) => {
+          // Map backend status: "incomplete" -> "active", keep others as is
+          let displayStatus = user.status || "active";
+          if (displayStatus === "incomplete") {
+            displayStatus = "active";
+          }
+          
+          return {
+            id: user.id,
+            name: user.name || 'Unknown User',
+            email: user.email,
+            avatar: null, // No avatar in API response
+            reports: user.reportCount || 0, // Backend returns 'reportCount'
+            tokens: user.globalPoints || 0,
+            status: displayStatus, // Only active, flagged, or banned
+            flags: 0, // Not available in current schema
+            joinDate: user.joinedAt ? new Date(user.joinedAt).toISOString().split('T')[0] : 'N/A', // Backend returns 'joinedAt'
+            // Store full user data for profile dialog
+            fullData: user,
+          };
+        });
+        
+        console.log('Mapped users:', mappedUsers);
+        setUsers(mappedUsers);
+      } catch (err) {
+        console.error("Error fetching users:", err);
+        setError(err.message || "Failed to load users");
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchUsers();
+  }, []);
 
   const filteredUsers = users.filter((user) => {
     const matchesSearch =
@@ -151,17 +139,101 @@ export default function UsersPage() {
     return matchesSearch && matchesStatus;
   });
 
-  const handleBanUser = (user) => {
+  const handleViewProfile = (user) => {
     setSelectedUser(user);
-    setBanDialogOpen(true);
+    setProfileDialogOpen(true);
   };
 
+  const handleStatusChange = async (newStatus) => {
+    if (!selectedUser) return;
+    
+    try {
+      // Call API to update status in database
+      const response = await fetch(`/api/users/${selectedUser.id}/status`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ status: newStatus }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to update status');
+      }
+
+      // Update the user's status in the users array
+      setUsers(users.map(u => 
+        u.id === selectedUser.id 
+          ? { ...u, status: newStatus, fullData: { ...u.fullData, status: newStatus } }
+          : u
+      ));
+      
+      // Update the selected user's status
+      setSelectedUser({
+        ...selectedUser,
+        status: newStatus,
+        fullData: { ...selectedUser.fullData, status: newStatus }
+      });
+    } catch (error) {
+      console.error('Error updating user status:', error);
+      alert(`Failed to update status: ${error.message}`);
+    }
+  };
+
+  // Calculate stats from real data
   const stats = [
-    { icon: Users, label: "Total Users", value: "8,432", color: "bg-primary/10 text-primary" },
-    { icon: Shield, label: "Active Users", value: "7,891", color: "bg-primary/10 text-primary" },
-    { icon: AlertTriangle, label: "Flagged Users", value: "48", color: "bg-warning/10 text-warning-foreground" },
-    { icon: UserX, label: "Banned Users", value: "23", color: "bg-destructive/10 text-destructive" },
+    { 
+      icon: Users, 
+      label: "Total Users", 
+      value: users.length.toLocaleString(), 
+      color: "bg-primary/10 text-primary" 
+    },
+    { 
+      icon: Shield, 
+      label: "Active Users", 
+      value: users.filter(u => u.status === "active").length.toLocaleString(), 
+      color: "bg-primary/10 text-primary" 
+    },
+    { 
+      icon: AlertTriangle, 
+      label: "Flagged Users", 
+      value: users.filter(u => u.status === "flagged").length.toLocaleString(), 
+      color: "bg-warning/10 text-warning-foreground" 
+    },
+    { 
+      icon: UserX, 
+      label: "Banned Users", 
+      value: users.filter(u => u.status === "banned").length.toLocaleString(), 
+      color: "bg-destructive/10 text-destructive" 
+    },
   ];
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-white p-6">
+        <div className="mx-auto max-w-7xl space-y-6">
+          <div className="space-y-2">
+            <h1 className="text-3xl font-bold tracking-tight">Manage Users</h1>
+            <p className="text-muted-foreground">Loading users...</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="min-h-screen bg-white p-6">
+        <div className="mx-auto max-w-7xl space-y-6">
+          <div className="space-y-2">
+            <h1 className="text-3xl font-bold tracking-tight">Manage Users</h1>
+            <p className="text-destructive">Error: {error}</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-white p-6">
@@ -245,9 +317,9 @@ export default function UsersPage() {
                       <TableCell>
                         <div className="flex items-center gap-3">
                           <Avatar className="h-10 w-10">
-                            <AvatarImage src={user.avatar} />
+                            {user.avatar && <AvatarImage src={user.avatar} />}
                             <AvatarFallback className="bg-primary/10 text-primary">
-                              {user.name.split(" ").map((n) => n[0]).join("")}
+                              {user.name.split(" ").map((n) => n[0]).join("").toUpperCase()}
                             </AvatarFallback>
                           </Avatar>
                           <div>
@@ -280,24 +352,10 @@ export default function UsersPage() {
                             </Button>
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="end">
-                            <DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => handleViewProfile(user)}>
                               <Eye className="mr-2 h-4 w-4" />
                               View Profile
                             </DropdownMenuItem>
-                            {user.status === "banned" ? (
-                              <DropdownMenuItem>
-                                <CheckCircle className="mr-2 h-4 w-4" />
-                                Unban User
-                              </DropdownMenuItem>
-                            ) : (
-                              <>
-                                <DropdownMenuSeparator />
-                                <DropdownMenuItem className="text-destructive" onClick={() => handleBanUser(user)}>
-                                  <Ban className="mr-2 h-4 w-4" />
-                                  Ban User
-                                </DropdownMenuItem>
-                              </>
-                            )}
                           </DropdownMenuContent>
                         </DropdownMenu>
                       </TableCell>
@@ -309,46 +367,202 @@ export default function UsersPage() {
           </CardContent>
         </Card>
 
-        {/* Ban Dialog */}
-        <Dialog open={banDialogOpen} onOpenChange={setBanDialogOpen}>
-          <DialogContent>
+        {/* Profile Dialog */}
+        <Dialog open={profileDialogOpen} onOpenChange={setProfileDialogOpen}>
+          <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
             <DialogHeader>
-              <DialogTitle className="flex items-center gap-2 text-destructive">
-                <Ban className="h-5 w-5" />
-                Ban User
+              <DialogTitle className="flex items-center gap-2">
+                <Eye className="h-5 w-5" />
+                User Profile
               </DialogTitle>
               <DialogDescription>
-                You are about to ban {selectedUser?.name}. This action will prevent them from using the platform.
+                Detailed information about {selectedUser?.name}
               </DialogDescription>
             </DialogHeader>
-            <div className="space-y-4 py-4">
-              <div className="flex items-center gap-3 rounded-lg bg-muted/50 p-3">
-                <Avatar>
-                  <AvatarImage src={selectedUser?.avatar} />
-                  <AvatarFallback className="bg-primary/10 text-primary">
-                    {selectedUser?.name.split(" ").map((n) => n[0]).join("")}
-                  </AvatarFallback>
-                </Avatar>
-                <div>
-                  <p className="font-medium">{selectedUser?.name}</p>
-                  <p className="text-sm text-muted-foreground">{selectedUser?.email}</p>
+            {selectedUser?.fullData && (
+              <div className="space-y-6 py-4">
+                {/* User Header */}
+                <div className="flex items-center gap-4 rounded-lg bg-muted/50 p-4">
+                  <Avatar className="h-16 w-16">
+                    {selectedUser?.avatar && <AvatarImage src={selectedUser?.avatar} />}
+                    <AvatarFallback className="bg-primary/10 text-primary text-lg">
+                      {selectedUser?.name.split(" ").map((n) => n[0]).join("").toUpperCase()}
+                    </AvatarFallback>
+                  </Avatar>
+                  <div className="flex-1 min-w-0">
+                    <h3 className="text-xl font-semibold break-words">{selectedUser?.name}</h3>
+                    <p className="text-sm text-muted-foreground break-words">{selectedUser?.email}</p>
+                    <div className="mt-2">
+                      <StatusBadge status={selectedUser?.status} />
+                    </div>
+                  </div>
                 </div>
+
+                {/* Status Change Section */}
+                <Card className="border-primary/20">
+                  <CardHeader className="pb-3">
+                    <CardTitle className="text-sm font-medium">Change Status</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="flex items-center gap-4">
+                      <Label className="text-sm">Status:</Label>
+                      <Select 
+                        value={selectedUser?.status || "active"} 
+                        onValueChange={handleStatusChange}
+                      >
+                        <SelectTrigger className="w-40">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="active">Active</SelectItem>
+                          <SelectItem value="flagged">Flagged</SelectItem>
+                          <SelectItem value="banned">Banned</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </CardContent>
+                </Card>
+
+                {/* User Information Grid */}
+                <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-2">
+                  <Card>
+                    <CardHeader className="pb-3">
+                      <CardTitle className="text-sm font-medium text-muted-foreground">Contact Information</CardTitle>
+                    </CardHeader>
+                    <CardContent className="space-y-2">
+                      <div>
+                        <Label className="text-xs text-muted-foreground">Email</Label>
+                        <p className="text-sm font-medium break-words">{selectedUser?.fullData.email || 'N/A'}</p>
+                      </div>
+                      <div>
+                        <Label className="text-xs text-muted-foreground">Phone</Label>
+                        <p className="text-sm font-medium break-words">{selectedUser?.fullData.phone || 'Not provided'}</p>
+                      </div>
+                      {selectedUser?.fullData.phoneVerified !== undefined && (
+                        <div>
+                          <Label className="text-xs text-muted-foreground">Phone Verified</Label>
+                          <p className="text-sm font-medium">
+                            {selectedUser?.fullData.phoneVerified ? (
+                              <span className="text-green-600">✓ Verified</span>
+                            ) : (
+                              <span className="text-gray-500">Not verified</span>
+                            )}
+                          </p>
+                        </div>
+                      )}
+                    </CardContent>
+                  </Card>
+
+                  <Card>
+                    <CardHeader className="pb-3">
+                      <CardTitle className="text-sm font-medium text-muted-foreground">Address</CardTitle>
+                    </CardHeader>
+                    <CardContent className="space-y-2">
+                      {selectedUser?.fullData.address ? (
+                        <>
+                          <div>
+                            <Label className="text-xs text-muted-foreground">City</Label>
+                            <p className="text-sm font-medium break-words">{selectedUser?.fullData.address.city || 'N/A'}</p>
+                          </div>
+                          <div>
+                            <Label className="text-xs text-muted-foreground">State</Label>
+                            <p className="text-sm font-medium break-words">{selectedUser?.fullData.address.state || 'N/A'}</p>
+                          </div>
+                          <div>
+                            <Label className="text-xs text-muted-foreground">Country</Label>
+                            <p className="text-sm font-medium break-words">{selectedUser?.fullData.address.country || 'N/A'}</p>
+                          </div>
+                        </>
+                      ) : (
+                        <p className="text-sm text-muted-foreground">No address provided</p>
+                      )}
+                    </CardContent>
+                  </Card>
+
+                  <Card>
+                    <CardHeader className="pb-3">
+                      <CardTitle className="text-sm font-medium text-muted-foreground">Activity Statistics</CardTitle>
+                    </CardHeader>
+                    <CardContent className="space-y-2">
+                      <div>
+                        <Label className="text-xs text-muted-foreground">Reports Created</Label>
+                        <p className="text-sm font-medium">{selectedUser?.fullData.reportCount || 0}</p>
+                      </div>
+                      {selectedUser?.fullData.enableCollector && (
+                        <div>
+                          <Label className="text-xs text-muted-foreground">Collections</Label>
+                          <p className="text-sm font-medium">{selectedUser?.fullData.collectionCount || 0}</p>
+                        </div>
+                      )}
+                      <div>
+                        <Label className="text-xs text-muted-foreground">Join Date</Label>
+                        <p className="text-sm font-medium">
+                          {selectedUser?.fullData.joinedAt 
+                            ? new Date(selectedUser.fullData.joinedAt).toLocaleDateString('en-US', {
+                                year: 'numeric',
+                                month: 'long',
+                                day: 'numeric'
+                              })
+                            : 'N/A'}
+                        </p>
+                      </div>
+                    </CardContent>
+                  </Card>
+
+                  <Card>
+                    <CardHeader className="pb-3">
+                      <CardTitle className="text-sm font-medium text-muted-foreground">Points & Rewards</CardTitle>
+                    </CardHeader>
+                    <CardContent className="space-y-2">
+                      <div>
+                        <Label className="text-xs text-muted-foreground">Reporter Points</Label>
+                        <p className="text-sm font-medium flex items-center gap-1">
+                          <Coins className="h-4 w-4 text-primary" />
+                          {selectedUser?.fullData.reporterPoints || 0}
+                        </p>
+                      </div>
+                      {selectedUser?.fullData.enableCollector && (
+                        <div>
+                          <Label className="text-xs text-muted-foreground">Collector Points</Label>
+                          <p className="text-sm font-medium flex items-center gap-1">
+                            <Coins className="h-4 w-4 text-primary" />
+                            {selectedUser?.fullData.collectorPoints || 0}
+                          </p>
+                        </div>
+                      )}
+                      <div>
+                        <Label className="text-xs text-muted-foreground">Total Points</Label>
+                        <p className="text-lg font-bold flex items-center gap-1 text-primary">
+                          <Coins className="h-5 w-5" />
+                          {selectedUser?.fullData.globalPoints || 0}
+                        </p>
+                      </div>
+                    </CardContent>
+                  </Card>
+                </div>
+
+                {/* Collector Status */}
+                {selectedUser?.fullData.enableCollector && (
+                  <Card className="border-primary/20 bg-primary/5">
+                    <CardContent className="pt-6">
+                      <div className="flex items-center gap-2">
+                        <Shield className="h-5 w-5 text-primary" />
+                        <div>
+                          <p className="font-semibold">Collector Mode Enabled</p>
+                          <p className="text-sm text-muted-foreground">
+                            This user can collect waste reports from their area
+                          </p>
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                )}
               </div>
-              <div className="space-y-2">
-                <Label>Reason for Ban</Label>
-                <Textarea
-                  placeholder="Enter the reason for banning this user..."
-                  value={banReason}
-                  onChange={(e) => setBanReason(e.target.value)}
-                  rows={3}
-                />
-              </div>
-            </div>
+            )}
             <DialogFooter>
-              <Button variant="outline" onClick={() => setBanDialogOpen(false)}>
-                Cancel
+              <Button variant="outline" onClick={() => setProfileDialogOpen(false)}>
+                Close
               </Button>
-              <Button variant="destructive">Confirm Ban</Button>
             </DialogFooter>
           </DialogContent>
         </Dialog>

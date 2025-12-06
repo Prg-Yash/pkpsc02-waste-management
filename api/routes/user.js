@@ -49,7 +49,7 @@ const authenticateUser = async (req, res, next) => {
 
 /**
  * GET /api/user/all
- * Get all users with their statistics
+ * Get all users with their statistics (public endpoint for admin dashboard)
  */
 router.get("/all", async (req, res) => {
     try {
@@ -62,6 +62,7 @@ router.get("/all", async (req, res) => {
                 phone: true,
                 phoneVerified: true,
                 enableCollector: true,
+                status: true, // Include status field
                 city: true,
                 state: true,
                 country: true,
@@ -82,26 +83,36 @@ router.get("/all", async (req, res) => {
         });
 
         // Format response with computed fields
-        const formattedUsers = users.map(user => ({
-            id: user.id,
-            name: user.name,
-            email: user.email,
-            phone: user.phone,
-            phoneVerified: user.phoneVerified,
-            reportCount: user._count.reportedWastes,
-            collectionCount: user.enableCollector ? user._count.collectedWastes : null,
-            enableCollector: user.enableCollector,
-            address: user.enableCollector ? {
-                city: user.city,
-                state: user.state,
-                country: user.country,
-            } : null,
-            reporterPoints: user.reporterPoints,
-            collectorPoints: user.enableCollector ? user.collectorPoints : null,
-            globalPoints: user.globalPoints,
-            joinedAt: user.createdAt,
-            status: user.phoneVerified && user.city && user.state && user.country ? 'active' : 'incomplete',
-        }));
+        const formattedUsers = users.map(user => {
+            // Map database status (ACTIVE, FLAGGED, BANNED) to lowercase for frontend
+            const statusMap = {
+                'ACTIVE': 'active',
+                'FLAGGED': 'flagged',
+                'BANNED': 'banned'
+            };
+            const displayStatus = statusMap[user.status] || 'active';
+            
+            return {
+                id: user.id,
+                name: user.name,
+                email: user.email,
+                phone: user.phone,
+                phoneVerified: user.phoneVerified,
+                reportCount: user._count.reportedWastes,
+                collectionCount: user.enableCollector ? user._count.collectedWastes : null,
+                enableCollector: user.enableCollector,
+                address: user.enableCollector ? {
+                    city: user.city,
+                    state: user.state,
+                    country: user.country,
+                } : null,
+                reporterPoints: user.reporterPoints,
+                collectorPoints: user.enableCollector ? user.collectorPoints : null,
+                globalPoints: user.globalPoints,
+                joinedAt: user.createdAt,
+                status: displayStatus, // Use database status field
+            };
+        });
 
         res.json({
             users: formattedUsers,
@@ -222,6 +233,44 @@ router.patch('/me', authenticateUser, async (req, res) => {
     } catch (error) {
         console.error("Error updating user:", error);
         res.status(500).json({ error: "Internal server error" });
+    }
+});
+
+/**
+ * PATCH /api/user/:id/status
+ * Update user status (admin only - no authentication required for admin panel)
+ */
+router.patch('/:id/status', async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { status } = req.body;
+
+        // Validate status
+        const validStatuses = ['ACTIVE', 'FLAGGED', 'BANNED'];
+        if (!status || !validStatuses.includes(status.toUpperCase())) {
+            return res.status(400).json({
+                error: 'Invalid status. Must be one of: ACTIVE, FLAGGED, BANNED'
+            });
+        }
+
+        // Update user status
+        const updatedUser = await prisma.user.update({
+            where: { id },
+            data: {
+                status: status.toUpperCase()
+            }
+        });
+
+        res.json({ 
+            success: true,
+            user: updatedUser 
+        });
+    } catch (error) {
+        console.error('Error updating user status:', error);
+        if (error.code === 'P2025') {
+            return res.status(404).json({ error: 'User not found' });
+        }
+        res.status(500).json({ error: 'Internal server error' });
     }
 });
 
