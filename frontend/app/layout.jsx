@@ -3,6 +3,7 @@ import { Geist, Geist_Mono } from "next/font/google"
 import { Playfair_Display } from "next/font/google"
 import { Analytics } from "@vercel/analytics/next"
 import { ClerkProvider } from "@clerk/nextjs"
+import ChatbotWrapper from "@/components/ChatbotWrapper"
 import "./globals.css"
 
 const _geist = Geist({ subsets: ["latin"] })
@@ -42,6 +43,7 @@ export default function RootLayout({ children }) {
       <html lang="en">
         <body className={`font-sans antialiased`}>
           {children}
+          <ChatbotWrapper />
           <Analytics />
         </body>
       </html>
