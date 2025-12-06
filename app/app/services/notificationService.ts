@@ -36,6 +36,7 @@ export async function fetchNotifications(
         headers: {
           "Content-Type": "application/json",
           "x-user-id": userId,
+          "ngrok-skip-browser-warning": "true",
         },
       }
     );
@@ -76,6 +77,7 @@ export async function markNotificationAsRead(
         headers: {
           "Content-Type": "application/json",
           "x-user-id": userId,
+          "ngrok-skip-browser-warning": "true",
         },
       }
     );

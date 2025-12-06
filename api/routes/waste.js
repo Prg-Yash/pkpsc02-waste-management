@@ -1,7 +1,10 @@
 import express from "express";
 import multer from "multer";
 import { prisma } from "../lib/prisma.js";
-import { createNotification } from "../lib/notifications.js";
+import {
+  createNotification,
+  notifyCollectorsInState,
+} from "../lib/notifications.js";
 import {
   uploadToS3,
   generateWasteReportKey,
@@ -213,6 +216,17 @@ router.post(
         },
       });
 
+      // Step 6: Notify all collectors in the same state
+      if (state) {
+        await notifyCollectorsInState({
+          state: state,
+          reporterId: req.user.id,
+          wasteReportId: updatedWasteReport.id,
+          wasteType: parsedAiAnalysis.wasteType,
+          city: city || "Unknown location",
+        });
+      }
+
       res.status(201).json({ waste: updatedWasteReport });
     } catch (error) {
       console.error("Error creating waste report:", error);
@@ -400,6 +414,7 @@ router.post(
             status: "COLLECTED",
             collectorId: req.user.id,
             collectedAt: new Date(),
+            routeCollectorId: null, // Remove from route planner after collection
             ...(collectorImageUrl && { collectorImageUrl }),
           },
           include: {

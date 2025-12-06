@@ -16,7 +16,7 @@ import {
 import { useUser } from "@clerk/clerk-expo";
 import { Alert, RefreshControl, Linking, Dimensions, View } from "react-native";
 import * as Location from "expo-location";
-import MapView, { Marker, PROVIDER_GOOGLE } from "react-native-maps";
+import MapView, { Marker, Polyline, PROVIDER_GOOGLE } from "react-native-maps";
 import {
   fetchRoutePlannerReports,
   removeFromRoutePlanner,
@@ -24,7 +24,13 @@ import {
 } from "../services/routePlannerService";
 import { formatDistance, calculateDistance } from "../utils/locationUtils";
 import CollectorVerificationScreen from "../components/CollectorVerificationScreen";
-import { MapPin, Navigation, Trash2, ChevronUp, ChevronDown } from "@tamagui/lucide-icons";
+import {
+  MapPin,
+  Navigation,
+  Trash2,
+  ChevronUp,
+  ChevronDown,
+} from "@tamagui/lucide-icons";
 
 const { width, height } = Dimensions.get("window");
 
@@ -147,7 +153,8 @@ export default function RoutePlannerScreen() {
       }
     });
 
-    setTotalDistance(total);
+    // Convert meters to kilometers
+    setTotalDistance(total / 1000);
   };
 
   const onRefresh = async () => {
@@ -208,7 +215,10 @@ export default function RoutePlannerScreen() {
     if (index === 0) return; // Already at top
 
     const newReports = [...reports];
-    [newReports[index - 1], newReports[index]] = [newReports[index], newReports[index - 1]];
+    [newReports[index - 1], newReports[index]] = [
+      newReports[index],
+      newReports[index - 1],
+    ];
     setReports(newReports);
   };
 
@@ -217,7 +227,10 @@ export default function RoutePlannerScreen() {
     if (index === reports.length - 1) return; // Already at bottom
 
     const newReports = [...reports];
-    [newReports[index], newReports[index + 1]] = [newReports[index + 1], newReports[index]];
+    [newReports[index], newReports[index + 1]] = [
+      newReports[index + 1],
+      newReports[index],
+    ];
     setReports(newReports);
   };
 
@@ -232,22 +245,63 @@ export default function RoutePlannerScreen() {
       return;
     }
 
-    // Build waypoints from reports
+    // Build route: origin (user) -> waypoints (all except last) -> destination (last report)
     const origin = `${userLocation.latitude},${userLocation.longitude}`;
-    const waypoints = reports
-      .filter((r) => r.latitude && r.longitude)
+
+    const validReports = reports.filter((r) => r.latitude && r.longitude);
+
+    if (validReports.length === 0) {
+      Alert.alert("No Route", "No valid locations found in route!");
+      return;
+    }
+
+    // Last report is the destination
+    const lastReport = validReports[validReports.length - 1];
+    const destination = `${lastReport.latitude},${lastReport.longitude}`;
+
+    // All reports except the last are waypoints
+    const waypoints = validReports
+      .slice(0, -1)
       .map((r) => `${r.latitude},${r.longitude}`)
       .join("|");
 
-    const destination = waypoints.split("|").pop() || origin;
+    // Build Google Maps URL - dir_action=navigate forces navigation mode
+    let url = `https://www.google.com/maps/dir/?api=1&origin=${origin}&destination=${destination}&travelmode=driving&dir_action=navigate`;
 
-    // Build Google Maps URL
-    const url = `https://www.google.com/maps/dir/?api=1&origin=${origin}&destination=${destination}&waypoints=${waypoints}&travelmode=driving`;
+    // Only add waypoints parameter if there are intermediate stops
+    if (waypoints) {
+      url += `&waypoints=${waypoints}`;
+    }
+
+    console.log("Opening Google Maps with URL:", url);
 
     Linking.openURL(url).catch((err) => {
       console.error("Failed to open maps:", err);
       Alert.alert("Error", "Failed to open Google Maps");
     });
+  };
+
+  const getRouteCoordinates = () => {
+    if (!userLocation || reports.length === 0) return [];
+
+    const coordinates = [
+      {
+        latitude: userLocation.latitude,
+        longitude: userLocation.longitude,
+      },
+    ];
+
+    // Add all report locations in priority order
+    reports.forEach((report) => {
+      if (report.latitude && report.longitude) {
+        coordinates.push({
+          latitude: report.latitude,
+          longitude: report.longitude,
+        });
+      }
+    });
+
+    return coordinates;
   };
 
   const getDistanceText = (report: RouteReport): string => {
@@ -306,8 +360,14 @@ export default function RoutePlannerScreen() {
       >
         {/* Header with Stats */}
         <YStack margin="$4">
-          <XStack justifyContent="space-between" alignItems="center" marginBottom="$4">
-            <YStack>
+          <XStack
+            justifyContent="space-between"
+            alignItems="center"
+            marginBottom="$4"
+            gap="$2"
+            flexWrap="wrap"
+          >
+            <YStack flex={1} minWidth={200}>
               <H2 color="$gray12" fontWeight="bold">
                 🗺️ Collection Route
               </H2>
@@ -322,8 +382,9 @@ export default function RoutePlannerScreen() {
               size="$3"
               icon={<Navigation size={16} color="white" />}
               disabled={reports.length === 0}
+              flexShrink={0}
             >
-              Open in Maps
+              Open Maps
             </Button>
           </XStack>
 
@@ -383,7 +444,13 @@ export default function RoutePlannerScreen() {
 
           {/* Map View */}
           {reports.length > 0 && (
-            <YStack backgroundColor="white" borderRadius="$4" overflow="hidden" marginBottom="$4" elevation="$2">
+            <YStack
+              backgroundColor="white"
+              borderRadius="$4"
+              overflow="hidden"
+              marginBottom="$4"
+              elevation="$2"
+            >
               <View style={{ height: 400, width: "100%" }}>
                 <MapView
                   style={{ flex: 1 }}
@@ -392,6 +459,16 @@ export default function RoutePlannerScreen() {
                   showsUserLocation={true}
                   showsMyLocationButton={true}
                 >
+                  {/* Route Polyline - draws path connecting all stops */}
+                  {getRouteCoordinates().length > 1 && (
+                    <Polyline
+                      coordinates={getRouteCoordinates()}
+                      strokeColor="#8b5cf6" // Purple color for route
+                      strokeWidth={4}
+                      lineDashPattern={[1]}
+                    />
+                  )}
+
                   {/* User Location Marker */}
                   {userLocation && (
                     <Marker
@@ -412,11 +489,20 @@ export default function RoutePlannerScreen() {
                           longitude: report.longitude,
                         }}
                         title={`Stop ${index + 1}`}
-                        description={`${report.city || report.locationRaw} - ${report.aiAnalysis.wasteType}`}
+                        description={`${report.city || report.locationRaw} - ${
+                          report.aiAnalysis.wasteType
+                        }`}
                       >
                         <View
                           style={{
-                            backgroundColor: index === 0 ? "#dc2626" : index === 1 ? "#ea580c" : index === 2 ? "#ca8a04" : "#16a34a",
+                            backgroundColor:
+                              index === 0
+                                ? "#dc2626"
+                                : index === 1
+                                ? "#ea580c"
+                                : index === 2
+                                ? "#ca8a04"
+                                : "#16a34a",
                             paddingHorizontal: 8,
                             paddingVertical: 4,
                             borderRadius: 12,
@@ -424,7 +510,13 @@ export default function RoutePlannerScreen() {
                             borderColor: "white",
                           }}
                         >
-                          <Text style={{ color: "white", fontWeight: "bold", fontSize: 14 }}>
+                          <Text
+                            style={{
+                              color: "white",
+                              fontWeight: "bold",
+                              fontSize: 14,
+                            }}
+                          >
                             {index + 1}
                           </Text>
                         </View>
@@ -490,7 +582,11 @@ export default function RoutePlannerScreen() {
                 borderLeftColor={getPriorityColor(index + 1)}
               >
                 {/* Stop Number Badge & Priority Controls */}
-                <XStack justifyContent="space-between" alignItems="center" marginBottom="$3">
+                <XStack
+                  justifyContent="space-between"
+                  alignItems="center"
+                  marginBottom="$3"
+                >
                   <YStack
                     backgroundColor={getPriorityColor(index + 1)}
                     width={40}

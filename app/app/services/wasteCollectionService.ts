@@ -105,6 +105,7 @@ export async function submitCollectionVerification(
     );
 
     const formData = new FormData();
+    formData.append("userId", data.collectorId);
     formData.append("collectorId", data.collectorId);
     formData.append("collectorLatitude", data.collectorLatitude.toString());
     formData.append("collectorLongitude", data.collectorLongitude.toString());
@@ -122,7 +123,10 @@ export async function submitCollectionVerification(
     const response = await fetch(
       `${API_URL}/api/waste/${data.reportId}/collect`,
       {
-        method: "PUT",
+        method: "POST",
+        headers: {
+          "x-user-id": data.collectorId,
+        },
         body: formData,
       }
     );
