@@ -79,7 +79,7 @@ router.get('/me', authenticateUser, async (req, res) => {
  */
 router.patch('/me', authenticateUser, async (req, res) => {
     try {
-        const { name, phone, enableCollector } = req.body;
+        const { name, phone, enableCollector, city, state, country } = req.body;
 
         // Track if collector was just enabled
         const wasCollectorEnabled = !req.user.enableCollector && enableCollector === true;
@@ -91,6 +91,9 @@ router.patch('/me', authenticateUser, async (req, res) => {
                 ...(name !== undefined && { name }),
                 ...(phone !== undefined && { phone }),
                 ...(enableCollector !== undefined && { enableCollector }),
+                ...(city !== undefined && { city: city || null }),
+                ...(state !== undefined && { state: state || null }),
+                ...(country !== undefined && { country: country || null }),
             },
             include: {
                 reportedWastes: {
