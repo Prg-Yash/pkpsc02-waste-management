@@ -312,10 +312,22 @@ router.post(
                 return res.status(404).json({ error: "Waste report not found" });
             }
 
-            // Validate waste is still pending
-            if (waste.status !== "PENDING") {
+            // Validate waste status - must be IN_PROGRESS to collect
+            if (waste.status === "COLLECTED") {
                 return res.status(400).json({
                     error: "Waste report has already been collected",
+                });
+            }
+
+            if (waste.status === "PENDING") {
+                return res.status(400).json({
+                    error: "Waste must be added to route first (status must be IN_PROGRESS)",
+                });
+            }
+
+            if (waste.status !== "IN_PROGRESS") {
+                return res.status(400).json({
+                    error: `Cannot collect waste with status: ${waste.status}`,
                 });
             }
 
