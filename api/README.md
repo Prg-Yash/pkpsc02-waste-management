@@ -166,7 +166,9 @@ The test interface provides forms for:
 - `latitude`, `longitude` (Float, optional)
 - `city`, `state`, `country` (String, optional)
 - `status` (WasteStatus enum)
-- `createdAt`, `updatedAt` (DateTime)
+- `reportedAt` (DateTime) - When waste was reported
+- `collectedAt` (DateTime, optional) - When waste was collected
+- `createdAt`, `updatedAt` (DateTime) - System timestamps
 
 **Notification**
 - `id` (String, PK)
@@ -317,6 +319,8 @@ curl -X POST http://localhost:3000/api/waste/report \
       "name": "John Doe",
       "email": "john@example.com"
     },
+    "reportedAt": "2025-12-06T10:30:00Z",
+    "collectedAt": null,
     "createdAt": "2025-12-06T10:30:00Z",
     "updatedAt": "2025-12-06T10:30:00Z"
   }
@@ -411,7 +415,10 @@ curl -X POST http://localhost:3000/api/waste/clxxx123/collect \
       "id": "user_yyyyy",
       "name": "Jane Collector" 
     },
-    "collectedAt": "2025-12-06T11:00:00Z"
+    "reportedAt": "2025-12-06T10:30:00Z",
+    "collectedAt": "2025-12-06T11:00:00Z",
+    "createdAt": "2025-12-06T10:30:00Z",
+    "updatedAt": "2025-12-06T11:00:00Z"
   }
 }
 ```

@@ -292,6 +292,7 @@ router.post('/:id/collect', upload.single('collectorImage'), authenticateUser, a
             data: {
                 status: 'COLLECTED',
                 collectorId: req.user.id,
+                collectedAt: new Date(),
                 ...(collectorImageUrl && { collectorImageUrl })
             },
             include: {

@@ -29,8 +29,6 @@ app.use(cors({
     credentials: false
 }));
 
-app.options('*', cors());
-
 // Webhook route needs raw body for signature verification
 // Must come BEFORE json parser
 app.use('/api/webhooks/clerk', express.raw({ type: 'application/json' }));
