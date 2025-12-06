@@ -212,6 +212,43 @@ router.post(
                 },
             });
 
+            // Step 6: Notify collectors in the same state
+            // Find all collectors with enableCollector=true and matching state
+            const collectorsInState = await prisma.user.findMany({
+                where: {
+                    enableCollector: true,
+                    state: req.user.state, // Match reporter's state
+                    id: { not: req.user.id }, // Exclude the reporter themselves
+                },
+                select: {
+                    id: true,
+                    name: true,
+                },
+            });
+
+            // Send notification to each collector in parallel
+            const notificationPromises = collectorsInState.map((collector) =>
+                createNotification({
+                    userId: collector.id,
+                    type: "WASTE_REPORTED",
+                    title: "New Waste Available",
+                    body: `Clear the Waste: ${parsedAiAnalysis.wasteType.toUpperCase()} waste reported in ${req.user.city || "your area"}, ${req.user.state}. Collect it to earn points!`,
+                    data: {
+                        wasteReportId: updatedWasteReport.id,
+                        reporterState: req.user.state,
+                        reporterCity: req.user.city,
+                        wasteType: parsedAiAnalysis.wasteType,
+                        location: location,
+                    },
+                })
+            );
+
+            await Promise.all(notificationPromises);
+
+            console.log(
+                `✅ Notified ${collectorsInState.length} collector(s) in ${req.user.state}`
+            );
+
             res.status(201).json({ waste: updatedWasteReport });
         } catch (error) {
             console.error("Error creating waste report:", error);
