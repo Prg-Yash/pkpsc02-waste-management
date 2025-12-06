@@ -253,7 +253,7 @@ x-user-id: user_xxxxx
 
 ### Validation Behavior
 
-If any address field (`city`, `state`, or `country`) is missing or null:
+If any address field (`city`, `state`, or `country`) is missing or null when attempting restricted operations:
 
 **Request**:
 ```bash
@@ -268,6 +268,11 @@ curl -X POST http://localhost:3000/api/waste/report \
   "error": "Please update your profile with city, state, and country before reporting or collecting waste."
 }
 ```
+
+**Note**: This validation applies to:
+- `POST /api/waste/report` - Report new waste
+- `POST /api/waste/:id/collect` - Collect waste
+- `POST /api/route-planner/add` - Add waste to route planner
 
 ### Why Address is Required
 
@@ -289,6 +294,69 @@ curl -X POST http://localhost:3000/api/waste/report \
 ## �📡 API Endpoints
 
 ### User Management
+
+#### GET /api/user/all
+
+Get all users with their statistics and details.
+
+**Headers**:
+
+```
+x-user-id: user_xxxxx
+```
+
+**Response**:
+
+```json
+{
+  "users": [
+    {
+      "id": "user_xxxxx",
+      "name": "John Doe",
+      "email": "user@example.com",
+      "phone": "+1234567890",
+      "phoneVerified": true,
+      "reportCount": 15,
+      "collectionCount": 8,
+      "enableCollector": true,
+      "address": {
+        "city": "Pune",
+        "state": "Maharashtra",
+        "country": "India"
+      },
+      "reporterPoints": 150,
+      "collectorPoints": 160,
+      "globalPoints": 310,
+      "joinedAt": "2024-01-15T10:30:00.000Z",
+      "status": "active"
+    },
+    {
+      "id": "user_yyyyy",
+      "name": "Jane Smith",
+      "email": "jane@example.com",
+      "phone": "+1987654321",
+      "phoneVerified": false,
+      "reportCount": 5,
+      "collectionCount": null,
+      "enableCollector": false,
+      "address": null,
+      "reporterPoints": 50,
+      "collectorPoints": null,
+      "globalPoints": 50,
+      "joinedAt": "2024-02-20T14:15:00.000Z",
+      "status": "incomplete"
+    }
+  ],
+  "total": 2
+}
+```
+
+**Response Fields**:
+- `reportCount` - Total number of waste reports created by user
+- `collectionCount` - Total collections (null if enableCollector is false)
+- `address` - User's address (null if enableCollector is false)
+- `collectorPoints` - Points from collections (null if enableCollector is false)
+- `status` - "active" if phone verified and address complete, otherwise "incomplete"
 
 #### GET /api/user/me
 

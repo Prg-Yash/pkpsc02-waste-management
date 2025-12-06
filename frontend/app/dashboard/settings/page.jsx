@@ -9,6 +9,8 @@ export default function ProfilePage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState({ type: '', text: '' });
+  const [notifications, setNotifications] = useState([]);
+  const [loadingNotifications, setLoadingNotifications] = useState(false);
   
   const [userData, setUserData] = useState({
     name: '',
@@ -29,8 +31,85 @@ export default function ProfilePage() {
   useEffect(() => {
     if (clerkUser?.id) {
       fetchUserData();
+      fetchNotifications();
     }
   }, [clerkUser]);
+
+  const fetchNotifications = async () => {
+    try {
+      setLoadingNotifications(true);
+      const response = await fetch('https://jeanene-unexposed-ingrid.ngrok-free.dev/api/notifications', {
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to fetch notifications');
+      }
+
+      const data = await response.json();
+      console.log('=== NOTIFICATIONS DATA ===');
+      console.log(data);
+      console.log('========================');
+      
+      // Store notifications in state
+      setNotifications(data.notifications || []);
+    } catch (error) {
+      console.error('Error fetching notifications:', error);
+      setNotifications([]);
+    } finally {
+      setLoadingNotifications(false);
+    }
+  };
+
+  const markNotificationAsRead = async (notificationId) => {
+    try {
+      const response = await fetch(`https://jeanene-unexposed-ingrid.ngrok-free.dev/api/notifications/${notificationId}/read`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
+
+      if (response.ok) {
+        // Update local state
+        setNotifications(prev => 
+          prev.map(notif => 
+            notif.id === notificationId ? { ...notif, isRead: true } : notif
+          )
+        );
+      }
+    } catch (error) {
+      console.error('Error marking notification as read:', error);
+    }
+  };
+
+  const getNotificationIcon = (type) => {
+    switch(type) {
+      case 'WASTE_COLLECTED':
+        return <CheckCircle className="w-5 h-5 text-emerald-600" />;
+      case 'WASTE_REPORTED':
+        return <MapPin className="w-5 h-5 text-blue-600" />;
+      case 'POINTS_EARNED':
+        return <Award className="w-5 h-5 text-yellow-600" />;
+      default:
+        return <Bell className="w-5 h-5 text-gray-600" />;
+    }
+  };
+
+  const getNotificationColor = (type) => {
+    switch(type) {
+      case 'WASTE_COLLECTED':
+        return 'from-emerald-50 to-emerald-100 border-emerald-200';
+      case 'WASTE_REPORTED':
+        return 'from-blue-50 to-blue-100 border-blue-200';
+      case 'POINTS_EARNED':
+        return 'from-yellow-50 to-yellow-100 border-yellow-200';
+      default:
+        return 'from-gray-50 to-gray-100 border-gray-200';
+    }
+  };
 
   const fetchUserData = async () => {
     try {
@@ -617,28 +696,80 @@ export default function ProfilePage() {
         {/* Notifications */}
         <div className="bg-white rounded-2xl shadow-lg border border-gray-200">
           <div className="p-5 border-b border-gray-200 bg-linear-to-r from-amber-50 to-yellow-50">
-            <div className="flex items-center gap-3">
-              <div className="w-11 h-11 bg-linear-to-br from-amber-500 to-yellow-600 rounded-xl flex items-center justify-center shadow-md">
-                <Bell className="w-6 h-6 text-white" />
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="w-11 h-11 bg-linear-to-br from-amber-500 to-yellow-600 rounded-xl flex items-center justify-center shadow-md">
+                  <Bell className="w-6 h-6 text-white" />
+                </div>
+                <div>
+                  <h2 className="text-lg font-bold text-gray-800">Notifications</h2>
+                  <p className="text-sm text-gray-600">{notifications.length} total</p>
+                </div>
               </div>
-              <div>
-                <h2 className="text-lg font-bold text-gray-800">Notifications</h2>
-                <p className="text-sm text-gray-600">Stay updated</p>
-              </div>
+              {notifications.filter(n => !n.isRead).length > 0 && (
+                <span className="px-3 py-1 bg-red-500 text-white text-xs font-bold rounded-full">
+                  {notifications.filter(n => !n.isRead).length} new
+                </span>
+              )}
             </div>
           </div>
           <div className="p-5">
-            <div className="bg-blue-50 border border-blue-200 rounded-xl p-4">
-              <div className="flex items-start gap-3">
-                <AlertCircle className="w-5 h-5 text-blue-600 mt-0.5 shrink-0" />
-                <div>
-                  <p className="text-sm font-semibold text-blue-800 mb-1">Coming Soon</p>
-                  <p className="text-xs text-blue-700 leading-relaxed">
-                    Customize email, push, and in-app notifications for waste reports and collections.
-                  </p>
-                </div>
+            {loadingNotifications ? (
+              <div className="flex items-center justify-center py-8">
+                <Loader className="w-6 h-6 animate-spin text-amber-600" />
+                <span className="ml-2 text-sm text-gray-600">Loading notifications...</span>
               </div>
-            </div>
+            ) : notifications.length > 0 ? (
+              <div className="space-y-3 max-h-[400px] overflow-y-auto pr-2">
+                {notifications.map((notification) => (
+                  <div
+                    key={notification.id}
+                    onClick={() => !notification.isRead && markNotificationAsRead(notification.id)}
+                    className={`bg-linear-to-br ${getNotificationColor(notification.type)} rounded-xl border-2 p-4 transition-all cursor-pointer hover:shadow-md ${
+                      !notification.isRead ? 'border-l-4 border-l-amber-500' : ''
+                    }`}
+                  >
+                    <div className="flex items-start gap-3">
+                      <div className="shrink-0 mt-0.5">
+                        {getNotificationIcon(notification.type)}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-start justify-between gap-2 mb-1">
+                          <h3 className="text-sm font-bold text-gray-800">{notification.title}</h3>
+                          {!notification.isRead && (
+                            <span className="w-2 h-2 bg-amber-500 rounded-full shrink-0 mt-1"></span>
+                          )}
+                        </div>
+                        <p className="text-xs text-gray-600 mb-2">{notification.message}</p>
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs text-gray-500 flex items-center gap-1">
+                            <Calendar className="w-3 h-3" />
+                            {notification.createdAt ? new Date(notification.createdAt).toLocaleDateString('en-US', { 
+                              month: 'short', 
+                              day: 'numeric', 
+                              hour: '2-digit', 
+                              minute: '2-digit' 
+                            }) : 'N/A'}
+                          </span>
+                          {notification.isRead && (
+                            <span className="text-xs text-gray-500 flex items-center gap-1">
+                              <CheckCircle className="w-3 h-3" />
+                              Read
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="text-center py-12">
+                <Bell className="w-16 h-16 text-gray-300 mx-auto mb-3" />
+                <p className="text-sm font-medium text-gray-500">No notifications yet</p>
+                <p className="text-xs text-gray-400 mt-1">You'll be notified about waste reports and collections</p>
+              </div>
+            )}
           </div>
         </div>
 
