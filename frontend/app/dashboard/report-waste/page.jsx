@@ -301,8 +301,6 @@ export default function ReportWaste() {
           preview: URL.createObjectURL(blob),
         });
         closeCamera();
-        // Analyze the captured image
-        analyzeWasteImage(file);
       }, 'image/jpeg', 0.95);
     }
   };
@@ -620,8 +618,6 @@ export default function ReportWaste() {
                               file,
                               preview: URL.createObjectURL(file),
                             });
-                            // Analyze the uploaded image
-                            analyzeWasteImage(file);
                           }
                         }}
                         className="hidden"
@@ -691,13 +687,33 @@ export default function ReportWaste() {
                         <X className="w-4 h-4" />
                       </button>
                     </div>
-                    <button
-                      type="button"
-                      onClick={() => setPhoto(null)}
-                      className="w-full bg-gray-200 hover:bg-gray-300 text-gray-900 font-semibold py-2 px-4 rounded-lg text-sm"
-                    >
-                      Retake Photo
-                    </button>
+                    <div className="grid grid-cols-2 gap-3">
+                      <button
+                        type="button"
+                        onClick={() => analyzeWasteImage(photo.file)}
+                        disabled={isAnalyzing}
+                        className="bg-linear-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 text-white font-semibold py-2 px-4 rounded-lg text-sm flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-300"
+                      >
+                        {isAnalyzing ? (
+                          <>
+                            <Loader2 className="w-4 h-4 animate-spin" />
+                            Analyzing...
+                          </>
+                        ) : (
+                          <>
+                            <Zap className="w-4 h-4" />
+                            Analyze with AI
+                          </>
+                        )}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setPhoto(null)}
+                        className="bg-gray-200 hover:bg-gray-300 text-gray-900 font-semibold py-2 px-4 rounded-lg text-sm transition-colors"
+                      >
+                        Retake Photo
+                      </button>
+                    </div>
                   </div>
                 )}
 
