@@ -12,6 +12,7 @@ import routePlannerRoutes from "./routes/routePlanner.js";
 import phoneVerificationRoutes from "./routes/phoneVerification.js";
 import whatsappMessagingRoutes from "./routes/whatsappMessaging.js";
 import publicRoutePlannerRoutes from "./routes/publicRoutePlanner.js";
+import newsletterRoutes from "./routes/newsletter.js";
 
 const app = express();
 
@@ -77,6 +78,7 @@ app.get("/", (req, res) => {
             phoneVerification: "/api/phone/send-otp",
             whatsappMessaging: "/api/whatsapp/enable",
             publicRoutePlanner: "/api/public/route-planner (no auth)",
+            newsletter: "/api/newsletter/generate/:userId",
         },
     });
 });
@@ -91,6 +93,7 @@ app.use("/api/route-planner", routePlannerRoutes);
 app.use("/api/phone", phoneVerificationRoutes);
 app.use("/api/whatsapp", whatsappMessagingRoutes);
 app.use("/api/public", publicRoutePlannerRoutes);
+app.use("/api/newsletter", newsletterRoutes);
 
 // 404 handler
 app.use((req, res) => {
