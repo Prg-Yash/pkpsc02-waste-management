@@ -27,6 +27,8 @@ const CollectPage = () => {
   const [geminiAnalysis, setGeminiAnalysis] = useState(null);
   const [filterStatus, setFilterStatus] = useState('PENDING');
   const [filterCity, setFilterCity] = useState('');
+  const [selectedWasteDetail, setSelectedWasteDetail] = useState(null);
+  const [showWasteDetailModal, setShowWasteDetailModal] = useState(false);
 
   // Fetch waste reports from API
   useEffect(() => {
@@ -40,8 +42,8 @@ const CollectPage = () => {
       
       // Build query parameters
       const params = new URLSearchParams();
-      if (filterStatus) params.append('status', filterStatus);
-      if (filterCity) params.append('city', filterCity);
+      if (filterStatus && filterStatus !== '') params.append('status', filterStatus);
+      if (filterCity && filterCity !== '') params.append('city', filterCity);
       
       // Use local proxy to avoid ngrok CORS and browser warning issues
       const apiUrl = `/api/waste-proxy?${params.toString()}`;
@@ -123,6 +125,45 @@ const CollectPage = () => {
       setTasks([]);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const openWasteDetail = (task) => {
+    setSelectedWasteDetail(task);
+    setShowWasteDetailModal(true);
+  };
+
+  const closeWasteDetail = () => {
+    setSelectedWasteDetail(null);
+    setShowWasteDetailModal(false);
+  };
+
+  const handleCollectNow = async (task) => {
+    try {
+      // Get user profile to check location
+      const userResponse = await fetch('/api/user/me');
+      if (!userResponse.ok) {
+        throw new Error('Failed to fetch user profile');
+      }
+      const userData = await userResponse.json();
+      const userProfile = userData.user || userData;
+
+      // Check if user's state and country match waste location
+      if (userProfile.state && task.state && userProfile.state.toLowerCase() !== task.state.toLowerCase()) {
+        alert(`❌ Cannot collect: This waste is in ${task.state}, but your profile location is ${userProfile.state}. You can only collect waste from your registered state.`);
+        return;
+      }
+
+      if (userProfile.country && task.country && userProfile.country.toLowerCase() !== task.country.toLowerCase()) {
+        alert(`❌ Cannot collect: This waste is in ${task.country}, but your profile location is ${userProfile.country}. You can only collect waste from your registered country.`);
+        return;
+      }
+
+      // Directly open verification modal - the API will handle status change on successful collection
+      setSelectedTask(task);
+    } catch (error) {
+      console.error('Error starting collection:', error);
+      alert(`❌ Failed to start collection: ${error.message}`);
     }
   };
 
@@ -407,15 +448,7 @@ const CollectPage = () => {
                   </div>
                 </div>
               </div>
-              <div className="bg-linear-to-br from-emerald-500 to-teal-600 rounded-xl p-6 text-white shadow-lg">
-                <div className="flex items-center gap-3">
-                  <Award className="w-8 h-8" />
-                  <div>
-                    <p className="text-sm opacity-90">Total Rewards</p>
-                    <p className="text-2xl font-bold">{reward || 0} Tokens</p>
-                  </div>
-                </div>
-              </div>
+             
             </div>
           </div>
         </div>
@@ -562,13 +595,28 @@ const CollectPage = () => {
                     </div>
 
                     <div className="flex justify-end gap-3">
+                      <button 
+                        onClick={() => openWasteDetail(task)}
+                        className="px-6 py-2.5 bg-linear-to-r from-purple-500 to-pink-600 text-white rounded-lg font-semibold hover:from-purple-600 hover:to-pink-700 transition-all duration-300 transform hover:scale-105 shadow-md hover:shadow-lg"
+                      >
+                        View Details
+                      </button>
                       {task.status === 'pending' && (
-                        <button 
-                          onClick={() => handleAddToRoute(task.id)}
-                          className="px-6 py-2.5 bg-linear-to-r from-emerald-500 to-teal-600 text-white rounded-lg font-semibold hover:from-emerald-600 hover:to-teal-700 transition-all duration-300 transform hover:scale-105 shadow-md hover:shadow-lg"
-                        >
-                          Add to Map Route
-                        </button>
+                        <>
+                          <button 
+                            onClick={() => handleCollectNow(task)}
+                            className="px-6 py-2.5 bg-linear-to-r from-blue-500 to-indigo-600 text-white rounded-lg font-semibold hover:from-blue-600 hover:to-indigo-700 transition-all duration-300 transform hover:scale-105 shadow-md hover:shadow-lg flex items-center gap-2"
+                          >
+                            <CheckCircle className="w-4 h-4" />
+                            Complete & Verify
+                          </button>
+                          <button 
+                            onClick={() => handleAddToRoute(task.id)}
+                            className="px-6 py-2.5 bg-linear-to-r from-emerald-500 to-teal-600 text-white rounded-lg font-semibold hover:from-emerald-600 hover:to-teal-700 transition-all duration-300 transform hover:scale-105 shadow-md hover:shadow-lg"
+                          >
+                            Add to Map Route
+                          </button>
+                        </>
                       )}
                       {task.status === 'in_progress' && (() => {
                         const isMyTask = task.routeCollectorId === user?.id || task.collectorId === user?.id;
@@ -621,6 +669,243 @@ const CollectPage = () => {
               </button>
             </div>
           </>
+        )}
+
+        {/* Waste Detail Modal */}
+        {showWasteDetailModal && selectedWasteDetail && (
+          <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4 overflow-y-auto">
+            <div className="bg-white rounded-2xl shadow-2xl max-w-3xl w-full my-8 relative">
+              {/* Close Button */}
+              <button
+                onClick={closeWasteDetail}
+                className="absolute top-4 right-4 z-10 text-gray-400 hover:text-gray-600 bg-white rounded-full p-2 shadow-lg transition-colors"
+              >
+                <X className="w-6 h-6" />
+              </button>
+
+              {/* Header */}
+              <div className="bg-linear-to-r from-purple-500 to-pink-500 rounded-t-2xl p-6 text-white">
+                <h2 className="text-2xl font-bold mb-2">Waste Report Details</h2>
+                <div className="flex items-center gap-2">
+                  <span className={`px-3 py-1 rounded-full text-xs font-bold ${
+                    selectedWasteDetail.status === 'collected' ? 'bg-emerald-500' :
+                    selectedWasteDetail.status === 'in_progress' ? 'bg-yellow-500' :
+                    'bg-blue-500'
+                  }`}>
+                    {selectedWasteDetail.status.toUpperCase()}
+                  </span>
+                  <span className="text-sm opacity-90">ID: {selectedWasteDetail.id?.substring(0, 8) || 'N/A'}</span>
+                </div>
+              </div>
+
+              {/* Content */}
+              <div className="p-6 max-h-[70vh] overflow-y-auto">
+                {/* Image Section */}
+                {selectedWasteDetail.reportedImage && (
+                  <div className="mb-6">
+                    <h3 className="text-sm font-bold text-gray-700 mb-2">Waste Image</h3>
+                    <div className="rounded-xl overflow-hidden border-2 border-gray-200">
+                      <img 
+                        src={selectedWasteDetail.reportedImage} 
+                        alt={selectedWasteDetail.wasteType}
+                        className="w-full h-64 object-cover"
+                      />
+                    </div>
+                  </div>
+                )}
+
+                {/* Information Grid */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+                  <div className="bg-gray-50 rounded-xl p-4">
+                    <p className="text-xs text-gray-500 mb-1">Waste Type</p>
+                    <p className="text-sm font-bold text-gray-800">{selectedWasteDetail.wasteType || 'Mixed Waste'}</p>
+                  </div>
+                  <div className="bg-gray-50 rounded-xl p-4">
+                    <p className="text-xs text-gray-500 mb-1">Estimated Weight</p>
+                    <p className="text-sm font-bold text-gray-800">{selectedWasteDetail.amount || 'Not specified'}</p>
+                  </div>
+                  <div className="bg-gray-50 rounded-xl p-4">
+                    <p className="text-xs text-gray-500 mb-1">Reported Date</p>
+                    <p className="text-sm font-bold text-gray-800">
+                      {selectedWasteDetail.date ? new Date(selectedWasteDetail.date).toLocaleDateString('en-US', { 
+                        dateStyle: 'medium' 
+                      }) : 'N/A'}
+                    </p>
+                  </div>
+                  <div className="bg-gray-50 rounded-xl p-4">
+                    <p className="text-xs text-gray-500 mb-1">Points Reward</p>
+                    <p className="text-sm font-bold text-emerald-600 flex items-center gap-1">
+                      <Award className="w-4 h-4" />
+                      {selectedWasteDetail.status === 'collected' ? '20 points' : '20 points (upon collection)'}
+                    </p>
+                  </div>
+                </div>
+
+                {/* Location Information */}
+                <div className="bg-blue-50 rounded-xl p-4 mb-6">
+                  <h3 className="text-sm font-bold text-gray-700 mb-3 flex items-center gap-2">
+                    <MapPin className="w-4 h-4 text-blue-600" />
+                    Location Details
+                  </h3>
+                  <div className="space-y-2">
+                    <p className="text-sm text-gray-700">
+                      <span className="font-semibold">Address:</span> {selectedWasteDetail.location || 'N/A'}
+                    </p>
+                    {selectedWasteDetail.city && (
+                      <p className="text-sm text-gray-700">
+                        <span className="font-semibold">City:</span> {selectedWasteDetail.city}
+                      </p>
+                    )}
+                    {selectedWasteDetail.state && (
+                      <p className="text-sm text-gray-700">
+                        <span className="font-semibold">State:</span> {selectedWasteDetail.state}
+                      </p>
+                    )}
+                    {selectedWasteDetail.country && (
+                      <p className="text-sm text-gray-700">
+                        <span className="font-semibold">Country:</span> {selectedWasteDetail.country}
+                      </p>
+                    )}
+                    {selectedWasteDetail.reportedLocation?.latitude && selectedWasteDetail.reportedLocation?.longitude && (
+                      <p className="text-sm text-gray-700">
+                        <span className="font-semibold">Coordinates:</span> {selectedWasteDetail.reportedLocation.latitude.toFixed(6)}, {selectedWasteDetail.reportedLocation.longitude.toFixed(6)}
+                      </p>
+                    )}
+                  </div>
+                </div>
+
+                {/* AI Analysis */}
+                {selectedWasteDetail.aiAnalysis && (
+                  <div className="bg-purple-50 rounded-xl p-4 mb-6">
+                    <h3 className="text-sm font-bold text-gray-700 mb-3">AI Analysis</h3>
+                    <div className="space-y-2">
+                      {selectedWasteDetail.aiAnalysis.category && (
+                        <p className="text-sm text-gray-700">
+                          <span className="font-semibold">Category:</span> {selectedWasteDetail.aiAnalysis.category}
+                        </p>
+                      )}
+                      {selectedWasteDetail.aiAnalysis.confidence && (
+                        <p className="text-sm text-gray-700">
+                          <span className="font-semibold">Confidence:</span> {(selectedWasteDetail.aiAnalysis.confidence * 100).toFixed(1)}%
+                        </p>
+                      )}
+                      {selectedWasteDetail.aiAnalysis.notes && (
+                        <p className="text-sm text-gray-700">
+                          <span className="font-semibold">Notes:</span> {selectedWasteDetail.aiAnalysis.notes}
+                        </p>
+                      )}
+                      {selectedWasteDetail.aiAnalysis.recyclability && (
+                        <p className="text-sm text-gray-700">
+                          <span className="font-semibold">Recyclability:</span> {selectedWasteDetail.aiAnalysis.recyclability}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {/* Reporter Information */}
+                {selectedWasteDetail.reporter && (
+                  <div className="bg-gray-50 rounded-xl p-4 mb-6">
+                    <h3 className="text-sm font-bold text-gray-700 mb-3">Reporter Information</h3>
+                    <div className="space-y-2">
+                      <p className="text-sm text-gray-700">
+                        <span className="font-semibold">Name:</span> {selectedWasteDetail.reporter.name || 'Anonymous'}
+                      </p>
+                      {selectedWasteDetail.reporter.email && (
+                        <p className="text-sm text-gray-700">
+                          <span className="font-semibold">Email:</span> {selectedWasteDetail.reporter.email}
+                        </p>
+                      )}
+                      <p className="text-sm text-gray-700">
+                        <span className="font-semibold">Reporter ID:</span> {selectedWasteDetail.reporter.id?.substring(0, 12)}...
+                      </p>
+                    </div>
+                  </div>
+                )}
+
+                {/* Collection Information */}
+                {selectedWasteDetail.status === 'collected' && selectedWasteDetail.collector && (
+                  <div className="bg-emerald-50 rounded-xl p-4 mb-6">
+                    <h3 className="text-sm font-bold text-gray-700 mb-3 flex items-center gap-2">
+                      <CheckCircle className="w-4 h-4 text-emerald-600" />
+                      Collection Information
+                    </h3>
+                    <div className="space-y-2">
+                      <p className="text-sm text-gray-700">
+                        <span className="font-semibold">Collected By:</span> {selectedWasteDetail.collector.name || 'N/A'}
+                      </p>
+                      {selectedWasteDetail.collectedAt && (
+                        <p className="text-sm text-gray-700">
+                          <span className="font-semibold">Collected On:</span> {new Date(selectedWasteDetail.collectedAt).toLocaleString('en-US', { 
+                            dateStyle: 'medium', 
+                            timeStyle: 'short' 
+                          })}
+                        </p>
+                      )}
+                      {selectedWasteDetail.collectorImageUrl && (
+                        <div className="mt-3">
+                          <p className="text-xs font-semibold text-emerald-800 mb-2">Collection Proof Image:</p>
+                          <img 
+                            src={selectedWasteDetail.collectorImageUrl} 
+                            alt="Collection proof"
+                            className="w-full rounded-lg border-2 border-emerald-300 object-cover h-48"
+                          />
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {/* Action Buttons in Modal */}
+                {selectedWasteDetail.status === 'pending' && (
+                  <div className="flex gap-3">
+                    <button
+                      onClick={() => {
+                        closeWasteDetail();
+                        handleCollectNow(selectedWasteDetail);
+                      }}
+                      className="flex-1 py-3 bg-linear-to-r from-blue-500 to-indigo-600 hover:from-blue-600 hover:to-indigo-700 text-white rounded-xl font-semibold transition-all duration-200 flex items-center justify-center gap-2"
+                    >
+                      <CheckCircle className="w-5 h-5" />
+                      Complete & Verify
+                    </button>
+                    <button
+                      onClick={() => {
+                        closeWasteDetail();
+                        handleAddToRoute(selectedWasteDetail.id);
+                      }}
+                      className="flex-1 py-3 bg-linear-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 text-white rounded-xl font-semibold transition-all duration-200"
+                    >
+                      Add to Route
+                    </button>
+                  </div>
+                )}
+
+                {selectedWasteDetail.status === 'in_progress' && 
+                 (selectedWasteDetail.routeCollectorId === user?.id || selectedWasteDetail.collectorId === user?.id) && (
+                  <button
+                    onClick={() => {
+                      closeWasteDetail();
+                      setSelectedTask(selectedWasteDetail);
+                    }}
+                    className="w-full py-3 bg-linear-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 text-white rounded-xl font-semibold transition-all duration-200"
+                  >
+                    Complete & Verify
+                  </button>
+                )}
+              </div>
+
+              {/* Footer */}
+              <div className="border-t border-gray-200 p-4 bg-gray-50 rounded-b-2xl">
+                <button
+                  onClick={closeWasteDetail}
+                  className="w-full py-3 bg-gray-800 hover:bg-gray-900 text-white rounded-xl font-semibold transition-all duration-200"
+                >
+                  Close
+                </button>
+              </div>
+            </div>
+          </div>
         )}
 
         {/* Verification Modal */}
