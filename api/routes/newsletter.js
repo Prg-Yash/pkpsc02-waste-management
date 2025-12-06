@@ -41,14 +41,14 @@ router.get("/generate/:userId", async (req, res) => {
     }
 
     if (!user.newsletterEnabled) {
-      return res.status(403).json({ 
-        error: "Newsletter is disabled for this user. Please enable newsletter in profile settings." 
+      return res.status(403).json({
+        error: "Newsletter is disabled for this user. Please enable newsletter in profile settings."
       });
     }
 
     if (!user.city || !user.state) {
-      return res.status(400).json({ 
-        error: "User profile incomplete. City and state are required for newsletter generation." 
+      return res.status(400).json({
+        error: "User profile incomplete. City and state are required for newsletter generation."
       });
     }
 
@@ -144,9 +144,9 @@ router.get("/generate/:userId", async (req, res) => {
 
   } catch (error) {
     console.error("Newsletter generation error:", error);
-    res.status(500).json({ 
+    res.status(500).json({
       error: "Failed to generate newsletter",
-      details: error.message 
+      details: error.message
     });
   }
 });
@@ -174,8 +174,8 @@ router.get("/preview/:userId", async (req, res) => {
     }
 
     if (!user.city || !user.state) {
-      return res.status(400).json({ 
-        error: "User profile incomplete. City and state are required." 
+      return res.status(400).json({
+        error: "User profile incomplete. City and state are required."
       });
     }
 
@@ -213,9 +213,9 @@ router.get("/preview/:userId", async (req, res) => {
 
   } catch (error) {
     console.error("Newsletter preview error:", error);
-    res.status(500).json({ 
+    res.status(500).json({
       error: "Failed to generate preview",
-      details: error.message 
+      details: error.message
     });
   }
 });
@@ -271,7 +271,7 @@ async function getCityStatistics(city, state, since) {
     wasteTypes[type].weight += report.aiAnalysis?.estimatedWeightKg || 0;
   });
 
-  const collectionRate = totalReports > 0 
+  const collectionRate = totalReports > 0
     ? ((collectedReports / totalReports) * 100).toFixed(1)
     : 0;
 
@@ -534,7 +534,7 @@ function generateInsights(cityStats, stateStats, userStats) {
 
   // Waste type insight
   if (cityStats.wasteByType && cityStats.wasteByType.length > 0) {
-    const topWasteType = cityStats.wasteByType.reduce((prev, current) => 
+    const topWasteType = cityStats.wasteByType.reduce((prev, current) =>
       (prev.count > current.count) ? prev : current
     );
     insights.push({
@@ -549,6 +549,7 @@ function generateInsights(cityStats, stateStats, userStats) {
 /**
  * POST /api/newsletter/send-all
  * Send newsletters to all users who have enabled newsletter subscription
+ * This endpoint returns immediately and processes emails in the background
  */
 router.post("/send-all", async (req, res) => {
   try {
@@ -576,84 +577,112 @@ router.post("/send-all", async (req, res) => {
         sent: 0,
         failed: 0,
         total: 0,
+        status: "completed",
       });
     }
 
     console.log(`📋 Found ${subscribedUsers.length} subscribed users`);
 
-    // Helper function to generate newsletter for a user
-    const generateNewsletterForUser = async (userId) => {
-      try {
-        const user = subscribedUsers.find((u) => u.id === userId);
-        if (!user) return null;
-
-        const since = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
-
-        const [cityStats, stateStats, userStats] = await Promise.all([
-          getCityStatistics(user.city, user.state, since),
-          getStateStatistics(user.state, since),
-          getUserPersonalStats(userId, since),
-        ]);
-
-        const topCollectors = await getTopCollectors(user.city, user.state, 5);
-        const environmentalImpact = await getEnvironmentalImpact(
-          user.city,
-          user.state
-        );
-
-        const cityReport = {
-          city: user.city,
-          state: user.state,
-          statistics: cityStats,
-          topCollectors,
-          environmentalImpact,
-        };
-
-        const stateReport = {
-          state: user.state,
-          statistics: stateStats,
-        };
-
-        const insights = generateInsights(cityStats, stateStats, userStats);
-
-        return {
-          cityReport,
-          stateReport,
-          personalStats: userStats,
-          insights,
-          generatedAt: new Date().toISOString(),
-        };
-      } catch (error) {
-        console.error(`Error generating newsletter for user ${userId}:`, error);
-        return null;
-      }
-    };
-
-    // Send newsletters to all subscribed users
-    const results = await sendBulkNewsletters(
-      subscribedUsers,
-      generateNewsletterForUser
-    );
-
-    console.log(
-      `✅ Bulk send complete: ${results.sent} sent, ${results.failed} failed`
-    );
-
-    res.status(200).json({
-      message: "Newsletter sending completed",
-      sent: results.sent,
-      failed: results.failed,
-      total: results.total,
-      details: results.details,
+    // Return immediately with accepted status
+    res.status(202).json({
+      message: "Newsletter sending started in background",
+      total: subscribedUsers.length,
+      status: "processing",
+      note: "Newsletters are being sent. Check server logs for progress.",
     });
+
+    // Process emails in the background (don't await)
+    processNewslettersInBackground(subscribedUsers).catch(error => {
+      console.error("❌ Background newsletter processing failed:", error);
+    });
+
   } catch (error) {
-    console.error("Error sending bulk newsletters:", error);
+    console.error("Error initiating newsletter send:", error);
     res.status(500).json({
-      error: "Failed to send newsletters",
+      error: "Failed to initiate newsletter sending",
       message: error.message,
     });
   }
 });
+
+/**
+ * Process newsletters in the background
+ * This function runs asynchronously after the HTTP response is sent
+ */
+async function processNewslettersInBackground(subscribedUsers) {
+  console.log(`🔄 Background processing started for ${subscribedUsers.length} users`);
+
+  const results = {
+    total: subscribedUsers.length,
+    sent: 0,
+    failed: 0,
+    details: [],
+  };
+
+  // Helper function to generate newsletter for a user
+  const generateNewsletterForUser = async (userId) => {
+    try {
+      const user = subscribedUsers.find((u) => u.id === userId);
+      if (!user) return null;
+
+      const since = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+
+      const [cityStats, stateStats, userStats] = await Promise.all([
+        getCityStatistics(user.city, user.state, since),
+        getStateStatistics(user.state, since),
+        getUserPersonalStats(userId, since),
+      ]);
+
+      const topCollectors = await getTopCollectors(user.city, user.state, 5);
+      const environmentalImpact = await getEnvironmentalImpact(
+        user.city,
+        user.state
+      );
+
+      const cityReport = {
+        city: user.city,
+        state: user.state,
+        statistics: cityStats,
+        topCollectors,
+        environmentalImpact,
+      };
+
+      const stateReport = {
+        state: user.state,
+        statistics: stateStats,
+      };
+
+      const insights = generateInsights(cityStats, stateStats, userStats);
+
+      return {
+        cityReport,
+        stateReport,
+        personalStats: userStats,
+        insights,
+        generatedAt: new Date().toISOString(),
+      };
+    } catch (error) {
+      console.error(`❌ Error generating newsletter for user ${userId}:`, error);
+      return null;
+    }
+  };
+
+  // Send newsletters to all subscribed users
+  try {
+    const sendResults = await sendBulkNewsletters(
+      subscribedUsers,
+      generateNewsletterForUser
+    );
+
+    console.log(`✅ Bulk send complete: ${sendResults.sent} sent, ${sendResults.failed} failed`);
+    console.log(`📊 Success rate: ${((sendResults.sent / sendResults.total) * 100).toFixed(1)}%`);
+
+    return sendResults;
+  } catch (error) {
+    console.error("❌ Fatal error in background processing:", error);
+    throw error;
+  }
+}
 
 /**
  * GET /api/newsletter/verify-config
@@ -662,7 +691,7 @@ router.post("/send-all", async (req, res) => {
 router.get("/verify-config", async (req, res) => {
   try {
     const result = await verifyEmailConfig();
-    
+
     if (result.success) {
       res.status(200).json({
         message: "Email configuration is valid",
