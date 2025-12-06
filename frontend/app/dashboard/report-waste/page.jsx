@@ -358,14 +358,11 @@ export default function ReportWaste() {
       if (address.state) formData.append('state', address.state);
       if (address.country) formData.append('country', address.country);
 
-      // Make API call to report waste
-      const apiUrl = `${API_CONFIG.BASE_URL}${API_CONFIG.ENDPOINTS.WASTE_REPORT}`;
-      const response = await fetch(apiUrl, {
+      // Make API call to report waste via proxy to avoid CORS/ngrok issues
+      const proxyUrl = '/api/waste-proxy';
+      const response = await fetch(proxyUrl, {
         method: 'POST',
-        headers: {
-          'x-user-id': user.id,
-        },
-        body: formData,
+        body: formData, // Proxy will forward FormData with proper headers
       });
 
       if (!response.ok) {

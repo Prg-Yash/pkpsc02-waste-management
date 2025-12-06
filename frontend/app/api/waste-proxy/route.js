@@ -42,3 +42,60 @@ export async function GET(request) {
     );
   }
 }
+
+export async function POST(request) {
+  try {
+    // Get the FormData from the request
+    const formData = await request.formData();
+    
+    const apiUrl = `${API_BASE_URL}/api/waste/report`;
+    
+    console.log('Waste Report Proxy: Forwarding to', apiUrl);
+    
+    // Forward the FormData directly to the backend
+    const response = await fetch(apiUrl, {
+      method: 'POST',
+      headers: {
+        'x-user-id': formData.get('userId') || '',
+        'ngrok-skip-browser-warning': 'true',
+      },
+      body: formData,
+    });
+
+    // Get response as text first
+    const responseText = await response.text();
+    console.log('Backend Response:', responseText.substring(0, 200));
+
+    if (!response.ok) {
+      console.error('Backend API Error:', {
+        status: response.status,
+        statusText: response.statusText,
+        responseText: responseText.substring(0, 500)
+      });
+      
+      // Try to parse as JSON
+      let errorDetails;
+      try {
+        errorDetails = JSON.parse(responseText);
+      } catch (e) {
+        errorDetails = { error: responseText };
+      }
+      
+      return NextResponse.json(
+        { error: 'Failed to submit waste report', details: errorDetails },
+        { status: response.status }
+      );
+    }
+
+    // Parse successful response
+    const data = JSON.parse(responseText);
+    return NextResponse.json(data);
+    
+  } catch (error) {
+    console.error('Waste Report Proxy Error:', error);
+    return NextResponse.json(
+      { error: 'Failed to submit waste report', details: error.message, stack: error.stack },
+      { status: 500 }
+    );
+  }
+}

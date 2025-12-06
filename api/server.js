@@ -22,7 +22,7 @@ app.use(
     })
 );
 
-// Additional CORS headers for all requests
+// Additional CORS headers for preflight
 app.use((req, res, next) => {
     res.header("Access-Control-Allow-Origin", "*");
     res.header(
