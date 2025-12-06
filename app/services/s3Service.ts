@@ -11,6 +11,9 @@ export interface WasteSubmissionData {
     latitude?: number;
     longitude?: number;
     address?: string;
+    city?: string;
+    state?: string;
+    country?: string;
   };
 }
 
@@ -25,6 +28,15 @@ export async function submitWasteReport(
 ): Promise<WasteSubmissionResult> {
   try {
     const { imageUri, userId, analysis, location } = data;
+    
+    console.log("🔵 Starting waste submission...");
+    console.log("API_URL:", API_URL);
+    console.log("User ID:", userId);
+    console.log("Analysis:", JSON.stringify(analysis, null, 2));
+    
+    if (!API_URL) {
+      throw new Error("API_URL is not configured. Check your .env file.");
+    }
     
     // Create form data
     const formData = new FormData();
@@ -44,22 +56,32 @@ export async function submitWasteReport(
     // Append userId
     formData.append("userId", userId);
     
-    // Append location data
-    const locationString = location.address || 
-      (location.latitude && location.longitude 
-        ? `${location.latitude},${location.longitude}` 
-        : "Location pending");
+    // Append location data - use full address if available, otherwise fallback to coordinates
+    const locationString = location.address || "Location pending";
     formData.append("location", locationString);
     
     if (location.latitude && location.longitude) {
-      formData.append("isLocationLatLng", "true");
+      formData.append("isLocationLatLng", location.address ? "false" : "true");
       formData.append("latitude", location.latitude.toString());
       formData.append("longitude", location.longitude.toString());
+    }
+    
+    // Append city, state, country if available
+    if (location.city) {
+      formData.append("city", location.city);
+    }
+    if (location.state) {
+      formData.append("state", location.state);
+    }
+    if (location.country) {
+      formData.append("country", location.country);
     }
     
     // Append AI analysis as JSON (contains wasteType, estimatedWeightKg, notes, and all other fields)
     formData.append("aiAnalysis", JSON.stringify(analysis));
 
+    console.log("📤 Sending request to:", `${API_URL}/api/waste/report`);
+    
     // Upload to backend
     const response = await fetch(`${API_URL}/api/waste/report`, {
       method: "POST",
@@ -69,20 +91,27 @@ export async function submitWasteReport(
       body: formData,
     });
 
+    console.log("📥 Response status:", response.status);
+
     if (!response.ok) {
       const errorData = await response.json();
+      console.error("❌ Server error:", errorData);
       throw new Error(errorData.error || "Submission failed");
     }
 
     const responseData = await response.json();
+    console.log("✅ Success:", responseData);
     
     return {
       reportId: responseData.waste.id,
       imageUrl: responseData.waste.imageUrl,
       status: responseData.waste.status,
     };
-  } catch (error) {
-    console.error("Waste submission error:", error);
-    throw new Error("Failed to submit waste report. Please try again.");
+  } catch (error: any) {
+    console.error("❌ Waste submission error:", error);
+    console.error("Error name:", error.name);
+    console.error("Error message:", error.message);
+    console.error("Error stack:", error.stack);
+    throw error;
   }
 }
