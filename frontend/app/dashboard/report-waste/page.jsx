@@ -6,8 +6,12 @@ import Link from 'next/link';
 import { 
   MapPin, Camera, Trash2, Recycle, Package, Droplets, 
   Leaf, Zap, ArrowLeft, CheckCircle, AlertCircle, 
-  Upload, X, Loader2, TrendingUp, Award, Target, ChevronDown
+  Upload, X, Loader2, TrendingUp, Award, Target, ChevronDown, Search
 } from 'lucide-react';
+import { GoogleMap, LoadScript, Marker, Autocomplete } from '@react-google-maps/api';
+import { API_CONFIG, WASTE_TYPE_MAPPING } from '@/lib/api-config';
+
+const libraries = ['places'];
 
 export default function ReportWaste() {
   const { user } = useUser();
@@ -22,6 +26,13 @@ export default function ReportWaste() {
   const [weight, setWeight] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showSuccess, setShowSuccess] = useState(false);
+  const [address, setAddress] = useState({ city: '', state: '', country: '' });
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [aiAnalysisData, setAiAnalysisData] = useState(null);
+  const [fullAddress, setFullAddress] = useState('');
+  const [showMap, setShowMap] = useState(false);
+  const [mapCenter, setMapCenter] = useState({ lat: 19.0760, lng: 72.8777 });
+  const [autocomplete, setAutocomplete] = useState(null);
 
   const videoRef = useRef(null);
   const canvasRef = useRef(null);
@@ -54,6 +65,156 @@ export default function ReportWaste() {
     { id: 'ewaste', name: 'E-Waste', icon: Target, color: 'from-red-500 to-pink-600', points: 25 }
   ];
 
+  // Analyze waste image using Gemini AI
+  const analyzeWasteImage = async (imageFile) => {
+    setIsAnalyzing(true);
+    try {
+      // Convert image to base64
+      const reader = new FileReader();
+      const base64Image = await new Promise((resolve, reject) => {
+        reader.onloadend = () => resolve(reader.result.split(',')[1]);
+        reader.onerror = reject;
+        reader.readAsDataURL(imageFile);
+      });
+
+      // Call Gemini API for image analysis
+      const response = await fetch('/api/analyze-waste', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ image: base64Image })
+      });
+
+      if (!response.ok) throw new Error('Failed to analyze image');
+      
+      const data = await response.json();
+      
+      // Auto-fill weight and description
+      if (data.estimatedWeight) {
+        setWeight(data.estimatedWeight.toString());
+      }
+      if (data.description) {
+        setDescription(data.description);
+      }
+      if (data.wasteType) {
+        setWasteType(data.wasteType);
+      }
+
+      // Store AI analysis data for submission
+      const analysisData = {
+        category: data.estimatedWeight >= 10 ? 'large' : 'small',
+        wasteType: data.wasteType || 'mixed',
+        confidence: data.confidence || 0.85,
+        estimatedWeightKg: parseFloat(data.estimatedWeight) || 0,
+        notes: data.description || ''
+      };
+      setAiAnalysisData(analysisData);
+    } catch (error) {
+      console.error('Error analyzing image:', error);
+    } finally {
+      setIsAnalyzing(false);
+    }
+  };
+
+  // Fetch address from coordinates using Google Geocoding
+  const getAddressFromCoordinates = async (latitude, longitude) => {
+    try {
+      if (window.google && window.google.maps) {
+        const geocoder = new window.google.maps.Geocoder();
+        const latlng = { lat: latitude, lng: longitude };
+        
+        geocoder.geocode({ location: latlng }, (results, status) => {
+          if (status === 'OK' && results[0]) {
+            setFullAddress(results[0].formatted_address);
+            
+            // Extract city, state, country from address components
+            const components = results[0].address_components;
+            const addressData = {
+              city: '',
+              state: '',
+              country: ''
+            };
+            
+            components.forEach(component => {
+              if (component.types.includes('locality')) {
+                addressData.city = component.long_name;
+              }
+              if (component.types.includes('administrative_area_level_1')) {
+                addressData.state = component.long_name;
+              }
+              if (component.types.includes('country')) {
+                addressData.country = component.long_name;
+              }
+            });
+            
+            setAddress(addressData);
+          }
+        });
+      }
+    } catch (error) {
+      console.error('Error fetching address:', error);
+    }
+  };
+
+  // Handle place selection from autocomplete
+  const onPlaceSelected = () => {
+    if (autocomplete) {
+      const place = autocomplete.getPlace();
+      
+      if (place.geometry) {
+        const lat = place.geometry.location.lat();
+        const lng = place.geometry.location.lng();
+        
+        setLocation({
+          latitude: lat,
+          longitude: lng,
+          accuracy: 10,
+        });
+        
+        setMapCenter({ lat, lng });
+        setFullAddress(place.formatted_address || '');
+        
+        // Extract address components
+        const addressData = {
+          city: '',
+          state: '',
+          country: ''
+        };
+        
+        if (place.address_components) {
+          place.address_components.forEach(component => {
+            if (component.types.includes('locality')) {
+              addressData.city = component.long_name;
+            }
+            if (component.types.includes('administrative_area_level_1')) {
+              addressData.state = component.long_name;
+            }
+            if (component.types.includes('country')) {
+              addressData.country = component.long_name;
+            }
+          });
+        }
+        
+        setAddress(addressData);
+        setShowMap(true);
+      }
+    }
+  };
+
+  // Handle map click to select location
+  const onMapClick = (e) => {
+    const lat = e.latLng.lat();
+    const lng = e.latLng.lng();
+    
+    setLocation({
+      latitude: lat,
+      longitude: lng,
+      accuracy: 10,
+    });
+    
+    setMapCenter({ lat, lng });
+    getAddressFromCoordinates(lat, lng);
+  };
+
   // Get current location
   const getCurrentLocation = () => {
     setLoadingLocation(true);
@@ -67,11 +228,21 @@ export default function ReportWaste() {
 
     navigator.geolocation.getCurrentPosition(
       (position) => {
+        const lat = position.coords.latitude;
+        const lng = position.coords.longitude;
+        
         setLocation({
-          latitude: position.coords.latitude,
-          longitude: position.coords.longitude,
+          latitude: lat,
+          longitude: lng,
           accuracy: position.coords.accuracy,
         });
+        
+        setMapCenter({ lat, lng });
+        setShowMap(true);
+        
+        // Fetch address from coordinates
+        getAddressFromCoordinates(lat, lng);
+        
         setLoadingLocation(false);
       },
       (error) => {
@@ -129,6 +300,8 @@ export default function ReportWaste() {
           preview: URL.createObjectURL(blob),
         });
         closeCamera();
+        // Analyze the captured image
+        analyzeWasteImage(file);
       }, 'image/jpeg', 0.95);
     }
   };
@@ -149,23 +322,86 @@ export default function ReportWaste() {
       return;
     }
 
+    if (!user?.id) {
+      alert('User not authenticated. Please sign in.');
+      return;
+    }
+
     setIsSubmitting(true);
 
-    // Simulate API call
-    await new Promise(resolve => setTimeout(resolve, 2000));
+    try {
+      // Create FormData for multipart/form-data submission
+      const formData = new FormData();
+      
+      // Add the image file
+      formData.append('image', photo.file);
+      
+      // Add required fields
+      formData.append('userId', user.id);
+      // Use full address as location (stored as locationRaw in backend)
+      formData.append('location', fullAddress || `${location.latitude}, ${location.longitude}`);
+      formData.append('isLocationLatLng', 'true');
+      formData.append('latitude', location.latitude.toString());
+      formData.append('longitude', location.longitude.toString());
+      
+      // Add AI analysis as JSON string (required by API)
+      const aiAnalysis = aiAnalysisData || {
+        category: parseFloat(weight) >= 10 ? 'large' : 'small',
+        wasteType: WASTE_TYPE_MAPPING[wasteType] || 'mixed',
+        confidence: 0.8,
+        estimatedWeightKg: parseFloat(weight) || 0,
+        notes: description || 'User submitted waste report'
+      };
+      formData.append('aiAnalysis', JSON.stringify(aiAnalysis));
+      
+      // Add optional address fields if available
+      if (address.city) formData.append('city', address.city);
+      if (address.state) formData.append('state', address.state);
+      if (address.country) formData.append('country', address.country);
 
-    setIsSubmitting(false);
-    setShowSuccess(true);
+      // Make API call to report waste
+      const apiUrl = `${API_CONFIG.BASE_URL}${API_CONFIG.ENDPOINTS.WASTE_REPORT}`;
+      const response = await fetch(apiUrl, {
+        method: 'POST',
+        headers: {
+          'x-user-id': user.id,
+        },
+        body: formData,
+      });
 
-    // Reset form after 3 seconds
-    setTimeout(() => {
-      setShowSuccess(false);
-      setPhoto(null);
-      setWasteType('');
-      setDescription('');
-      setWeight('');
-      getCurrentLocation();
-    }, 3000);
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.message || `Server error: ${response.status}`);
+      }
+
+      const data = await response.json();
+      console.log('Waste report submitted successfully:', data);
+
+      // Update stats with the new report
+      setAnimatedStats(prev => ({
+        totalReports: prev.totalReports + 1,
+        points: prev.points + (selectedWasteInfo?.points || 10),
+        impact: Math.min(prev.impact + 2, 100)
+      }));
+
+      setIsSubmitting(false);
+      setShowSuccess(true);
+
+      // Reset form after 3 seconds
+      setTimeout(() => {
+        setShowSuccess(false);
+        setPhoto(null);
+        setWasteType('');
+        setDescription('');
+        setWeight('');
+        setAiAnalysisData(null);
+        getCurrentLocation();
+      }, 3000);
+    } catch (error) {
+      console.error('Error submitting waste report:', error);
+      setIsSubmitting(false);
+      alert(`Failed to submit report: ${error.message}\n\nPlease make sure the API server is running on ${API_CONFIG.BASE_URL}`);
+    }
   };
 
   const selectedWasteInfo = wasteTypes.find(w => w.id === wasteType);
@@ -270,6 +506,21 @@ export default function ReportWaste() {
           </div>
         )}
 
+        {/* AI Analysis Indicator */}
+        {isAnalyzing && (
+          <div className="bg-linear-to-br from-emerald-500 to-green-600 rounded-2xl shadow-xl p-4 mb-6 border-2 border-emerald-400 animate-pulse">
+            <div className="flex items-center gap-4">
+              <div className="p-3 bg-white/20 backdrop-blur-sm rounded-full">
+                <Loader2 className="w-6 h-6 text-white animate-spin" />
+              </div>
+              <div className="flex-1">
+                <h3 className="text-lg font-bold text-white">AI Analyzing Image...</h3>
+                <p className="text-sm text-emerald-50">Detecting waste type, estimating weight, and generating description</p>
+              </div>
+            </div>
+          </div>
+        )}
+
         <form onSubmit={handleSubmit} className="space-y-4">
           {/* Main Grid Layout */}
           <div className="grid grid-cols-1 lg:grid-cols-5 gap-4">
@@ -368,6 +619,8 @@ export default function ReportWaste() {
                               file,
                               preview: URL.createObjectURL(file),
                             });
+                            // Analyze the uploaded image
+                            analyzeWasteImage(file);
                           }
                         }}
                         className="hidden"
@@ -421,6 +674,14 @@ export default function ReportWaste() {
                         alt="Waste"
                         className="w-full h-auto"
                       />
+                      {isAnalyzing && (
+                        <div className="absolute inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center">
+                          <div className="bg-white rounded-lg p-4 flex items-center gap-3">
+                            <Loader2 className="w-5 h-5 text-emerald-600 animate-spin" />
+                            <span className="text-sm font-semibold text-gray-900">Analyzing waste image...</span>
+                          </div>
+                        </div>
+                      )}
                       <button
                         type="button"
                         onClick={removePhoto}
@@ -444,14 +705,19 @@ export default function ReportWaste() {
 
               {/* Weight Field */}
               <div className="bg-white rounded-xl shadow-md p-4 border border-gray-100">
-                <div className="flex items-center gap-2 mb-4">
-                  <div className="p-2 bg-orange-100 rounded-lg">
-                    <Target className="w-5 h-5 text-orange-600" />
+                <div className="flex items-center justify-between mb-4">
+                  <div className="flex items-center gap-2">
+                    <div className="p-2 bg-orange-100 rounded-lg">
+                      <Target className="w-5 h-5 text-orange-600" />
+                    </div>
+                    <div>
+                      <h2 className="text-base font-bold text-gray-800">Weight</h2>
+                      <p className="text-xs text-gray-600">Approximate weight</p>
+                    </div>
                   </div>
-                  <div>
-                    <h2 className="text-base font-bold text-gray-800">Weight</h2>
-                    <p className="text-xs text-gray-600">Approximate weight</p>
-                  </div>
+                  {weight && !isAnalyzing && (
+                    <span className="text-xs font-semibold text-emerald-600 bg-emerald-50 px-2 py-1 rounded-full">AI Generated</span>
+                  )}
                 </div>
 
                 <div className="relative">
@@ -459,7 +725,7 @@ export default function ReportWaste() {
                     type="number"
                     value={weight}
                     onChange={(e) => setWeight(e.target.value)}
-                    placeholder="Enter weight"
+                    placeholder="Enter weight or let AI detect"
                     min="0"
                     step="0.1"
                     className="w-full px-4 py-2.5 pr-12 border-2 border-gray-200 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none transition-all text-gray-900 font-medium text-base"
@@ -472,20 +738,25 @@ export default function ReportWaste() {
 
               {/* Description */}
               <div className="bg-white rounded-xl shadow-md p-4 border border-gray-100">
-                <div className="flex items-center gap-2 mb-4">
-                  <div className="p-2 bg-purple-100 rounded-lg">
-                    <Upload className="w-5 h-5 text-purple-600" />
+                <div className="flex items-center justify-between mb-4">
+                  <div className="flex items-center gap-2">
+                    <div className="p-2 bg-purple-100 rounded-lg">
+                      <Upload className="w-5 h-5 text-purple-600" />
+                    </div>
+                    <div>
+                      <h2 className="text-base font-bold text-gray-800">Description</h2>
+                      <p className="text-xs text-gray-600">Additional details</p>
+                    </div>
                   </div>
-                  <div>
-                    <h2 className="text-base font-bold text-gray-800">Description</h2>
-                    <p className="text-xs text-gray-600">Additional details</p>
-                  </div>
+                  {description && !isAnalyzing && (
+                    <span className="text-xs font-semibold text-emerald-600 bg-emerald-50 px-2 py-1 rounded-full">AI Generated</span>
+                  )}
                 </div>
 
                 <textarea
                   value={description}
                   onChange={(e) => setDescription(e.target.value)}
-                  placeholder="Describe the waste situation and any other details..."
+                  placeholder="Describe waste or let AI detect from image..."
                   rows={4}
                   className="w-full px-4 py-2.5 border-2 border-gray-200 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none transition-all resize-none text-sm text-gray-900 font-medium"
                 />
@@ -507,18 +778,67 @@ export default function ReportWaste() {
                     </div>
                     <div>
                       <h2 className="text-base font-bold text-gray-800">Location</h2>
-                      <p className="text-xs text-gray-600">Auto-detected</p>
+                      <p className="text-xs text-gray-600">Search or click on map</p>
                     </div>
                   </div>
                   <button
                     type="button"
                     onClick={getCurrentLocation}
                     disabled={loadingLocation}
-                    className="text-xs font-semibold text-emerald-600 hover:text-emerald-700 disabled:text-gray-400"
+                    className="text-xs font-semibold text-emerald-600 hover:text-emerald-700 disabled:text-gray-400 flex items-center gap-1"
                   >
-                    {loadingLocation ? 'Fetching...' : 'Refresh'}
+                    {loadingLocation ? <Loader2 className="w-3 h-3 animate-spin" /> : <Target className="w-3 h-3" />}
+                    {loadingLocation ? 'Fetching...' : 'My Location'}
                   </button>
                 </div>
+
+                {/* Google Maps Search */}
+                <LoadScript googleMapsApiKey={process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY || ''} libraries={libraries}>
+                  <div className="mb-4">
+                    <Autocomplete
+                      onLoad={setAutocomplete}
+                      onPlaceChanged={onPlaceSelected}
+                    >
+                      <div className="relative">
+                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                        <input
+                          type="text"
+                          placeholder="Search for an address..."
+                          className="w-full pl-10 pr-4 py-2 border-2 border-gray-200 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none transition-all text-sm"
+                        />
+                      </div>
+                    </Autocomplete>
+                  </div>
+
+                  {/* Map Display */}
+                  {showMap && (
+                    <div className="mb-4 rounded-lg overflow-hidden border-2 border-emerald-200">
+                      <GoogleMap
+                        mapContainerStyle={{ width: '100%', height: '250px' }}
+                        center={mapCenter}
+                        zoom={15}
+                        onClick={onMapClick}
+                      >
+                        {location && (
+                          <Marker
+                            position={{ lat: location.latitude, lng: location.longitude }}
+                            draggable={true}
+                            onDragEnd={(e) => {
+                              const lat = e.latLng.lat();
+                              const lng = e.latLng.lng();
+                              setLocation({
+                                latitude: lat,
+                                longitude: lng,
+                                accuracy: 10,
+                              });
+                              getAddressFromCoordinates(lat, lng);
+                            }}
+                          />
+                        )}
+                      </GoogleMap>
+                    </div>
+                  )}
+                </LoadScript>
 
                 {location ? (
                   <div className="bg-linear-to-br from-green-50 to-emerald-50 border-2 border-green-200 rounded-lg p-4">
@@ -526,6 +846,25 @@ export default function ReportWaste() {
                       <MapPin className="w-5 h-5 text-green-600 mt-0.5 shrink-0" />
                       <div className="flex-1">
                         <p className="font-bold text-green-900 text-sm mb-2">Location Captured</p>
+                        
+                        {/* Full Address */}
+                        {fullAddress && (
+                          <div className="mb-3 p-2 bg-white/60 rounded-lg">
+                            <p className="text-green-900 font-semibold text-xs mb-1">📍 Address:</p>
+                            <p className="text-green-800 text-xs">{fullAddress}</p>
+                          </div>
+                        )}
+                        
+                        {/* City, State, Country */}
+                        {(address.city || address.state || address.country) && (
+                          <div className="mb-3 p-2 bg-white/60 rounded-lg">
+                            <p className="text-green-900 font-semibold text-xs mb-1">Location Details:</p>
+                            <p className="text-green-800 text-xs">
+                              {[address.city, address.state, address.country].filter(Boolean).join(', ')}
+                            </p>
+                          </div>
+                        )}
+                        
                         <div className="space-y-1 text-xs">
                           <p className="text-green-700">
                             <span className="font-medium">Lat:</span> {location.latitude.toFixed(6)}

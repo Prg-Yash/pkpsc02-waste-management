@@ -3,10 +3,11 @@
 import { useUser, UserButton } from '@clerk/nextjs';
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { Trophy, Medal, Award, TrendingUp, Users, Star, Crown, Zap, Target, ArrowLeft, ChevronUp, ChevronDown } from 'lucide-react';
+import { Trophy, Medal, Award, TrendingUp, Users, Star, Crown, Zap, Target, ArrowLeft, ChevronUp, ChevronDown, Trash2, FileText } from 'lucide-react';
 
 const LeaderboardPage = () => {
   const { user } = useUser();
+  const [activeTab, setActiveTab] = useState('global'); // global, collectors, reporters
   const [animatedStats, setAnimatedStats] = useState({
     totalUsers: 0,
     yourRank: 0,
@@ -27,13 +28,14 @@ const LeaderboardPage = () => {
     return () => clearTimeout(timer);
   }, []);
 
-  // Leaderboard data
-  const leaderboardData = [
+  // Collectors leaderboard data
+  const collectorsData = [
     { 
       rank: 1, 
       name: 'Alex Johnson', 
-      points: 5420, 
-      reports: 89, 
+      collectionPoints: 5420, 
+      collections: 89,
+      wasteCollected: 445,
       trend: 'up',
       change: 12,
       initials: 'AJ',
@@ -42,8 +44,9 @@ const LeaderboardPage = () => {
     { 
       rank: 2, 
       name: 'Maria Garcia', 
-      points: 4890, 
-      reports: 76, 
+      collectionPoints: 4890, 
+      collections: 76,
+      wasteCollected: 380,
       trend: 'up',
       change: 8,
       initials: 'MG',
@@ -52,8 +55,9 @@ const LeaderboardPage = () => {
     { 
       rank: 3, 
       name: 'David Chen', 
-      points: 4560, 
-      reports: 71, 
+      collectionPoints: 4320, 
+      collections: 68,
+      wasteCollected: 340,
       trend: 'down',
       change: 3,
       initials: 'DC',
@@ -62,8 +66,9 @@ const LeaderboardPage = () => {
     { 
       rank: 4, 
       name: 'Sarah Williams', 
-      points: 4120, 
-      reports: 68, 
+      collectionPoints: 4120, 
+      collections: 68,
+      wasteCollected: 340,
       trend: 'up',
       change: 15,
       initials: 'SW',
@@ -72,64 +77,259 @@ const LeaderboardPage = () => {
     { 
       rank: 5, 
       name: 'James Brown', 
-      points: 3890, 
-      reports: 62, 
+      collectionPoints: 3890, 
+      collections: 62,
+      wasteCollected: 310,
       trend: 'same',
       change: 0,
       initials: 'JB',
       level: 'Gold'
     },
+  ];
+
+  // Reporters leaderboard data
+  const reportersData = [
+    { 
+      rank: 1, 
+      name: 'Emily Wilson', 
+      reportPoints: 4850, 
+      reports: 97,
+      wasteReported: 485,
+      trend: 'up',
+      change: 15,
+      initials: 'EW',
+      level: 'Diamond'
+    },
+    { 
+      rank: 2, 
+      name: 'Michael Chen', 
+      reportPoints: 4320, 
+      reports: 86,
+      wasteReported: 430,
+      trend: 'up',
+      change: 10,
+      initials: 'MC',
+      level: 'Platinum'
+    },
+    { 
+      rank: 3, 
+      name: 'Lisa Anderson', 
+      reportPoints: 3980, 
+      reports: 79,
+      wasteReported: 395,
+      trend: 'same',
+      change: 0,
+      initials: 'LA',
+      level: 'Platinum'
+    },
+    { 
+      rank: 4, 
+      name: 'Robert Taylor', 
+      reportPoints: 3650, 
+      reports: 73,
+      wasteReported: 365,
+      trend: 'up',
+      change: 8,
+      initials: 'RT',
+      level: 'Gold'
+    },
+    { 
+      rank: 5, 
+      name: 'Jennifer Lee', 
+      reportPoints: 3420, 
+      reports: 68,
+      wasteReported: 340,
+      trend: 'down',
+      change: 5,
+      initials: 'JL',
+      level: 'Gold'
+    },
+  ];
+
+  // Global leaderboard data (combined)
+  const globalData = [
+    { 
+      rank: 1, 
+      name: 'Alex Johnson', 
+      points: 5420, 
+      reports: 45,
+      collections: 89, 
+      trend: 'up',
+      change: 12,
+      initials: 'AJ',
+      level: 'Diamond'
+    },
+    { 
+      rank: 2, 
+      name: 'Emily Wilson', 
+      points: 4850, 
+      reports: 97,
+      collections: 38,
+      trend: 'up',
+      change: 15,
+      initials: 'EW',
+      level: 'Platinum'
+    },
+    { 
+      rank: 3, 
+      name: 'Maria Garcia', 
+      points: 4890, 
+      reports: 42,
+      collections: 76,
+      trend: 'up',
+      change: 8,
+      initials: 'MG',
+      level: 'Platinum'
+    },
+    { 
+      rank: 4, 
+      name: 'David Chen', 
+      points: 4560, 
+      reports: 35,
+      collections: 71,
+      trend: 'down',
+      change: 3,
+      initials: 'DC',
+      level: 'Gold'
+    },
+    { 
+      rank: 5, 
+      name: 'Michael Chen', 
+      points: 4320, 
+      reports: 86,
+      collections: 34,
+      trend: 'up',
+      change: 10,
+      initials: 'MC',
+      level: 'Gold'
+    },
     { 
       rank: 6, 
-      name: 'Emma Davis', 
-      points: 3540, 
-      reports: 58, 
+      name: 'Sarah Williams', 
+      points: 4120, 
+      reports: 40,
+      collections: 68,
       trend: 'up',
-      change: 5,
-      initials: 'ED',
+      change: 15,
+      initials: 'SW',
       level: 'Silver'
     },
     { 
       rank: 7, 
-      name: 'Michael Lee', 
-      points: 3210, 
-      reports: 54, 
-      trend: 'up',
-      change: 7,
-      initials: 'ML',
+      name: 'Lisa Anderson', 
+      points: 3980, 
+      reports: 79,
+      collections: 32,
+      trend: 'same',
+      change: 0,
+      initials: 'LA',
       level: 'Silver'
     },
     { 
       rank: 8, 
-      name: 'Olivia Martin', 
-      points: 2980, 
-      reports: 49, 
-      trend: 'down',
-      change: 2,
-      initials: 'OM',
+      name: 'James Brown', 
+      points: 3890, 
+      reports: 30,
+      collections: 62,
+      trend: 'same',
+      change: 0,
+      initials: 'JB',
       level: 'Bronze'
     },
     { 
       rank: 9, 
-      name: 'Daniel Wilson', 
-      points: 2750, 
-      reports: 45, 
+      name: 'Robert Taylor', 
+      points: 3650, 
+      reports: 73,
+      collections: 29,
       trend: 'up',
-      change: 11,
-      initials: 'DW',
+      change: 8,
+      initials: 'RT',
       level: 'Bronze'
     },
     { 
       rank: 10, 
-      name: 'Sophia Anderson', 
-      points: 2540, 
-      reports: 42, 
-      trend: 'same',
-      change: 0,
-      initials: 'SA',
+      name: 'Jennifer Lee', 
+      points: 3420, 
+      reports: 68,
+      collections: 27,
+      trend: 'down',
+      change: 5,
+      initials: 'JL',
       level: 'Member'
     },
   ];
+
+  // Get current leaderboard data based on active tab
+  const getCurrentLeaderboard = () => {
+    switch (activeTab) {
+      case 'collectors':
+        return collectorsData;
+      case 'reporters':
+        return reportersData;
+      default:
+        return globalData;
+    }
+  };
+
+  const leaderboardData = getCurrentLeaderboard();
+
+  // Calculate dynamic stats based on active tab
+  const getStats = () => {
+    const data = getCurrentLeaderboard();
+    
+    if (activeTab === 'collectors') {
+      const totalCollections = data.reduce((sum, user) => sum + (user.collections || 0), 0);
+      const totalWaste = data.reduce((sum, user) => sum + (user.wasteCollected || 0), 0);
+      const topCollector = data[0]?.name || 'N/A';
+      
+      return {
+        totalUsers: data.length,
+        yourRank: '#12',
+        yourPoints: 2450,
+        topScore: data[0]?.collectionPoints || 0,
+        customStats: [
+          { title: 'Total Collections', value: totalCollections, subtitle: 'Wastes collected', icon: Trash2 },
+          { title: 'Total Waste', value: `${totalWaste}kg`, subtitle: 'Collected', icon: TrendingUp },
+          { title: 'Top Collector', value: topCollector, subtitle: data[0]?.collections + ' collections', icon: Award }
+        ]
+      };
+    } else if (activeTab === 'reporters') {
+      const totalReports = data.reduce((sum, user) => sum + (user.reports || 0), 0);
+      const totalWaste = data.reduce((sum, user) => sum + (user.wasteReported || 0), 0);
+      const topReporter = data[0]?.name || 'N/A';
+      
+      return {
+        totalUsers: data.length,
+        yourRank: '#8',
+        yourPoints: 3200,
+        topScore: data[0]?.reportPoints || 0,
+        customStats: [
+          { title: 'Total Reports', value: totalReports, subtitle: 'Waste reported', icon: FileText },
+          { title: 'Total Waste', value: `${totalWaste}kg`, subtitle: 'Reported', icon: TrendingUp },
+          { title: 'Top Reporter', value: topReporter, subtitle: data[0]?.reports + ' reports', icon: Award }
+        ]
+      };
+    } else {
+      const totalReports = data.reduce((sum, user) => sum + (user.reports || 0), 0);
+      const totalCollections = data.reduce((sum, user) => sum + (user.collections || 0), 0);
+      const topContributor = data[0]?.name || 'N/A';
+      
+      return {
+        totalUsers: data.length,
+        yourRank: '#10',
+        yourPoints: 2850,
+        topScore: data[0]?.points || 0,
+        customStats: [
+          { title: 'Total Reports', value: totalReports, subtitle: 'Waste reported', icon: FileText },
+          { title: 'Total Collections', value: totalCollections, subtitle: 'Wastes collected', icon: Trash2 },
+          { title: 'Top Contributor', value: topContributor, subtitle: data[0]?.points + ' points', icon: Award }
+        ]
+      };
+    }
+  };
+
+  const currentStats = getStats();
 
   const StatCard = ({ icon: Icon, title, value, subtitle, gradient, delay }) => {
     return (
@@ -201,20 +401,60 @@ const LeaderboardPage = () => {
           </div>
         </div>
 
+        {/* Tabs */}
+        <div className="bg-white rounded-2xl shadow-xl p-2 mb-6 border border-gray-100">
+          <div className="flex gap-2">
+            <button
+              onClick={() => setActiveTab('global')}
+              className={`flex-1 py-4 px-6 rounded-xl font-semibold transition-all duration-300 flex items-center justify-center gap-2 ${
+                activeTab === 'global'
+                  ? 'bg-linear-to-r from-green-500 to-emerald-600 text-white shadow-lg'
+                  : 'text-gray-600 hover:bg-gray-100'
+              }`}
+            >
+              <Trophy className="w-5 h-5" />
+              <span>Global</span>
+              <span className="text-xs opacity-75">(Combined)</span>
+            </button>
+            <button
+              onClick={() => setActiveTab('collectors')}
+              className={`flex-1 py-4 px-6 rounded-xl font-semibold transition-all duration-300 flex items-center justify-center gap-2 ${
+                activeTab === 'collectors'
+                  ? 'bg-linear-to-r from-green-500 to-emerald-600 text-white shadow-lg'
+                  : 'text-gray-600 hover:bg-gray-100'
+              }`}
+            >
+              <Trash2 className="w-5 h-5" />
+              <span>Collectors</span>
+            </button>
+            <button
+              onClick={() => setActiveTab('reporters')}
+              className={`flex-1 py-4 px-6 rounded-xl font-semibold transition-all duration-300 flex items-center justify-center gap-2 ${
+                activeTab === 'reporters'
+                  ? 'bg-linear-to-r from-green-500 to-emerald-600 text-white shadow-lg'
+                  : 'text-gray-600 hover:bg-gray-100'
+              }`}
+            >
+              <FileText className="w-5 h-5" />
+              <span>Reporters</span>
+            </button>
+          </div>
+        </div>
+
         {/* Stats Cards */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 mb-6">
           <StatCard 
             icon={Users}
             title="Total Users"
-            value={animatedStats.totalUsers}
-            subtitle="Active contributors"
+            value={currentStats.totalUsers}
+            subtitle={activeTab === 'collectors' ? 'Active collectors' : activeTab === 'reporters' ? 'Active reporters' : 'Active contributors'}
             gradient="bg-linear-to-br from-green-500 to-green-600"
             delay={100}
           />
           <StatCard 
             icon={Target}
             title="Your Rank"
-            value={animatedStats.yourRank}
+            value={currentStats.yourRank}
             subtitle="Keep climbing!"
             gradient="bg-linear-to-br from-emerald-500 to-emerald-600"
             delay={200}
@@ -222,15 +462,15 @@ const LeaderboardPage = () => {
           <StatCard 
             icon={Star}
             title="Your Points"
-            value={animatedStats.yourPoints}
+            value={currentStats.yourPoints}
             subtitle="+150 this week"
             gradient="bg-linear-to-br from-green-600 to-emerald-700"
             delay={300}
           />
           <StatCard 
             icon={Trophy}
-            title="Top Score"
-            value={animatedStats.topScore}
+            title={activeTab === 'collectors' ? 'Top Collection Points' : activeTab === 'reporters' ? 'Top Report Points' : 'Top Score'}
+            value={currentStats.topScore}
             subtitle="Current leader"
             gradient="bg-linear-to-br from-green-700 to-emerald-800"
             delay={400}
@@ -245,8 +485,12 @@ const LeaderboardPage = () => {
                 <Award className="w-6 h-6 text-white" />
               </div>
               <div>
-                <h2 className="text-2xl font-bold text-white">Top Contributors</h2>
-                <p className="text-emerald-100 text-sm">Monthly performance rankings</p>
+                <h2 className="text-2xl font-bold text-white">
+                  {activeTab === 'collectors' ? 'Top Collectors' : activeTab === 'reporters' ? 'Top Reporters' : 'Top Contributors'}
+                </h2>
+                <p className="text-emerald-100 text-sm">
+                  {activeTab === 'collectors' ? 'Ranked by waste collected' : activeTab === 'reporters' ? 'Ranked by waste reported' : 'Monthly performance rankings'}
+                </p>
               </div>
             </div>
           </div>
@@ -255,10 +499,25 @@ const LeaderboardPage = () => {
           <div className="hidden md:grid md:grid-cols-12 gap-4 px-6 py-4 bg-gray-50 border-b border-gray-200 font-semibold text-sm text-gray-600">
             <div className="col-span-1 text-center">Rank</div>
             <div className="col-span-4">User</div>
-            <div className="col-span-2 text-center">Level</div>
-            <div className="col-span-2 text-center">Points</div>
-            <div className="col-span-2 text-center">Reports</div>
-            <div className="col-span-1 text-center">Trend</div>
+            <div className="col-span-3 text-center">{activeTab === 'collectors' ? 'Collection Points' : activeTab === 'reporters' ? 'Report Points' : 'Points'}</div>
+            {activeTab === 'collectors' && (
+              <>
+                <div className="col-span-2 text-center">Collections</div>
+                <div className="col-span-2 text-center">Waste (kg)</div>
+              </>
+            )}
+            {activeTab === 'reporters' && (
+              <>
+                <div className="col-span-2 text-center">Reports</div>
+                <div className="col-span-2 text-center">Waste (kg)</div>
+              </>
+            )}
+            {activeTab === 'global' && (
+              <>
+                <div className="col-span-2 text-center">Reports</div>
+                <div className="col-span-2 text-center">Collections</div>
+              </>
+            )}
           </div>
 
           {/* Leaderboard Items */}
@@ -303,48 +562,47 @@ const LeaderboardPage = () => {
                   </div>
                 </div>
 
-                {/* Level */}
-                <div className="md:col-span-2 flex md:justify-center items-center">
-                  <span className={`px-3 py-1.5 rounded-lg text-xs font-bold border-2 ${
-                    entry.level === 'Diamond' ? 'bg-cyan-50 text-cyan-700 border-cyan-200' :
-                    entry.level === 'Platinum' ? 'bg-slate-50 text-slate-700 border-slate-200' :
-                    entry.level === 'Gold' ? 'bg-amber-50 text-amber-700 border-amber-200' :
-                    entry.level === 'Silver' ? 'bg-gray-50 text-gray-700 border-gray-300' :
-                    entry.level === 'Bronze' ? 'bg-orange-50 text-orange-700 border-orange-200' :
-                    'bg-gray-50 text-gray-600 border-gray-200'
-                  }`}>
-                    {entry.level}
-                  </span>
-                </div>
-
                 {/* Points */}
-                <div className="md:col-span-2 flex md:justify-center items-center">
+                <div className="md:col-span-3 flex md:justify-center items-center">
                   <div className="flex items-center gap-2">
                     <Zap className="w-4 h-4 text-yellow-500" />
                     <span className="font-bold text-gray-900 text-lg">
-                      {entry.points.toLocaleString()}
+                      {activeTab === 'collectors' ? entry.collectionPoints?.toLocaleString() : activeTab === 'reporters' ? entry.reportPoints?.toLocaleString() : entry.points?.toLocaleString()}
                     </span>
                   </div>
                 </div>
 
-                {/* Reports */}
-                <div className="md:col-span-2 flex md:justify-center items-center">
-                  <span className="font-semibold text-gray-700">{entry.reports} reports</span>
-                </div>
-
-                {/* Trend */}
-                <div className="md:col-span-1 flex md:justify-center items-center">
-                  <div className="flex items-center gap-1">
-                    {getTrendIcon(entry.trend)}
-                    {entry.change > 0 && (
-                      <span className={`text-xs font-medium ${
-                        entry.trend === 'up' ? 'text-green-600' : 'text-red-600'
-                      }`}>
-                        {entry.change}
-                      </span>
-                    )}
-                  </div>
-                </div>
+                {/* Dynamic Metrics */}
+                {activeTab === 'collectors' && (
+                  <>
+                    <div className="md:col-span-2 flex md:justify-center items-center">
+                      <span className="font-semibold text-gray-700">{entry.collections || 0}</span>
+                    </div>
+                    <div className="md:col-span-2 flex md:justify-center items-center">
+                      <span className="font-semibold text-emerald-600">{entry.wasteCollected || 0} kg</span>
+                    </div>
+                  </>
+                )}
+                {activeTab === 'reporters' && (
+                  <>
+                    <div className="md:col-span-2 flex md:justify-center items-center">
+                      <span className="font-semibold text-gray-700">{entry.reports || 0}</span>
+                    </div>
+                    <div className="md:col-span-2 flex md:justify-center items-center">
+                      <span className="font-semibold text-emerald-600">{entry.wasteReported || 0} kg</span>
+                    </div>
+                  </>
+                )}
+                {activeTab === 'global' && (
+                  <>
+                    <div className="md:col-span-2 flex md:justify-center items-center">
+                      <span className="font-semibold text-gray-700">{entry.reports || 0}</span>
+                    </div>
+                    <div className="md:col-span-2 flex md:justify-center items-center">
+                      <span className="font-semibold text-gray-700">{entry.collections || 0}</span>
+                    </div>
+                  </>
+                )}
               </div>
             ))}
           </div>
