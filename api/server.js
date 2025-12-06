@@ -1,15 +1,17 @@
 import express from 'express';
-import { PrismaClient } from './generated/client/index.js';
-import { PrismaPg } from '@prisma/adapter-pg';
-import pg from 'pg';
-import 'dotenv/config';
+// import { PrismaClient } from './generated/client/index.js';
+// import { PrismaPg } from '@prisma/adapter-pg';
+// import pg from 'pg';
+// import 'dotenv/config';
 
-const { Pool } = pg;
-const connectionString = process.env.DATABASE_URL;
+import { prisma } from './lib/prisma.js'
 
-const pool = new Pool({ connectionString });
-const adapter = new PrismaPg(pool);
-const prisma = new PrismaClient({ adapter });
+// const { Pool } = pg;
+// const connectionString = process.env.DATABASE_URL;
+
+// const pool = new Pool({ connectionString });
+// const adapter = new PrismaPg(pool);
+// const prisma = new PrismaClient({ adapter });
 
 const app = express();
 app.use(express.json());
