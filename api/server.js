@@ -1,0 +1,80 @@
+import express from 'express';
+import 'dotenv/config';
+import cors from 'cors';
+
+// Import route modules
+import userRoutes from './routes/user.js';
+import wasteRoutes from './routes/waste.js';
+import notificationRoutes from './routes/notifications.js';
+import webhookRoutes from './routes/webhooks.js';
+
+const app = express();
+
+// CORS middleware (enable for frontend)
+// app.use((req, res, next) => {
+//     res.header('Access-Control-Allow-Origin', '*');
+//     res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, x-user-id');
+//     res.header('Access-Control-Allow-Methods', 'GET, POST, PATCH, DELETE, OPTIONS');
+
+//     if (req.method === 'OPTIONS') {
+//         return res.sendStatus(200);
+//     }
+//     next();
+// });
+app.use(cors({
+    origin: '*',               // allow all origins
+    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Accept', 'x-user-id', 'Authorization'],
+    exposedHeaders: ['Content-Type'],
+    credentials: false
+}));
+
+app.options('*', cors());
+
+// Webhook route needs raw body for signature verification
+// Must come BEFORE json parser
+app.use('/api/webhooks/clerk', express.raw({ type: 'application/json' }));
+
+// Body parser middleware for other routes
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
+
+// Health check
+app.get('/', (req, res) => {
+    res.json({
+        status: 'ok',
+        message: 'EcoFlow Waste Management API',
+        version: '1.0.0',
+        endpoints: {
+            user: '/api/user/me',
+            waste: '/api/waste/report',
+            notifications: '/api/notifications',
+            webhook: '/api/webhooks/clerk'
+        }
+    });
+});
+
+// Mount route modules
+app.use('/api/user', userRoutes);
+app.use('/api/waste', wasteRoutes);
+app.use('/api/notifications', notificationRoutes);
+app.use('/api/webhooks', webhookRoutes);
+
+// 404 handler
+app.use((req, res) => {
+    res.status(404).json({ error: 'Route not found' });
+});
+
+// Error handler
+app.use((err, req, res, next) => {
+    console.error('Server error:', err);
+    res.status(500).json({ error: 'Internal server error' });
+});
+
+// Start server
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => {
+    console.log(`🚀 EcoFlow API Server running on port ${PORT}`);
+    console.log(`📍 http://localhost:${PORT}`);
+    console.log(`📚 Documentation: See README.md`);
+});

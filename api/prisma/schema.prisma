@@ -1,0 +1,91 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+datasource db {
+  provider = "postgresql"
+}
+
+generator client {
+  provider = "prisma-client"
+  output   = "./generated/prisma"
+}
+
+enum WasteStatus {
+  PENDING
+  COLLECTED
+}
+
+enum WasteType {
+  PLASTIC
+  METAL
+  ORGANIC
+  E_WASTE
+  PAPER
+  GLASS
+  MIXED
+  OTHER
+}
+
+enum NotificationType {
+  WASTE_REPORTED
+  WASTE_COLLECTED
+  COLLECTOR_ENABLED
+}
+
+model User {
+  id              String  @id
+  email           String  @unique
+  name            String?
+  phone           String?
+  enableCollector Boolean @default(false)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  reportedWastes  WasteReport[]  @relation("UserReportedWastes")
+  collectedWastes WasteReport[]  @relation("UserCollectedWastes")
+  notifications   Notification[]
+}
+
+model WasteReport {
+  id String @id @default(cuid())
+
+  reporterId String
+  reporter   User   @relation("UserReportedWastes", fields: [reporterId], references: [id])
+
+  collectorId String?
+  collector   User?   @relation("UserCollectedWastes", fields: [collectorId], references: [id])
+
+  imageUrl          String
+  collectorImageUrl String?
+  note              String?
+  wasteType         WasteType
+  estimatedAmountKg Float?
+
+  locationRaw      String
+  isLocationLatLng Boolean @default(false)
+  latitude         Float?
+  longitude        Float?
+  city             String?
+  state            String?
+  country          String?
+
+  status WasteStatus @default(PENDING)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Notification {
+  id     String @id @default(cuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id])
+
+  type  NotificationType
+  title String
+  body  String
+  data  Json?
+  read  Boolean          @default(false)
+
+  createdAt DateTime @default(now())
+}
