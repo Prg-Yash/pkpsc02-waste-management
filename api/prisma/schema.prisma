@@ -29,12 +29,19 @@ model User {
   phone           String?
   enableCollector Boolean @default(false)
 
+  reporterPoints  Int @default(0)
+  collectorPoints Int @default(0)
+  globalPoints    Int @default(0)
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  reportedWastes  WasteReport[]  @relation("UserReportedWastes")
-  collectedWastes WasteReport[]  @relation("UserCollectedWastes")
-  notifications   Notification[]
+  reportedWastes    WasteReport[]  @relation("UserReportedWastes")
+  collectedWastes   WasteReport[]  @relation("UserCollectedWastes")
+  routePlannerWaste WasteReport[]  @relation("RoutePlannerCollector")
+  notifications     Notification[]
+
+  @@index([globalPoints, reporterPoints, collectorPoints])
 }
 
 model WasteReport {
@@ -45,6 +52,9 @@ model WasteReport {
 
   collectorId String?
   collector   User?   @relation("UserCollectedWastes", fields: [collectorId], references: [id])
+
+  routeCollectorId String?
+  routeCollector   User?   @relation("RoutePlannerCollector", fields: [routeCollectorId], references: [id])
 
   imageUrl          String
   collectorImageUrl String?

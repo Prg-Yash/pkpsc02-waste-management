@@ -138,7 +138,8 @@ The test interface provides forms for:
 
 **WasteStatus**:
 
-- `PENDING` - Awaiting collection
+- `PENDING` - Awaiting addition to a collector's route
+- `IN_PROGRESS` - Added to a collector's route, ready for collection
 - `COLLECTED` - Successfully collected
 
 **NotificationType**:
@@ -156,13 +157,18 @@ The test interface provides forms for:
 - `name` (String, optional)
 - `phone` (String, optional)
 - `enableCollector` (Boolean) - Collector mode flag
+- `reporterPoints` (Int) - Points from reporting waste
+- `collectorPoints` (Int) - Points from collecting waste
+- `globalPoints` (Int) - Total points (reporterPoints + collectorPoints)
 - Relations: reportedWastes, collectedWastes, notifications
+- Index: [globalPoints, reporterPoints, collectorPoints] for leaderboard performance
 
 **WasteReport**
 
 - `id` (String, PK)
 - `reporterId` (String, FK → User)
-- `collectorId` (String, optional, FK → User)
+- `collectorId` (String, optional, FK → User) - Who actually collected the waste
+- `routeCollectorId` (String, optional, FK → User) - Who added waste to their route (persists after collection)
 - `imageUrl` (String) - S3 URL of waste image
 - `collectorImageUrl` (String, optional) - S3 URL of collection proof
 - `aiAnalysis` (JSON, optional) - AI-generated waste analysis containing:
@@ -570,6 +576,486 @@ svix-signature: v1,xxxxx
 
 ---
 
+### Leaderboard
+
+#### Overview
+
+The leaderboard system tracks user contributions through a point-based reward system. Points are automatically awarded when users report or collect waste.
+
+**Point System:**
+- **Report Waste**: +10 points (added to `reporterPoints` and `globalPoints`)
+- **Collect Waste**: +20 points (added to `collectorPoints` and `globalPoints`, only if `enableCollector === true`)
+
+**Point Fields:**
+- `reporterPoints` (Int) - Points earned from reporting waste
+- `collectorPoints` (Int) - Points earned from collecting waste (shown as `null` when `enableCollector === false` AND `collectorPoints === 0`)
+- `globalPoints` (Int) - Total points (`reporterPoints + collectorPoints`)
+
+**Performance:**
+- Database indexed on `[globalPoints, reporterPoints, collectorPoints]` for fast queries
+- Supports millions of users with pagination
+- Efficient rank calculation using Prisma aggregations
+
+---
+
+#### GET /api/leaderboard/reporters
+
+Get reporters leaderboard ranked by reporter points.
+
+**Headers/Query**:
+```
+x-user-id: user_xxxxx
+OR
+?userId=user_xxxxx
+```
+
+**Query Parameters**:
+- `page` (default: 1) - Page number
+- `pageSize` (default: 20, max: 50) - Items per page
+
+**Ranking Logic**:
+1. `reporterPoints` DESC
+2. `globalPoints` DESC (tie-breaker)
+3. `createdAt` ASC (final tie-breaker)
+
+**Response**:
+```json
+{
+  "leaderboard": [
+    {
+      "id": "user_abc",
+      "name": "John Doe",
+      "email": "john@example.com",
+      "reporterPoints": 150,
+      "rank": 1
+    },
+    {
+      "id": "user_xyz",
+      "name": "Jane Smith",
+      "email": "jane@example.com",
+      "reporterPoints": 120,
+      "rank": 2
+    }
+  ],
+  "me": {
+    "id": "user_current",
+    "name": "Current User",
+    "email": "current@example.com",
+    "reporterPoints": 80,
+    "rank": 15
+  },
+  "pagination": {
+    "currentPage": 1,
+    "pageSize": 20,
+    "totalPages": 5,
+    "totalUsers": 100
+  }
+}
+```
+
+---
+
+#### GET /api/leaderboard/collectors
+
+Get collectors leaderboard ranked by collector points.
+
+**Headers/Query**:
+```
+x-user-id: user_xxxxx
+OR
+?userId=user_xxxxx
+```
+
+**Query Parameters**:
+- `page` (default: 1) - Page number
+- `pageSize` (default: 20, max: 50) - Items per page
+
+**Ranking Logic**:
+1. `collectorPoints` DESC
+2. `globalPoints` DESC (tie-breaker)
+3. `createdAt` ASC (final tie-breaker)
+
+**Special Handling**:
+- `collectorPoints` is shown as `null` when user has `enableCollector === false` AND `collectorPoints === 0`
+- This indicates the user has never enabled collector mode
+
+**Response**:
+```json
+{
+  "leaderboard": [
+    {
+      "id": "user_collector1",
+      "name": "Top Collector",
+      "email": "collector@example.com",
+      "collectorPoints": 240,
+      "rank": 1
+    },
+    {
+      "id": "user_reporter_only",
+      "name": "Reporter Only",
+      "email": "reporter@example.com",
+      "collectorPoints": null,
+      "rank": 50
+    }
+  ],
+  "me": {
+    "id": "user_current",
+    "name": "Current User",
+    "email": "current@example.com",
+    "collectorPoints": 160,
+    "rank": 8
+  },
+  "pagination": {
+    "currentPage": 1,
+    "pageSize": 20,
+    "totalPages": 5,
+    "totalUsers": 100
+  }
+}
+```
+
+---
+
+#### GET /api/leaderboard/global
+
+Get global leaderboard ranked by total points.
+
+**Headers/Query**:
+```
+x-user-id: user_xxxxx
+OR
+?userId=user_xxxxx
+```
+
+**Query Parameters**:
+- `page` (default: 1) - Page number
+- `pageSize` (default: 20, max: 50) - Items per page
+
+**Ranking Logic**:
+1. `globalPoints` DESC
+2. `reporterPoints` DESC (tie-breaker)
+3. `collectorPoints` DESC (tie-breaker)
+4. `createdAt` ASC (final tie-breaker)
+
+**Response**:
+```json
+{
+  "leaderboard": [
+    {
+      "id": "user_top",
+      "name": "Top User",
+      "email": "top@example.com",
+      "globalPoints": 350,
+      "reporterPoints": 150,
+      "collectorPoints": 200,
+      "rank": 1
+    },
+    {
+      "id": "user_second",
+      "name": "Second Place",
+      "email": "second@example.com",
+      "globalPoints": 280,
+      "reporterPoints": 120,
+      "collectorPoints": 160,
+      "rank": 2
+    }
+  ],
+  "me": {
+    "id": "user_current",
+    "name": "Current User",
+    "email": "current@example.com",
+    "globalPoints": 240,
+    "reporterPoints": 80,
+    "collectorPoints": 160,
+    "rank": 5
+  },
+  "pagination": {
+    "currentPage": 1,
+    "pageSize": 20,
+    "totalPages": 5,
+    "totalUsers": 100
+  }
+}
+```
+
+**cURL Examples**:
+```bash
+# Get reporters leaderboard
+curl "http://localhost:3000/api/leaderboard/reporters?page=1&pageSize=20" \
+  -H "x-user-id: user_xxxxx"
+
+# Get collectors leaderboard
+curl "http://localhost:3000/api/leaderboard/collectors?userId=user_xxxxx"
+
+# Get global leaderboard
+curl "http://localhost:3000/api/leaderboard/global" \
+  -H "x-user-id: user_xxxxx"
+```
+
+---
+
+### Route Planner System
+
+#### Overview
+
+The Route Planner allows collectors to organize their waste collection routes efficiently. Collectors can add pending waste reports to their route, turning them into "IN_PROGRESS" status, and then collect them sequentially.
+
+**Status Workflow:**
+```
+PENDING → IN_PROGRESS → COLLECTED
+```
+
+**Key Concepts:**
+- **PENDING**: Waste has been reported but not yet added to any collector's route
+- **IN_PROGRESS**: Waste has been added to a collector's route and is ready for collection
+- **COLLECTED**: Waste has been successfully collected
+- **routeCollectorId**: Tracks which collector added the waste to their route (persists even after collection for analytics)
+
+**Rules:**
+1. Only collectors (`enableCollector === true`) can add waste to their route
+2. Only PENDING waste can be added to a route
+3. Adding waste to route: `PENDING → IN_PROGRESS` + sets `routeCollectorId`
+4. Removing from route: `IN_PROGRESS → PENDING` + clears `routeCollectorId`
+5. Collection requires waste to be IN_PROGRESS (must be in a route first)
+6. After collection, `routeCollectorId` remains for historical tracking
+
+---
+
+#### POST /api/route-planner/add
+
+Add a waste report to the collector's route.
+
+**Headers**:
+```
+x-user-id: user_collector_xxxxx
+```
+
+**Body**:
+```json
+{
+  "wasteId": "clxxx123"
+}
+```
+
+**Requirements**:
+- User must have `enableCollector === true`
+- Waste must exist
+- Waste status must be `PENDING`
+
+**Response**:
+```json
+{
+  "success": true,
+  "message": "Waste added to route successfully",
+  "waste": {
+    "id": "clxxx123",
+    "status": "IN_PROGRESS",
+    "routeCollectorId": "user_collector_xxxxx",
+    "routeCollector": {
+      "id": "user_collector_xxxxx",
+      "name": "John Collector",
+      "email": "john@example.com"
+    },
+    "reporter": {
+      "id": "user_reporter_xxxxx",
+      "name": "Jane Reporter",
+      "email": "jane@example.com"
+    },
+    "imageUrl": "https://bucket.s3.../waste-reports/clxxx123/image.jpg",
+    "locationRaw": "123 Main St",
+    "city": "Mumbai",
+    "aiAnalysis": {
+      "wasteType": "plastic",
+      "category": "small"
+    },
+    "reportedAt": "2025-12-06T10:00:00Z"
+  }
+}
+```
+
+**Error Responses**:
+- `400` - wasteId is required
+- `403` - Collector mode not enabled
+- `404` - Waste not found
+- `400` - Waste is not PENDING (already in route or collected)
+
+---
+
+#### POST /api/route-planner/remove
+
+Remove a waste report from the collector's route.
+
+**Headers**:
+```
+x-user-id: user_collector_xxxxx
+```
+
+**Body**:
+```json
+{
+  "wasteId": "clxxx123"
+}
+```
+
+**Requirements**:
+- Waste must exist
+- Waste status must be `IN_PROGRESS`
+- `routeCollectorId` must match current user (can only remove from own route)
+
+**Response**:
+```json
+{
+  "success": true,
+  "message": "Waste removed from route successfully",
+  "waste": {
+    "id": "clxxx123",
+    "status": "PENDING",
+    "routeCollectorId": null,
+    "routeCollector": null,
+    "reporter": {
+      "id": "user_reporter_xxxxx",
+      "name": "Jane Reporter",
+      "email": "jane@example.com"
+    },
+    "imageUrl": "https://bucket.s3.../waste-reports/clxxx123/image.jpg",
+    "locationRaw": "123 Main St"
+  }
+}
+```
+
+**Error Responses**:
+- `400` - wasteId is required
+- `404` - Waste not found
+- `400` - Waste is not IN_PROGRESS
+- `403` - Can only remove from your own route
+
+---
+
+#### GET /api/route-planner
+
+Get all waste reports in the collector's route.
+
+**Headers/Query**:
+```
+x-user-id: user_collector_xxxxx
+OR
+?userId=user_collector_xxxxx
+```
+
+**Response**:
+```json
+{
+  "success": true,
+  "count": 5,
+  "route": [
+    {
+      "id": "clxxx123",
+      "status": "IN_PROGRESS",
+      "routeCollectorId": "user_collector_xxxxx",
+      "routeCollector": {
+        "id": "user_collector_xxxxx",
+        "name": "John Collector",
+        "email": "john@example.com"
+      },
+      "reporter": {
+        "id": "user_reporter_1",
+        "name": "Alice",
+        "email": "alice@example.com"
+      },
+      "imageUrl": "https://bucket.s3.../image1.jpg",
+      "locationRaw": "123 Main St",
+      "city": "Mumbai",
+      "latitude": 19.0760,
+      "longitude": 72.8777,
+      "aiAnalysis": {
+        "wasteType": "plastic",
+        "category": "small",
+        "estimatedWeightKg": 2.5
+      },
+      "reportedAt": "2025-12-06T09:00:00Z",
+      "createdAt": "2025-12-06T09:00:00Z"
+    },
+    {
+      "id": "clxxx456",
+      "status": "IN_PROGRESS",
+      "routeCollectorId": "user_collector_xxxxx",
+      "routeCollector": {
+        "id": "user_collector_xxxxx",
+        "name": "John Collector",
+        "email": "john@example.com"
+      },
+      "reporter": {
+        "id": "user_reporter_2",
+        "name": "Bob",
+        "email": "bob@example.com"
+      },
+      "imageUrl": "https://bucket.s3.../image2.jpg",
+      "locationRaw": "456 Oak Ave",
+      "city": "Mumbai",
+      "aiAnalysis": {
+        "wasteType": "metal",
+        "category": "large"
+      },
+      "reportedAt": "2025-12-06T10:30:00Z",
+      "createdAt": "2025-12-06T10:30:00Z"
+    }
+  ]
+}
+```
+
+**Notes**:
+- Results are sorted by `createdAt` ASC (first reported = first in route)
+- Only returns waste with `routeCollectorId` matching the current user
+- Empty route returns `count: 0, route: []`
+
+---
+
+#### Updated Collection Workflow
+
+**POST /api/waste/:id/collect** now requires waste to be IN_PROGRESS:
+
+**Before Route Planner**:
+```
+Report → PENDING → Collect (directly) → COLLECTED
+```
+
+**With Route Planner** (Required):
+```
+Report → PENDING → Add to Route → IN_PROGRESS → Collect → COLLECTED
+```
+
+**Key Changes**:
+- Cannot collect PENDING waste anymore (must add to route first)
+- `routeCollectorId` is preserved after collection for analytics
+- Collection still awards +20 points to collector
+
+**cURL Examples**:
+
+```bash
+# Add waste to route
+curl -X POST http://localhost:3000/api/route-planner/add \
+  -H "Content-Type: application/json" \
+  -H "x-user-id: user_collector_xxxxx" \
+  -d '{"wasteId": "clxxx123"}'
+
+# Get my route
+curl http://localhost:3000/api/route-planner \
+  -H "x-user-id: user_collector_xxxxx"
+
+# Remove waste from route
+curl -X POST http://localhost:3000/api/route-planner/remove \
+  -H "Content-Type: application/json" \
+  -H "x-user-id: user_collector_xxxxx" \
+  -d '{"wasteId": "clxxx123"}'
+
+# Collect waste (must be IN_PROGRESS)
+curl -X POST http://localhost:3000/api/waste/clxxx123/collect \
+  -H "x-user-id: user_collector_xxxxx" \
+  -F "userId=user_collector_xxxxx"
+```
+
+---
+
 ## 🔧 Error Responses
 
 All endpoints return consistent error format:
@@ -598,12 +1084,15 @@ api/
 │   ├── prisma.js           # Prisma client singleton
 │   ├── authUser.js         # User authentication helper (deprecated)
 │   ├── notifications.js    # Notification creation helper
+│   ├── points.js           # Point system configuration
 │   ├── s3.js               # AWS S3 client configuration
 │   └── s3Uploader.js       # S3 upload functions
 ├── routes/
 │   ├── user.js             # User routes (/api/user/*)
 │   ├── waste.js            # Waste routes with file upload (/api/waste/*)
 │   ├── notifications.js    # Notification routes (/api/notifications/*)
+│   ├── leaderboard.js      # Leaderboard routes (/api/leaderboard/*)
+│   ├── routePlanner.js     # Route planner routes (/api/route-planner/*)
 │   └── webhooks.js         # Clerk webhook routes (/api/webhooks/*)
 ├── prisma/
 │   ├── schema.prisma       # Database schema
