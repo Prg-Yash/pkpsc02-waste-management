@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { useUser } from '@clerk/nextjs';
+import { useRouter } from 'next/navigation';
 import { 
   MapPin, Navigation, Trash2, CheckCircle, Clock, 
   ArrowUp, ArrowDown, Route, Loader2, Target, TrendingUp
@@ -22,7 +23,9 @@ const defaultCenter = {
 
 export default function RouteMapPage() {
   const { user } = useUser();
+  const router = useRouter();
   const { isLoaded, loadError } = useGoogleMaps();
+  const [isCollector, setIsCollector] = useState(null);
   
   const [locations, setLocations] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -44,10 +47,38 @@ export default function RouteMapPage() {
   const [reward, setReward] = useState(0);
   const [geminiAnalysis, setGeminiAnalysis] = useState(null);
 
+  // Check if user is a collector
+  useEffect(() => {
+    const checkCollectorStatus = async () => {
+      try {
+        const response = await fetch('/api/user/me');
+        if (response.ok) {
+          const data = await response.json();
+          const collectorStatus = data.user?.enableCollector || false;
+          setIsCollector(collectorStatus);
+          
+          if (!collectorStatus) {
+            // Redirect non-collectors to dashboard
+            router.push('/dashboard');
+          }
+        }
+      } catch (error) {
+        console.error('Error checking collector status:', error);
+        router.push('/dashboard');
+      }
+    };
+
+    if (user?.id) {
+      checkCollectorStatus();
+    }
+  }, [user, router]);
+
   // Get user's current location
   useEffect(() => {
-    getUserLocation();
-  }, []);
+    if (isCollector) {
+      getUserLocation();
+    }
+  }, [isCollector]);
 
   const getUserLocation = () => {
     setLoadingUserLocation(true);
@@ -423,17 +454,32 @@ export default function RouteMapPage() {
     } catch (error) {
       console.error('Verification error:', error);
       setVerificationStatus('failure');
-      setVerificationResult({
+        setVerificationResult({
         error: error.message || 'Verification failed. Please try again.'
       });
     }
   };
 
+  // Show loading while checking collector status
+  if (isCollector === null) {
+    return (
+      <div className="min-h-screen bg-linear-to-br from-slate-50 via-emerald-50 to-teal-50 flex items-center justify-center">
+        <div className="text-center">
+          <Loader2 className="w-12 h-12 animate-spin text-emerald-600 mx-auto mb-4" />
+          <p className="text-gray-600 font-medium">Loading...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // Don't render if not a collector (will redirect)
+  if (!isCollector) {
+    return null;
+  }
+
   return (
     <div className="min-h-screen bg-linear-to-br from-slate-50 via-emerald-50 to-teal-50">
-      <div className="max-w-[1800px] mx-auto p-4 sm:p-6 lg:p-8">
-        
-        {/* Header */}
+      <div className="max-w-[1800px] mx-auto p-4 sm:p-6 lg:p-8">        {/* Header */}
         <div className="bg-white rounded-2xl shadow-xl p-6 sm:p-8 border border-gray-100 mb-6">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-4">

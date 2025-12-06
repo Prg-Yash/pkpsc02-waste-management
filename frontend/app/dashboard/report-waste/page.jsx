@@ -38,23 +38,49 @@ export default function ReportWaste() {
   const videoRef = useRef(null);
   const canvasRef = useRef(null);
 
-  // Animated stats
+  // User data and stats
+  const [userData, setUserData] = useState(null);
   const [animatedStats, setAnimatedStats] = useState({
     totalReports: 0,
     points: 0,
     impact: 0
   });
 
+  // Fetch user data
   useEffect(() => {
-    const timer = setTimeout(() => {
-      setAnimatedStats({
-        totalReports: 45,
-        points: 1250,
-        impact: 89
-      });
-    }, 300);
-    return () => clearTimeout(timer);
-  }, []);
+    const fetchUserData = async () => {
+      try {
+        const response = await fetch('/api/user/me');
+        if (response.ok) {
+          const data = await response.json();
+          setUserData(data.user);
+          
+          // Calculate stats from user data
+          const totalReports = (data.user.reportedWastes?.length || 0);
+          const points = data.user.reporterPoints || 0;
+          const globalPoints = data.user.globalPoints || 0;
+          const collectedWastes = data.user.collectedWastes?.length || 0;
+          const totalActivity = totalReports + collectedWastes;
+          const impactScore = totalActivity > 0 ? Math.min(100, Math.round((globalPoints / totalActivity) * 10)) : 0;
+          
+          // Animate stats with real data
+          setTimeout(() => {
+            setAnimatedStats({
+              totalReports: totalReports,
+              points: points,
+              impact: impactScore
+            });
+          }, 300);
+        }
+      } catch (error) {
+        console.error('Error fetching user data:', error);
+      }
+    };
+
+    if (user?.id) {
+      fetchUserData();
+    }
+  }, [user]);
 
   // Waste type options with icons and colors
   const wasteTypes = [
@@ -97,13 +123,15 @@ export default function ReportWaste() {
         setDescription(data.description);
       }
       if (data.wasteType) {
-        setWasteType(data.wasteType);
+        // Convert uppercase waste type to lowercase for UI
+        const lowerWasteType = data.wasteType.toLowerCase().replace('-', '');
+        setWasteType(lowerWasteType);
       }
 
       // Store AI analysis data for submission
       const analysisData = {
         category: data.estimatedWeight >= 10 ? 'large' : 'small',
-        wasteType: data.wasteType || 'mixed',
+        wasteType: data.wasteType || 'MIXED', // Keep uppercase for backend
         confidence: data.confidence || 0.85,
         estimatedWeightKg: parseFloat(data.estimatedWeight) || 0,
         notes: data.description || ''
@@ -438,7 +466,12 @@ export default function ReportWaste() {
               </div>
               <div className="pt-3 border-t border-white/20">
                 <p className="text-xs font-medium opacity-80">
-                  +12 this week
+                  {userData?.reportedWastes?.filter(w => {
+                    const reportDate = new Date(w.reportedAt || w.createdAt);
+                    const weekAgo = new Date();
+                    weekAgo.setDate(weekAgo.getDate() - 7);
+                    return reportDate >= weekAgo;
+                  }).length || 0} this week
                 </p>
               </div>
             </div>
@@ -459,7 +492,12 @@ export default function ReportWaste() {
               </div>
               <div className="pt-3 border-t border-white/20">
                 <p className="text-xs font-medium opacity-80">
-                  +150 this week
+                  +{(userData?.reportedWastes?.filter(w => {
+                    const reportDate = new Date(w.reportedAt || w.createdAt);
+                    const weekAgo = new Date();
+                    weekAgo.setDate(weekAgo.getDate() - 7);
+                    return reportDate >= weekAgo;
+                  }).length || 0) * 10} this week
                 </p>
               </div>
             </div>
@@ -480,7 +518,10 @@ export default function ReportWaste() {
               </div>
               <div className="pt-3 border-t border-white/20">
                 <p className="text-xs font-medium opacity-80">
-                  Above average
+                  {animatedStats.impact >= 80 ? 'Excellent!' : 
+                   animatedStats.impact >= 60 ? 'Above average' : 
+                   animatedStats.impact >= 40 ? 'Good progress' : 
+                   'Keep going!'}
                 </p>
               </div>
             </div>
