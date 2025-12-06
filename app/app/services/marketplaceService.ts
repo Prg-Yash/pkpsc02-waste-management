@@ -200,7 +200,7 @@ export async function getMyListings(userId: string): Promise<{
 export async function getListingDetails(
   userId: string,
   listingId: string
-): Promise<MarketplaceListing> {
+): Promise<{ listing: MarketplaceListing; bids: Bid[] }> {
   try {
     const response = await fetch(`${API_URL}/api/marketplace/${listingId}`, {
       method: "GET",
@@ -216,7 +216,10 @@ export async function getListingDetails(
     }
 
     const data = await response.json();
-    return data.listing;
+    return {
+      listing: data.listing,
+      bids: data.listing.bids || [],
+    };
   } catch (error) {
     console.error("Error fetching listing details:", error);
     throw error;
