@@ -80,26 +80,35 @@ const CollectPage = () => {
       }
       
       // Transform API data to component format
-      const transformedTasks = wastesArray.map(waste => ({
-        id: waste.id,
-        location: waste.location || `${waste.city || ''}, ${waste.state || ''}`.trim() || 'Location not specified',
-        wasteType: waste.wasteType,
-        amount: `${waste.estimatedAmountKg || 0} kg`,
-        status: waste.status.toLowerCase(),
-        date: new Date(waste.createdAt).toISOString().split('T')[0],
-        collectorId: waste.collector?.id || null,
-        reportedImage: waste.imageUrl,
-        reportedLocation: {
-          latitude: waste.latitude,
-          longitude: waste.longitude
-        },
-        reporter: waste.reporter,
-        city: waste.city,
-        state: waste.state,
-        country: waste.country,
-        note: waste.note,
-        estimatedAmountKg: waste.estimatedAmountKg
-      }));
+      const transformedTasks = wastesArray.map(waste => {
+        // Extract weight from AI analysis or fallback
+        const estimatedWeight = waste.aiAnalysis?.estimatedWeightKg || waste.estimatedAmountKg || 0;
+        const wasteTypeFromAI = waste.aiAnalysis?.wasteType || waste.wasteType || 'MIXED';
+        
+        return {
+          id: waste.id,
+          location: waste.locationRaw || `${waste.city || ''}, ${waste.state || ''}`.trim() || 'Location not specified',
+          wasteType: wasteTypeFromAI.toUpperCase(),
+          amount: `${estimatedWeight} kg`,
+          status: waste.status.toLowerCase(),
+          date: new Date(waste.reportedAt || waste.createdAt).toISOString().split('T')[0],
+          collectorId: waste.collector?.id || null,
+          reportedImage: waste.imageUrl,
+          collectorImageUrl: waste.collectorImageUrl,
+          reportedLocation: {
+            latitude: waste.latitude,
+            longitude: waste.longitude
+          },
+          reporter: waste.reporter,
+          city: waste.city,
+          state: waste.state,
+          country: waste.country,
+          aiAnalysis: waste.aiAnalysis,
+          estimatedAmountKg: estimatedWeight,
+          reportedAt: waste.reportedAt,
+          collectedAt: waste.collectedAt
+        };
+      });
       
       console.log('Transformed tasks:', transformedTasks); // Debug log
       setTasks(transformedTasks);
@@ -202,7 +211,8 @@ const CollectPage = () => {
       const data = await response.json();
 
       if (!response.ok) {
-        throw new Error(data.error || 'Verification failed');
+        const errorMsg = data.details || data.error || 'Verification failed';
+        throw new Error(errorMsg);
       }
 
       setGeminiAnalysis(data.analysis);
@@ -475,7 +485,7 @@ const CollectPage = () => {
                           onClick={() => handleStatusChange(task.id, 'in_progress')}
                           className="px-6 py-2.5 bg-linear-to-r from-emerald-500 to-teal-600 text-white rounded-lg font-semibold hover:from-emerald-600 hover:to-teal-700 transition-all duration-300 transform hover:scale-105 shadow-md hover:shadow-lg"
                         >
-                          Start Collection
+                          Add to Map Router
                         </button>
                       )}
                       {task.status === 'in_progress' && task.collectorId === user?.id && (
@@ -542,6 +552,61 @@ const CollectPage = () => {
                   </button>
                 </div>
                 
+                {/* Reported Waste Information */}
+                <div className="mb-6 bg-linear-to-br from-purple-50 to-pink-50 border-2 border-purple-200 rounded-xl p-5">
+                  <h4 className="text-sm font-bold text-purple-900 mb-4 flex items-center gap-2">
+                    <Trash2 className="w-5 h-5" />
+                    Reported Waste - What You Need to Collect
+                  </h4>
+                  
+                  <div className="grid md:grid-cols-2 gap-4">
+                    {/* Reported Image */}
+                    <div>
+                      <p className="text-xs font-semibold text-purple-800 mb-2">📸 Reported Image:</p>
+                      {selectedTask.reportedImage ? (
+                        <img 
+                          src={selectedTask.reportedImage} 
+                          alt="Reported waste" 
+                          className="w-full rounded-lg shadow-md border-2 border-purple-300 object-cover h-48"
+                        />
+                      ) : (
+                        <div className="w-full h-48 bg-gray-100 rounded-lg flex items-center justify-center border-2 border-dashed border-purple-300">
+                          <p className="text-xs text-gray-500">No image available</p>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Reported Details */}
+                    <div className="space-y-3">
+                      <div className="bg-white/70 rounded-lg p-3">
+                        <p className="text-xs font-semibold text-purple-800 mb-2">📍 Reported Location:</p>
+                        <p className="text-xs text-purple-900 font-mono bg-purple-100 p-2 rounded">
+                          Lat: {selectedTask.reportedLocation.latitude.toFixed(6)}<br/>
+                          Lng: {selectedTask.reportedLocation.longitude.toFixed(6)}
+                        </p>
+                        {selectedTask.location && (
+                          <p className="text-xs text-purple-700 mt-2">
+                            {selectedTask.location}
+                          </p>
+                        )}
+                      </div>
+
+                      <div className="bg-white/70 rounded-lg p-3">
+                        <p className="text-xs font-semibold text-purple-800 mb-2">🗑️ Waste Details:</p>
+                        <div className="text-xs text-purple-900 space-y-1">
+                          <p><strong>Type:</strong> {selectedTask.wasteType}</p>
+                          <p><strong>Amount:</strong> {selectedTask.amount}</p>
+                          {selectedTask.aiAnalysis?.notes && (
+                            <p className="text-xs text-purple-700 mt-2 italic">
+                              "{selectedTask.aiAnalysis.notes}"
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
                 <div className="mb-6 bg-blue-50 border border-blue-200 rounded-lg p-4">
                   <div className="flex items-start gap-3">
                     <MapPin className="w-5 h-5 text-blue-600 mt-0.5" />
@@ -571,8 +636,9 @@ const CollectPage = () => {
                 </div>
 
                 <div className="mb-6">
-                  <label className="block text-sm font-semibold text-gray-700 mb-3">
-                    Upload Verification Image
+                  <label className="flex items-center gap-2 text-sm font-semibold text-gray-700 mb-3">
+                    <Upload className="w-5 h-5 text-gray-600" />
+                    Upload Your Collection Image (will be compared with reported image above)
                   </label>
                   <div className="border-2 border-dashed border-gray-300 rounded-xl p-8 text-center hover:border-emerald-500 transition-colors duration-300 bg-gray-50">
                     <Upload className="mx-auto h-12 w-12 text-gray-400 mb-3" />

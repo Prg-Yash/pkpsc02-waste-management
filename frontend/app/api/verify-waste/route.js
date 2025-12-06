@@ -4,6 +4,52 @@ import { NextResponse } from 'next/server';
 // Initialize Gemini AI
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 
+// Helper function to validate and clean base64 image
+function cleanBase64Image(imageData) {
+  if (!imageData || typeof imageData !== 'string') {
+    throw new Error('Invalid image data: must be a non-empty string');
+  }
+
+  // Remove whitespace
+  const trimmed = imageData.trim();
+  
+  if (trimmed === '' || trimmed === 'undefined' || trimmed === 'null') {
+    throw new Error('Invalid image data: empty or undefined');
+  }
+
+  // Extract base64 data and mime type
+  let base64Data = trimmed;
+  let mimeType = 'image/jpeg'; // default
+
+  // Check if it's a data URL (data:image/png;base64,...)
+  if (trimmed.startsWith('data:')) {
+    const matches = trimmed.match(/^data:([^;]+);base64,(.+)$/);
+    if (!matches) {
+      throw new Error('Invalid data URL format');
+    }
+    mimeType = matches[1];
+    base64Data = matches[2];
+  } else if (trimmed.includes(',')) {
+    // Handle cases like "image/jpeg,base64data"
+    const parts = trimmed.split(',');
+    if (parts.length === 2) {
+      base64Data = parts[1];
+    }
+  }
+
+  // Validate base64 format
+  if (!/^[A-Za-z0-9+/]+={0,2}$/.test(base64Data)) {
+    throw new Error('Invalid base64 format');
+  }
+
+  // Ensure minimum length (actual images should be much larger)
+  if (base64Data.length < 100) {
+    throw new Error('Base64 data too short - likely corrupted');
+  }
+
+  return { data: base64Data, mimeType };
+}
+
 export async function POST(request) {
   try {
     const { collectedImage, reportedImage, location, reportedLocation, wasteType, amount } = await request.json();
@@ -15,20 +61,28 @@ export async function POST(request) {
       );
     }
 
+    // Validate and clean collected image
+    let collectedImageData;
+    try {
+      const cleaned = cleanBase64Image(collectedImage);
+      collectedImageData = {
+        inlineData: {
+          data: cleaned.data,
+          mimeType: cleaned.mimeType
+        }
+      };
+    } catch (error) {
+      return NextResponse.json(
+        { 
+          error: 'Invalid collected image format',
+          details: error.message 
+        },
+        { status: 400 }
+      );
+    }
+
     // Initialize Gemini Pro Vision model
     const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
-
-    // Prepare the images for comparison - handle both base64 with and without prefix
-    const cleanCollectedImage = collectedImage.includes(',') 
-      ? collectedImage.split(',')[1] 
-      : collectedImage;
-    
-    const collectedImageData = {
-      inlineData: {
-        data: cleanCollectedImage,
-        mimeType: 'image/jpeg'
-      }
-    };
 
     let prompt = `You are an expert waste management AI system. Analyze the uploaded image and provide a detailed verification report.
 
@@ -50,12 +104,28 @@ Please analyze the image and provide:
 
     // If reported image is provided, add comparison
     if (reportedImage) {
-      const reportedImageData = {
-        inlineData: {
-          data: reportedImage.split(',')[1],
-          mimeType: 'image/jpeg'
-        }
-      };
+      let reportedImageData;
+      try {
+        const cleaned = cleanBase64Image(reportedImage);
+        reportedImageData = {
+          inlineData: {
+            data: cleaned.data,
+            mimeType: cleaned.mimeType
+          }
+        };
+      } catch (error) {
+        console.warn('Invalid reported image, skipping comparison:', error.message);
+        // Continue without reported image comparison
+        const result = await model.generateContent([prompt, collectedImageData]);
+        const response = await result.response;
+        const analysisText = response.text();
+
+        return NextResponse.json({
+          success: true,
+          analysis: analysisText,
+          parsedResult: parseGeminiResponse(analysisText, location, reportedLocation)
+        });
+      }
 
       prompt += `\nAdditionally, compare the uploaded image with the reported image and provide:
 7. Image similarity score (0-100%)
@@ -92,10 +162,27 @@ Please analyze the image and provide:
     }
   } catch (error) {
     console.error('Gemini API Error:', error);
+    
+    // Provide more specific error messages
+    let errorMessage = 'Failed to verify waste collection';
+    let errorDetails = error.message;
+    
+    if (error.message?.includes('404') || error.message?.includes('not found')) {
+      errorMessage = 'AI model not available';
+      errorDetails = 'The verification AI model is currently unavailable. Please try again later.';
+    } else if (error.message?.includes('quota') || error.message?.includes('rate limit')) {
+      errorMessage = 'AI service quota exceeded';
+      errorDetails = 'Too many verification requests. Please try again in a few moments.';
+    } else if (error.message?.includes('image')) {
+      errorMessage = 'Image processing failed';
+      errorDetails = 'Unable to process the uploaded image. Please ensure it\'s a valid image file.';
+    }
+    
     return NextResponse.json(
       { 
-        error: 'Failed to verify waste collection',
-        details: error.message 
+        error: errorMessage,
+        details: errorDetails,
+        success: false
       },
       { status: 500 }
     );

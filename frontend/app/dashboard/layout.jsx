@@ -2,7 +2,7 @@
 
 import React from 'react';
 import { useUser } from '@clerk/nextjs';
-import { LayoutDashboard, BarChart3, Trash2, Settings, MapPin, Users, Trophy } from 'lucide-react';
+import { LayoutDashboard, BarChart3, Trash2, Settings, MapPin, Users, Trophy, Route } from 'lucide-react';
 import { EcoFlowSidebar } from '@/components/ui/sidebar';
 
 export default function DashboardLayout({ children }) {
@@ -25,6 +25,11 @@ export default function DashboardLayout({ children }) {
       icon: MapPin,
     },
     {
+      label: 'Route Map',
+      href: '/dashboard/route-map',
+      icon: Route,
+    },
+    {
       label: 'Leaderboard',
       href: '/dashboard/leaderboard',
       icon: Trophy,
@@ -37,7 +42,7 @@ export default function DashboardLayout({ children }) {
   ];
 
   return (
-    <div className="flex h-screen w-full overflow-hidden bg-gradient-to-br from-slate-50 via-emerald-50 to-teal-50">
+    <div className="flex h-screen w-full overflow-hidden bg-linear-to-br from-slate-50 via-emerald-50 to-teal-50">
       <EcoFlowSidebar links={links} user={user} />
       
       <main className="flex-1 overflow-y-auto">

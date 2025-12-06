@@ -6,9 +6,12 @@ import Link from 'next/link';
 import { 
   MapPin, Camera, Trash2, Recycle, Package, Droplets, 
   Leaf, Zap, ArrowLeft, CheckCircle, AlertCircle, 
-  Upload, X, Loader2, TrendingUp, Award, Target, ChevronDown
+  Upload, X, Loader2, TrendingUp, Award, Target, ChevronDown, Search
 } from 'lucide-react';
+import { GoogleMap, LoadScript, Marker, Autocomplete } from '@react-google-maps/api';
 import { API_CONFIG, WASTE_TYPE_MAPPING } from '@/lib/api-config';
+
+const libraries = ['places'];
 
 export default function ReportWaste() {
   const { user } = useUser();
@@ -25,6 +28,11 @@ export default function ReportWaste() {
   const [showSuccess, setShowSuccess] = useState(false);
   const [address, setAddress] = useState({ city: '', state: '', country: '' });
   const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [aiAnalysisData, setAiAnalysisData] = useState(null);
+  const [fullAddress, setFullAddress] = useState('');
+  const [showMap, setShowMap] = useState(false);
+  const [mapCenter, setMapCenter] = useState({ lat: 19.0760, lng: 72.8777 });
+  const [autocomplete, setAutocomplete] = useState(null);
 
   const videoRef = useRef(null);
   const canvasRef = useRef(null);
@@ -90,6 +98,16 @@ export default function ReportWaste() {
       if (data.wasteType) {
         setWasteType(data.wasteType);
       }
+
+      // Store AI analysis data for submission
+      const analysisData = {
+        category: data.estimatedWeight >= 10 ? 'large' : 'small',
+        wasteType: data.wasteType || 'mixed',
+        confidence: data.confidence || 0.85,
+        estimatedWeightKg: parseFloat(data.estimatedWeight) || 0,
+        notes: data.description || ''
+      };
+      setAiAnalysisData(analysisData);
     } catch (error) {
       console.error('Error analyzing image:', error);
     } finally {
@@ -97,24 +115,104 @@ export default function ReportWaste() {
     }
   };
 
-  // Fetch address from coordinates using reverse geocoding
+  // Fetch address from coordinates using Google Geocoding
   const getAddressFromCoordinates = async (latitude, longitude) => {
     try {
-      const response = await fetch(
-        `https://nominatim.openstreetmap.org/reverse?format=json&lat=${latitude}&lon=${longitude}&accept-language=en`
-      );
-      const data = await response.json();
-      
-      if (data && data.address) {
-        setAddress({
-          city: data.address.city || data.address.town || data.address.village || '',
-          state: data.address.state || data.address.region || '',
-          country: data.address.country || ''
+      if (window.google && window.google.maps) {
+        const geocoder = new window.google.maps.Geocoder();
+        const latlng = { lat: latitude, lng: longitude };
+        
+        geocoder.geocode({ location: latlng }, (results, status) => {
+          if (status === 'OK' && results[0]) {
+            setFullAddress(results[0].formatted_address);
+            
+            // Extract city, state, country from address components
+            const components = results[0].address_components;
+            const addressData = {
+              city: '',
+              state: '',
+              country: ''
+            };
+            
+            components.forEach(component => {
+              if (component.types.includes('locality')) {
+                addressData.city = component.long_name;
+              }
+              if (component.types.includes('administrative_area_level_1')) {
+                addressData.state = component.long_name;
+              }
+              if (component.types.includes('country')) {
+                addressData.country = component.long_name;
+              }
+            });
+            
+            setAddress(addressData);
+          }
         });
       }
     } catch (error) {
       console.error('Error fetching address:', error);
     }
+  };
+
+  // Handle place selection from autocomplete
+  const onPlaceSelected = () => {
+    if (autocomplete) {
+      const place = autocomplete.getPlace();
+      
+      if (place.geometry) {
+        const lat = place.geometry.location.lat();
+        const lng = place.geometry.location.lng();
+        
+        setLocation({
+          latitude: lat,
+          longitude: lng,
+          accuracy: 10,
+        });
+        
+        setMapCenter({ lat, lng });
+        setFullAddress(place.formatted_address || '');
+        
+        // Extract address components
+        const addressData = {
+          city: '',
+          state: '',
+          country: ''
+        };
+        
+        if (place.address_components) {
+          place.address_components.forEach(component => {
+            if (component.types.includes('locality')) {
+              addressData.city = component.long_name;
+            }
+            if (component.types.includes('administrative_area_level_1')) {
+              addressData.state = component.long_name;
+            }
+            if (component.types.includes('country')) {
+              addressData.country = component.long_name;
+            }
+          });
+        }
+        
+        setAddress(addressData);
+        setShowMap(true);
+      }
+    }
+  };
+
+  // Handle map click to select location
+  const onMapClick = (e) => {
+    const lat = e.latLng.lat();
+    const lng = e.latLng.lng();
+    
+    setLocation({
+      latitude: lat,
+      longitude: lng,
+      accuracy: 10,
+    });
+    
+    setMapCenter({ lat, lng });
+    getAddressFromCoordinates(lat, lng);
   };
 
   // Get current location
@@ -138,6 +236,9 @@ export default function ReportWaste() {
           longitude: lng,
           accuracy: position.coords.accuracy,
         });
+        
+        setMapCenter({ lat, lng });
+        setShowMap(true);
         
         // Fetch address from coordinates
         getAddressFromCoordinates(lat, lng);
@@ -237,13 +338,21 @@ export default function ReportWaste() {
       
       // Add required fields
       formData.append('userId', user.id);
-      formData.append('location', `${location.latitude}, ${location.longitude}`);
-      formData.append('wasteType', WASTE_TYPE_MAPPING[wasteType] || 'OTHER');
+      // Use full address as location (stored as locationRaw in backend)
+      formData.append('location', fullAddress || `${location.latitude}, ${location.longitude}`);
       formData.append('isLocationLatLng', 'true');
       formData.append('latitude', location.latitude.toString());
       formData.append('longitude', location.longitude.toString());
-      formData.append('estimatedAmountKg', weight);
-      formData.append('note', description);
+      
+      // Add AI analysis as JSON string (required by API)
+      const aiAnalysis = aiAnalysisData || {
+        category: parseFloat(weight) >= 10 ? 'large' : 'small',
+        wasteType: WASTE_TYPE_MAPPING[wasteType] || 'mixed',
+        confidence: 0.8,
+        estimatedWeightKg: parseFloat(weight) || 0,
+        notes: description || 'User submitted waste report'
+      };
+      formData.append('aiAnalysis', JSON.stringify(aiAnalysis));
       
       // Add optional address fields if available
       if (address.city) formData.append('city', address.city);
@@ -285,6 +394,7 @@ export default function ReportWaste() {
         setWasteType('');
         setDescription('');
         setWeight('');
+        setAiAnalysisData(null);
         getCurrentLocation();
       }, 3000);
     } catch (error) {
@@ -668,18 +778,67 @@ export default function ReportWaste() {
                     </div>
                     <div>
                       <h2 className="text-base font-bold text-gray-800">Location</h2>
-                      <p className="text-xs text-gray-600">Auto-detected</p>
+                      <p className="text-xs text-gray-600">Search or click on map</p>
                     </div>
                   </div>
                   <button
                     type="button"
                     onClick={getCurrentLocation}
                     disabled={loadingLocation}
-                    className="text-xs font-semibold text-emerald-600 hover:text-emerald-700 disabled:text-gray-400"
+                    className="text-xs font-semibold text-emerald-600 hover:text-emerald-700 disabled:text-gray-400 flex items-center gap-1"
                   >
-                    {loadingLocation ? 'Fetching...' : 'Refresh'}
+                    {loadingLocation ? <Loader2 className="w-3 h-3 animate-spin" /> : <Target className="w-3 h-3" />}
+                    {loadingLocation ? 'Fetching...' : 'My Location'}
                   </button>
                 </div>
+
+                {/* Google Maps Search */}
+                <LoadScript googleMapsApiKey={process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY || ''} libraries={libraries}>
+                  <div className="mb-4">
+                    <Autocomplete
+                      onLoad={setAutocomplete}
+                      onPlaceChanged={onPlaceSelected}
+                    >
+                      <div className="relative">
+                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                        <input
+                          type="text"
+                          placeholder="Search for an address..."
+                          className="w-full pl-10 pr-4 py-2 border-2 border-gray-200 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none transition-all text-sm"
+                        />
+                      </div>
+                    </Autocomplete>
+                  </div>
+
+                  {/* Map Display */}
+                  {showMap && (
+                    <div className="mb-4 rounded-lg overflow-hidden border-2 border-emerald-200">
+                      <GoogleMap
+                        mapContainerStyle={{ width: '100%', height: '250px' }}
+                        center={mapCenter}
+                        zoom={15}
+                        onClick={onMapClick}
+                      >
+                        {location && (
+                          <Marker
+                            position={{ lat: location.latitude, lng: location.longitude }}
+                            draggable={true}
+                            onDragEnd={(e) => {
+                              const lat = e.latLng.lat();
+                              const lng = e.latLng.lng();
+                              setLocation({
+                                latitude: lat,
+                                longitude: lng,
+                                accuracy: 10,
+                              });
+                              getAddressFromCoordinates(lat, lng);
+                            }}
+                          />
+                        )}
+                      </GoogleMap>
+                    </div>
+                  )}
+                </LoadScript>
 
                 {location ? (
                   <div className="bg-linear-to-br from-green-50 to-emerald-50 border-2 border-green-200 rounded-lg p-4">
@@ -688,10 +847,18 @@ export default function ReportWaste() {
                       <div className="flex-1">
                         <p className="font-bold text-green-900 text-sm mb-2">Location Captured</p>
                         
-                        {/* Address Information */}
+                        {/* Full Address */}
+                        {fullAddress && (
+                          <div className="mb-3 p-2 bg-white/60 rounded-lg">
+                            <p className="text-green-900 font-semibold text-xs mb-1">📍 Address:</p>
+                            <p className="text-green-800 text-xs">{fullAddress}</p>
+                          </div>
+                        )}
+                        
+                        {/* City, State, Country */}
                         {(address.city || address.state || address.country) && (
                           <div className="mb-3 p-2 bg-white/60 rounded-lg">
-                            <p className="text-green-900 font-semibold text-xs mb-1">Address:</p>
+                            <p className="text-green-900 font-semibold text-xs mb-1">Location Details:</p>
                             <p className="text-green-800 text-xs">
                               {[address.city, address.state, address.country].filter(Boolean).join(', ')}
                             </p>
