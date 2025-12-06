@@ -20,6 +20,16 @@ enum NotificationType {
   WASTE_REPORTED
   WASTE_COLLECTED
   COLLECTOR_ENABLED
+  BID_PLACED
+  AUCTION_WON
+  AUCTION_ENDED
+}
+
+enum ListingStatus {
+  ACTIVE
+  ENDED
+  COMPLETED
+  CANCELLED
 }
 
 model User {
@@ -47,6 +57,11 @@ model User {
   routePlannerWaste WasteReport[]  @relation("RoutePlannerCollector")
   notifications     Notification[]
   phoneOTPs         PhoneOTP[]
+  
+  // Marketplace relations
+  listings          MarketplaceListing[] @relation("UserListings")
+  bids              Bid[]                @relation("UserBids")
+  wonListings       MarketplaceListing[] @relation("WinnerListings")
 
   @@index([globalPoints, reporterPoints, collectorPoints])
 }
@@ -112,4 +127,68 @@ model PhoneOTP {
   user User @relation(fields: [userId], references: [id])
 
   @@index([userId])
+}
+
+model MarketplaceListing {
+  id String @id @default(cuid())
+
+  sellerId String
+  seller   User   @relation("UserListings", fields: [sellerId], references: [id])
+
+  winnerId String?
+  winner   User?   @relation("WinnerListings", fields: [winnerId], references: [id])
+
+  // Listing details
+  wasteType   String
+  weightKg    Float
+  description String?
+  basePrice   Float
+
+  // Images (JSON array of S3 URLs)
+  images Json
+
+  // Location
+  latitude  Float
+  longitude Float
+  city      String?
+  state     String?
+
+  // Auction details
+  auctionDuration Int      @default(60) // in minutes
+  auctionEndTime  DateTime
+  status          ListingStatus @default(ACTIVE)
+
+  // Current highest bid
+  highestBid Float?
+
+  // QR code for verification (generated when auction ends)
+  verificationCode String? @unique
+
+  // Completion
+  completedAt DateTime?
+  verifiedAt  DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  bids Bid[]
+
+  @@index([status, auctionEndTime])
+  @@index([sellerId])
+}
+
+model Bid {
+  id String @id @default(cuid())
+
+  listingId String
+  listing   MarketplaceListing @relation(fields: [listingId], references: [id])
+
+  bidderId String
+  bidder   User   @relation("UserBids", fields: [bidderId], references: [id])
+
+  amount    Float
+  createdAt DateTime @default(now())
+
+  @@index([listingId, amount])
+  @@index([bidderId])
 }
