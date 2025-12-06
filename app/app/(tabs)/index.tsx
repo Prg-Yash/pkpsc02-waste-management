@@ -250,7 +250,9 @@ export default function HomeScreen() {
                       size={40}
                       backgroundColor={getActivityColor(activity.type)}
                     >
-                      <Text fontSize={20}>{getActivityIcon(activity.type)}</Text>
+                      <Text fontSize={20}>
+                        {getActivityIcon(activity.type)}
+                      </Text>
                     </Circle>
                     <YStack flex={1}>
                       <Text color="$gray12" fontWeight="bold">
@@ -270,37 +272,44 @@ export default function HomeScreen() {
             </YStack>
 
             {/* Points Breakdown */}
-            {stats && (stats.reporterPoints > 0 || stats.collectorPoints > 0) && (
-              <YStack padding="$4" gap="$3">
-                <H4 color="$gray12" fontWeight="bold">
-                  Points Breakdown
-                </H4>
-                <YStack backgroundColor="white" borderRadius="$4" padding="$4" gap="$3" elevation="$1">
-                  <XStack justifyContent="space-between" alignItems="center">
-                    <XStack alignItems="center" gap="$2">
-                      <Text fontSize={24}>📝</Text>
-                      <Text color="$gray11" fontWeight="600">
-                        Reporter Points
+            {stats &&
+              (stats.reporterPoints > 0 || stats.collectorPoints > 0) && (
+                <YStack padding="$4" gap="$3">
+                  <H4 color="$gray12" fontWeight="bold">
+                    Points Breakdown
+                  </H4>
+                  <YStack
+                    backgroundColor="white"
+                    borderRadius="$4"
+                    padding="$4"
+                    gap="$3"
+                    elevation="$1"
+                  >
+                    <XStack justifyContent="space-between" alignItems="center">
+                      <XStack alignItems="center" gap="$2">
+                        <Text fontSize={24}>📝</Text>
+                        <Text color="$gray11" fontWeight="600">
+                          Reporter Points
+                        </Text>
+                      </XStack>
+                      <Text color="$green9" fontSize="$5" fontWeight="bold">
+                        {stats.reporterPoints}
                       </Text>
                     </XStack>
-                    <Text color="$green9" fontSize="$5" fontWeight="bold">
-                      {stats.reporterPoints}
-                    </Text>
-                  </XStack>
-                  <XStack justifyContent="space-between" alignItems="center">
-                    <XStack alignItems="center" gap="$2">
-                      <Text fontSize={24}>🚛</Text>
-                      <Text color="$gray11" fontWeight="600">
-                        Collector Points
+                    <XStack justifyContent="space-between" alignItems="center">
+                      <XStack alignItems="center" gap="$2">
+                        <Text fontSize={24}>🚛</Text>
+                        <Text color="$gray11" fontWeight="600">
+                          Collector Points
+                        </Text>
+                      </XStack>
+                      <Text color="$blue9" fontSize="$5" fontWeight="bold">
+                        {stats.collectorPoints}
                       </Text>
                     </XStack>
-                    <Text color="$blue9" fontSize="$5" fontWeight="bold">
-                      {stats.collectorPoints}
-                    </Text>
-                  </XStack>
+                  </YStack>
                 </YStack>
-              </YStack>
-            )}
+              )}
           </>
         )}
       </ScrollView>
