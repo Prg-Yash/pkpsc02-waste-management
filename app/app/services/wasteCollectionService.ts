@@ -62,6 +62,7 @@ export async function fetchPendingReports(
         method: "GET",
         headers: {
           "Content-Type": "application/json",
+          "ngrok-skip-browser-warning": "true", // Bypass ngrok browser warning
         },
       }
     );

@@ -14,9 +14,8 @@ import {
   Separator,
 } from "tamagui";
 import { useUser } from "@clerk/clerk-expo";
-import { Alert, RefreshControl, Linking, Dimensions, View } from "react-native";
+import { Alert, RefreshControl, Linking, Platform } from "react-native";
 import * as Location from "expo-location";
-import MapView, { Marker, PROVIDER_GOOGLE } from "react-native-maps";
 import {
   fetchRoutePlannerReports,
   removeFromRoutePlanner,
@@ -24,9 +23,7 @@ import {
 } from "../services/routePlannerService";
 import { formatDistance, calculateDistance } from "../utils/locationUtils";
 import CollectorVerificationScreen from "../components/CollectorVerificationScreen";
-import { MapPin, Navigation, Trash2, ChevronUp, ChevronDown } from "@tamagui/lucide-icons";
-
-const { width, height } = Dimensions.get("window");
+import { MapPin, Navigation, Trash2 } from "@tamagui/lucide-icons";
 
 export default function RoutePlannerScreen() {
   const { user } = useUser();
@@ -40,12 +37,6 @@ export default function RoutePlannerScreen() {
   const [selectedReport, setSelectedReport] =
     React.useState<RouteReport | null>(null);
   const [totalDistance, setTotalDistance] = React.useState<number>(0);
-  const [mapRegion, setMapRegion] = React.useState({
-    latitude: 19.076, // Default to Mumbai
-    longitude: 72.8777,
-    latitudeDelta: 0.0922,
-    longitudeDelta: 0.0421,
-  });
 
   // Fetch user location on mount
   React.useEffect(() => {
@@ -63,25 +54,6 @@ export default function RoutePlannerScreen() {
   React.useEffect(() => {
     if (userLocation && reports.length > 0) {
       calculateTotalDistance();
-    }
-  }, [reports, userLocation]);
-
-  // Update map region when user location or reports change
-  React.useEffect(() => {
-    if (reports.length > 0 && reports[0].latitude && reports[0].longitude) {
-      setMapRegion({
-        latitude: reports[0].latitude,
-        longitude: reports[0].longitude,
-        latitudeDelta: 0.0922,
-        longitudeDelta: 0.0421,
-      });
-    } else if (userLocation) {
-      setMapRegion({
-        latitude: userLocation.latitude,
-        longitude: userLocation.longitude,
-        latitudeDelta: 0.0922,
-        longitudeDelta: 0.0421,
-      });
     }
   }, [reports, userLocation]);
 
@@ -203,24 +175,6 @@ export default function RoutePlannerScreen() {
     setSelectedReport(null);
   };
 
-  // Move priority up (decrease index)
-  const movePriorityUp = (index: number) => {
-    if (index === 0) return; // Already at top
-
-    const newReports = [...reports];
-    [newReports[index - 1], newReports[index]] = [newReports[index], newReports[index - 1]];
-    setReports(newReports);
-  };
-
-  // Move priority down (increase index)
-  const movePriorityDown = (index: number) => {
-    if (index === reports.length - 1) return; // Already at bottom
-
-    const newReports = [...reports];
-    [newReports[index], newReports[index + 1]] = [newReports[index + 1], newReports[index]];
-    setReports(newReports);
-  };
-
   const openRouteInMaps = () => {
     if (reports.length === 0) {
       Alert.alert("No Route", "Add some reports to your route first!");
@@ -276,13 +230,6 @@ export default function RoutePlannerScreen() {
     return colors[wasteType] || "$gray9";
   };
 
-  const getPriorityColor = (priority: number) => {
-    if (priority === 1) return "$red9";
-    if (priority === 2) return "$orange9";
-    if (priority === 3) return "$yellow9";
-    return "$green9";
-  };
-
   // If verification screen is open, show it
   if (selectedReport && user) {
     return (
@@ -304,138 +251,79 @@ export default function RoutePlannerScreen() {
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
         }
       >
-        {/* Header with Stats */}
-        <YStack margin="$4">
-          <XStack justifyContent="space-between" alignItems="center" marginBottom="$4">
-            <YStack>
-              <H2 color="$gray12" fontWeight="bold">
-                🗺️ Collection Route
-              </H2>
-              <Text color="$gray10" fontSize="$2" marginTop="$1">
-                Plan your optimal route
-              </Text>
-            </YStack>
+        {/* Stats Cards */}
+        <XStack margin="$4" gap="$3">
+          <YStack
+            flex={1}
+            backgroundColor="white"
+            padding="$4"
+            borderRadius="$4"
+            elevation="$2"
+            alignItems="center"
+          >
+            <Text fontSize={32}>📍</Text>
+            <H2 color="$purple9" fontWeight="bold" marginTop="$2">
+              {reports.length}
+            </H2>
+            <Text color="$gray10" fontSize="$2" marginTop="$1">
+              Stops
+            </Text>
+          </YStack>
+
+          <YStack
+            flex={1}
+            backgroundColor="white"
+            padding="$4"
+            borderRadius="$4"
+            elevation="$2"
+            alignItems="center"
+          >
+            <Text fontSize={32}>🗺️</Text>
+            <H2 color="$blue9" fontWeight="bold" marginTop="$2">
+              {totalDistance > 0 ? totalDistance.toFixed(1) : "0"}
+            </H2>
+            <Text color="$gray10" fontSize="$2" marginTop="$1">
+              km Total
+            </Text>
+          </YStack>
+
+          <YStack
+            flex={1}
+            backgroundColor="white"
+            padding="$4"
+            borderRadius="$4"
+            elevation="$2"
+            alignItems="center"
+          >
+            <Text fontSize={32}>🏆</Text>
+            <H2 color="$yellow9" fontWeight="bold" marginTop="$2">
+              {reports.length * 20}
+            </H2>
+            <Text color="$gray10" fontSize="$2" marginTop="$1">
+              Points
+            </Text>
+          </YStack>
+        </XStack>
+
+        {/* Open in Maps Button */}
+        {reports.length > 0 && (
+          <YStack paddingHorizontal="$4" marginBottom="$4">
             <Button
               onPress={openRouteInMaps}
               backgroundColor="$purple9"
-              color="white"
-              size="$3"
-              icon={<Navigation size={16} color="white" />}
-              disabled={reports.length === 0}
+              height="$5"
+              borderRadius="$4"
+              pressStyle={{ opacity: 0.8 }}
             >
-              Open in Maps
+              <XStack alignItems="center" gap="$2">
+                <Navigation size={20} color="white" />
+                <Text color="white" fontWeight="bold" fontSize="$4">
+                  Open Full Route in Google Maps
+                </Text>
+              </XStack>
             </Button>
-          </XStack>
-
-          {/* Stats Cards */}
-          <XStack gap="$3" marginBottom="$4">
-            <YStack
-              flex={1}
-              backgroundColor="white"
-              padding="$3"
-              borderRadius="$4"
-              elevation="$2"
-              alignItems="center"
-            >
-              <Text fontSize={24}>📍</Text>
-              <H4 color="$purple9" fontWeight="bold" marginTop="$1">
-                {reports.length}
-              </H4>
-              <Text color="$gray10" fontSize="$1">
-                Stops
-              </Text>
-            </YStack>
-
-            <YStack
-              flex={1}
-              backgroundColor="white"
-              padding="$3"
-              borderRadius="$4"
-              elevation="$2"
-              alignItems="center"
-            >
-              <Text fontSize={24}>🗺️</Text>
-              <H4 color="$blue9" fontWeight="bold" marginTop="$1">
-                {totalDistance > 0 ? totalDistance.toFixed(1) : "0"}
-              </H4>
-              <Text color="$gray10" fontSize="$1">
-                km Total
-              </Text>
-            </YStack>
-
-            <YStack
-              flex={1}
-              backgroundColor="white"
-              padding="$3"
-              borderRadius="$4"
-              elevation="$2"
-              alignItems="center"
-            >
-              <Text fontSize={24}>🏆</Text>
-              <H4 color="$yellow9" fontWeight="bold" marginTop="$1">
-                {reports.length * 20}
-              </H4>
-              <Text color="$gray10" fontSize="$1">
-                Points
-              </Text>
-            </YStack>
-          </XStack>
-
-          {/* Map View */}
-          {reports.length > 0 && (
-            <YStack backgroundColor="white" borderRadius="$4" overflow="hidden" marginBottom="$4" elevation="$2">
-              <View style={{ height: 400, width: "100%" }}>
-                <MapView
-                  style={{ flex: 1 }}
-                  provider={PROVIDER_GOOGLE}
-                  region={mapRegion}
-                  showsUserLocation={true}
-                  showsMyLocationButton={true}
-                >
-                  {/* User Location Marker */}
-                  {userLocation && (
-                    <Marker
-                      coordinate={userLocation}
-                      title="Your Location"
-                      pinColor="blue"
-                    />
-                  )}
-
-                  {/* Waste Report Markers */}
-                  {reports.map((report, index) => {
-                    if (!report.latitude || !report.longitude) return null;
-                    return (
-                      <Marker
-                        key={report.id}
-                        coordinate={{
-                          latitude: report.latitude,
-                          longitude: report.longitude,
-                        }}
-                        title={`Stop ${index + 1}`}
-                        description={`${report.city || report.locationRaw} - ${report.aiAnalysis.wasteType}`}
-                      >
-                        <View
-                          style={{
-                            backgroundColor: index === 0 ? "#dc2626" : index === 1 ? "#ea580c" : index === 2 ? "#ca8a04" : "#16a34a",
-                            paddingHorizontal: 8,
-                            paddingVertical: 4,
-                            borderRadius: 12,
-                            borderWidth: 2,
-                            borderColor: "white",
-                          }}
-                        >
-                          <Text style={{ color: "white", fontWeight: "bold", fontSize: 14 }}>
-                            {index + 1}
-                          </Text>
-                        </View>
-                      </Marker>
-                    );
-                  })}
-                </MapView>
-              </View>
-            </YStack>
-          )}
-        </YStack>
+          </YStack>
+        )}
 
         {/* Route Reports List */}
         <YStack paddingHorizontal="$4">
@@ -445,7 +333,7 @@ export default function RoutePlannerScreen() {
             marginBottom="$4"
           >
             <H4 color="$gray12" fontWeight="bold">
-              Your Collection Points
+              Your Collection Route
             </H4>
             {reports.length > 0 && (
               <Text color="$purple9" fontWeight="600" fontSize="$2">
@@ -487,45 +375,25 @@ export default function RoutePlannerScreen() {
                 marginBottom="$3"
                 elevation="$1"
                 borderLeftWidth={4}
-                borderLeftColor={getPriorityColor(index + 1)}
+                borderLeftColor="$purple9"
               >
-                {/* Stop Number Badge & Priority Controls */}
-                <XStack justifyContent="space-between" alignItems="center" marginBottom="$3">
-                  <YStack
-                    backgroundColor={getPriorityColor(index + 1)}
-                    width={40}
-                    height={40}
-                    borderRadius="$10"
-                    alignItems="center"
-                    justifyContent="center"
-                  >
-                    <Text color="white" fontWeight="bold" fontSize="$5">
-                      {index + 1}
-                    </Text>
-                  </YStack>
-
-                  {/* Priority Control Buttons */}
-                  <XStack gap="$2">
-                    <Button
-                      size="$2"
-                      circular
-                      icon={<ChevronUp size={16} />}
-                      backgroundColor="$gray3"
-                      onPress={() => movePriorityUp(index)}
-                      disabled={index === 0}
-                      opacity={index === 0 ? 0.3 : 1}
-                    />
-                    <Button
-                      size="$2"
-                      circular
-                      icon={<ChevronDown size={16} />}
-                      backgroundColor="$gray3"
-                      onPress={() => movePriorityDown(index)}
-                      disabled={index === reports.length - 1}
-                      opacity={index === reports.length - 1 ? 0.3 : 1}
-                    />
-                  </XStack>
-                </XStack>
+                {/* Stop Number Badge */}
+                <YStack
+                  position="absolute"
+                  top="$2"
+                  left="$2"
+                  backgroundColor="$purple9"
+                  width={32}
+                  height={32}
+                  borderRadius="$10"
+                  alignItems="center"
+                  justifyContent="center"
+                  zIndex={10}
+                >
+                  <Text color="white" fontWeight="bold" fontSize="$4">
+                    {index + 1}
+                  </Text>
+                </YStack>
 
                 {/* Report Image */}
                 <Image
@@ -653,16 +521,16 @@ export default function RoutePlannerScreen() {
               🗺️ Route Planning Tips
             </H4>
             <Paragraph color="$purple11">
-              • Use ↑↓ arrows to reorder stops by priority
-            </Paragraph>
-            <Paragraph color="$purple11">
-              • Map shows your route with numbered stops
+              • Reports are shown in the order you added them
             </Paragraph>
             <Paragraph color="$purple11">
               • Open in Google Maps for turn-by-turn navigation
             </Paragraph>
             <Paragraph color="$purple11">
               • Collect reports in order for optimal route
+            </Paragraph>
+            <Paragraph color="$purple11">
+              • Remove completed collections to update your route
             </Paragraph>
           </YStack>
         )}
