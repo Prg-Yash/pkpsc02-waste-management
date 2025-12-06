@@ -1,5 +1,6 @@
 import express from "express";
 import { prisma } from "../lib/prisma.js";
+import { sendBulkNewsletters, verifyEmailConfig } from "../lib/emailService.js";
 
 const router = express.Router();
 
@@ -544,5 +545,142 @@ function generateInsights(cityStats, stateStats, userStats) {
 
   return insights;
 }
+
+/**
+ * POST /api/newsletter/send-all
+ * Send newsletters to all users who have enabled newsletter subscription
+ */
+router.post("/send-all", async (req, res) => {
+  try {
+    console.log("📧 Starting bulk newsletter send...");
+
+    // Get all users with newsletter enabled and required location data
+    const subscribedUsers = await prisma.user.findMany({
+      where: {
+        newsletterEnabled: true,
+        city: { not: null },
+        state: { not: null },
+      },
+      select: {
+        id: true,
+        email: true,
+        name: true,
+        city: true,
+        state: true,
+      },
+    });
+
+    if (subscribedUsers.length === 0) {
+      return res.status(200).json({
+        message: "No subscribed users found",
+        sent: 0,
+        failed: 0,
+        total: 0,
+      });
+    }
+
+    console.log(`📋 Found ${subscribedUsers.length} subscribed users`);
+
+    // Helper function to generate newsletter for a user
+    const generateNewsletterForUser = async (userId) => {
+      try {
+        const user = subscribedUsers.find((u) => u.id === userId);
+        if (!user) return null;
+
+        const since = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+
+        const [cityStats, stateStats, userStats] = await Promise.all([
+          getCityStatistics(user.city, user.state, since),
+          getStateStatistics(user.state, since),
+          getUserPersonalStats(userId, since),
+        ]);
+
+        const topCollectors = await getTopCollectors(user.city, user.state, 5);
+        const environmentalImpact = await getEnvironmentalImpact(
+          user.city,
+          user.state
+        );
+
+        const cityReport = {
+          city: user.city,
+          state: user.state,
+          statistics: cityStats,
+          topCollectors,
+          environmentalImpact,
+        };
+
+        const stateReport = {
+          state: user.state,
+          statistics: stateStats,
+        };
+
+        const insights = generateInsights(cityStats, stateStats, userStats);
+
+        return {
+          cityReport,
+          stateReport,
+          personalStats: userStats,
+          insights,
+          generatedAt: new Date().toISOString(),
+        };
+      } catch (error) {
+        console.error(`Error generating newsletter for user ${userId}:`, error);
+        return null;
+      }
+    };
+
+    // Send newsletters to all subscribed users
+    const results = await sendBulkNewsletters(
+      subscribedUsers,
+      generateNewsletterForUser
+    );
+
+    console.log(
+      `✅ Bulk send complete: ${results.sent} sent, ${results.failed} failed`
+    );
+
+    res.status(200).json({
+      message: "Newsletter sending completed",
+      sent: results.sent,
+      failed: results.failed,
+      total: results.total,
+      details: results.details,
+    });
+  } catch (error) {
+    console.error("Error sending bulk newsletters:", error);
+    res.status(500).json({
+      error: "Failed to send newsletters",
+      message: error.message,
+    });
+  }
+});
+
+/**
+ * GET /api/newsletter/verify-config
+ * Verify email configuration
+ */
+router.get("/verify-config", async (req, res) => {
+  try {
+    const result = await verifyEmailConfig();
+    
+    if (result.success) {
+      res.status(200).json({
+        message: "Email configuration is valid",
+        status: "ready",
+      });
+    } else {
+      res.status(500).json({
+        message: "Email configuration is invalid",
+        status: "error",
+        error: result.error,
+      });
+    }
+  } catch (error) {
+    res.status(500).json({
+      error: "Failed to verify email configuration",
+      message: error.message,
+    });
+  }
+});
 
 export default router;

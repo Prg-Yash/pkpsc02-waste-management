@@ -24,6 +24,8 @@ Complete backend API for the EcoFlow waste management system built with Express.
 - **Waste Categorization**: 8 waste types (PLASTIC, METAL, ORGANIC, E_WASTE, etc.)
 - **Status Management**: PENDING → COLLECTED workflow
 - **Organized Storage**: S3 folder structure (waste-reports/, waste-collections/)
+- **📧 Newsletter System**: Personalized email newsletters with city/state statistics, environmental impact, and AI insights
+- **Email Integration**: SMTP support with Gmail (default) or custom server configuration
 
 ## 🛠️ Setup
 
@@ -61,9 +63,23 @@ AWS_SECRET_ACCESS_KEY="your_aws_secret_access_key"
 S3_BUCKET_NAME="your-bucket-name"
 S3_REGION="us-east-1"
 
+# Email Configuration (Gmail by default)
+EMAIL_USER="your-email@gmail.com"
+EMAIL_PASS="your-gmail-app-password"
+EMAIL_FROM="EcoFlow Newsletter <noreply@ecoflow.com>"
+
+# Optional: Custom SMTP Server (leave empty to use Gmail)
+# SMTP_HOST="smtp.example.com"
+# SMTP_PORT="587"
+# SMTP_SECURE="false"
+# SMTP_USER="your-smtp-username"
+# SMTP_PASS="your-smtp-password"
+
 # Environment
 NODE_ENV="development"
 ```
+
+> **📧 Email Setup Required**: To send newsletters, configure email settings. Use Gmail (recommended for testing) or custom SMTP server. See [EMAIL_SETUP.md](EMAIL_SETUP.md) for detailed instructions.
 
 3. **Initialize database**:
 
@@ -108,6 +124,47 @@ npm run dev
 ```
 
 The API will be available at `http://localhost:3000`
+
+### Email Configuration (Newsletter System)
+
+**Quick Setup with Gmail (Recommended for Testing):**
+
+1. **Get Gmail App Password**:
+   - Visit: https://myaccount.google.com/apppasswords
+   - Enable 2-Step Verification (if not already enabled)
+   - Create App Password: Select "Mail" → "Other (Custom)" → "EcoFlow API"
+   - Copy the 16-character password
+
+2. **Update `.env` file**:
+   ```env
+   EMAIL_USER=your-email@gmail.com
+   EMAIL_PASS=abcd efgh ijkl mnop  # Your App Password
+   EMAIL_FROM="EcoFlow Newsletter <noreply@ecoflow.com>"
+   ```
+
+3. **Verify Configuration**:
+   ```bash
+   curl http://localhost:3000/api/newsletter/verify-config
+   ```
+
+4. **Send Test Newsletter**:
+   ```bash
+   curl -X POST http://localhost:3000/api/newsletter/send-all
+   ```
+
+**Using Custom SMTP Server:**
+
+For production or higher sending limits (SendGrid, AWS SES, Mailgun):
+
+```env
+SMTP_HOST=smtp.sendgrid.net
+SMTP_PORT=587
+SMTP_SECURE=false
+SMTP_USER=apikey
+SMTP_PASS=your-sendgrid-api-key
+```
+
+See [EMAIL_SETUP.md](EMAIL_SETUP.md) for detailed configuration options.
 
 ### Clerk Webhook Setup
 
@@ -1609,8 +1666,213 @@ node -e "import('./lib/s3.js').then(m => m.validateS3Config())"
 
 ---
 
+### Newsletter System
+
+#### Overview
+
+The Newsletter System generates personalized waste management updates and sends them via email to subscribed users. Each newsletter includes city statistics, state overview, top collectors, environmental impact, personal stats, and AI-generated insights.
+
+**Email Configuration:**
+- **Default**: Gmail SMTP (requires App Password)
+- **Custom**: Any SMTP server via environment variables
+- **See**: [EMAIL_SETUP.md](EMAIL_SETUP.md) for detailed setup instructions
+
+---
+
+#### POST /api/newsletter/send-all
+
+Send newsletters to all users who have enabled newsletter subscription.
+
+**Authentication**: Not required (internal use or admin-triggered)
+
+**Request**:
+```bash
+curl -X POST http://localhost:3000/api/newsletter/send-all
+```
+
+**Response**:
+```json
+{
+  "message": "Newsletter sending completed",
+  "sent": 150,
+  "failed": 5,
+  "total": 155,
+  "details": [
+    {
+      "success": true,
+      "email": "user@example.com",
+      "messageId": "<abc123@gmail.com>"
+    },
+    {
+      "success": false,
+      "email": "invalid@example.com",
+      "error": "Invalid recipient"
+    }
+  ]
+}
+```
+
+**Requirements**:
+- Email configuration must be set in `.env`
+- Users must have `newsletterEnabled: true`
+- Users must have valid `email`, `city`, and `state`
+
+**Features**:
+- Generates personalized newsletter for each user
+- Includes 30-day city statistics
+- Shows state-wide comparisons
+- Lists top 5 collectors
+- Calculates environmental impact
+- Provides AI-generated insights
+- Rate-limited (250ms delay between emails)
+- HTML email with responsive design
+
+---
+
+#### GET /api/newsletter/verify-config
+
+Verify email configuration is valid and ready to send.
+
+**Request**:
+```bash
+curl http://localhost:3000/api/newsletter/verify-config
+```
+
+**Response** (Success):
+```json
+{
+  "message": "Email configuration is valid",
+  "status": "ready"
+}
+```
+
+**Response** (Error):
+```json
+{
+  "message": "Email configuration is invalid",
+  "status": "error",
+  "error": "Invalid login: 535-5.7.8 Username and Password not accepted"
+}
+```
+
+---
+
+#### GET /api/newsletter/generate/:userId
+
+Generate newsletter data for a specific user without sending email.
+
+**Headers**:
+```
+x-user-id: user_abc123
+```
+
+**Response**:
+```json
+{
+  "user": {
+    "id": "user_abc123",
+    "name": "John Doe",
+    "email": "john@example.com",
+    "city": "Mumbai",
+    "state": "Maharashtra"
+  },
+  "cityReport": {
+    "city": "Mumbai",
+    "state": "Maharashtra",
+    "statistics": {
+      "totalReports": 150,
+      "collectionRate": 75,
+      "totalWasteWeight": 450,
+      "pendingReports": 38,
+      "collectedReports": 112,
+      "wasteByType": {
+        "PLASTIC": 45,
+        "ORGANIC": 30,
+        "METAL": 15
+      }
+    },
+    "topCollectors": [
+      {
+        "rank": 1,
+        "id": "user_xyz",
+        "name": "Jane Smith",
+        "totalPoints": 1250,
+        "collectionsLast30Days": 45
+      }
+    ],
+    "environmentalImpact": {
+      "totalWasteCollected": 2500,
+      "co2EmissionsSaved": 1250,
+      "treesEquivalent": 125,
+      "landfillSpaceSaved": 2.5
+    }
+  },
+  "stateReport": {
+    "state": "Maharashtra",
+    "statistics": {
+      "totalCities": 12,
+      "totalReports": 1800,
+      "collectionRate": 68,
+      "totalWasteWeight": 5400
+    }
+  },
+  "personalStats": {
+    "reportsSubmitted": 8,
+    "collectionsCompleted": 15,
+    "totalWeightCollected": 45
+  },
+  "insights": [
+    {
+      "type": "success",
+      "message": "Great job! Your city has a collection rate above 70%."
+    }
+  ],
+  "generatedAt": "2025-12-07T10:30:00.000Z"
+}
+```
+
+**Requirements**:
+- User must have `newsletterEnabled: true`
+- User must have `city` and `state` in profile
+- Returns 403 if newsletter disabled
+- Returns 404 if user not found
+
+---
+
+#### GET /api/newsletter/preview/:userId
+
+Quick preview of newsletter availability for a user.
+
+**Headers**:
+```
+x-user-id: user_abc123
+```
+
+**Response**:
+```json
+{
+  "available": true,
+  "user": {
+    "id": "user_abc123",
+    "name": "John Doe",
+    "email": "john@example.com",
+    "city": "Mumbai",
+    "state": "Maharashtra",
+    "newsletterEnabled": true
+  },
+  "reportCounts": {
+    "city": 150,
+    "state": 1800
+  }
+}
+```
+
+---
+
 ## 📚 Additional Documentation
 
+- **[EMAIL_SETUP.md](EMAIL_SETUP.md)** - Email configuration guide (Gmail & custom SMTP)
+- **[NEWSLETTER_TEST.md](NEWSLETTER_TEST.md)** - Newsletter testing and usage guide
 - **[S3_UPLOAD_DOCS.md](S3_UPLOAD_DOCS.md)** - Detailed AWS S3 setup and troubleshooting
 - **[DEPLOYMENT.md](DEPLOYMENT.md)** - Production deployment guide
 - **[test-upload.html](test-upload.html)** - Interactive testing interface
