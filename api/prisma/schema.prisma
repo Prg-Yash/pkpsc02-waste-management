@@ -12,6 +12,7 @@ generator client {
 
 enum WasteStatus {
   PENDING
+  IN_PROGRESS
   COLLECTED
 }
 

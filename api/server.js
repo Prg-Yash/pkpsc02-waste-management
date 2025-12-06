@@ -20,6 +20,34 @@ app.use(
     })
 );
 
+// Additional CORS headers for all requests
+app.use((req, res, next) => {
+    res.header("Access-Control-Allow-Origin", "*");
+    res.header(
+        "Access-Control-Allow-Methods",
+        "GET, POST, PUT, PATCH, DELETE, OPTIONS"
+    );
+    res.header(
+        "Access-Control-Allow-Headers",
+        "Content-Type, Accept, x-user-id, Authorization, Origin, X-Requested-With"
+    );
+
+    // Handle preflight requests
+    if (req.method === "OPTIONS") {
+        return res.status(204).end();
+    }
+
+    next();
+});
+
+// Log all incoming requests for debugging
+app.use((req, res, next) => {
+    console.log(
+        `📨 ${req.method} ${req.path} from ${req.headers.origin || "unknown"}`
+    );
+    next();
+});
+
 // Webhook route needs raw body for signature verification
 // Must come BEFORE json parser
 app.use("/api/webhooks/clerk", express.raw({ type: "application/json" }));
