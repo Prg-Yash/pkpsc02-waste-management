@@ -8,7 +8,7 @@ const router = express.Router();
  * Checks header and body params
  */
 const getUserId = (req) => {
-    return req.get('x-user-id') || req.body.userId;
+    return req.get('x-user-id') || req.query.userId;
 };
 
 /**
