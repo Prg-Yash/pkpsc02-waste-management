@@ -20,14 +20,14 @@ function createTransporter() {
   if (useCustomSMTP) {
     // Use custom SMTP server
     console.log("📧 Using custom SMTP server:", process.env.SMTP_HOST);
-    
+
     // Validate credentials
     if (!process.env.SMTP_USER || !process.env.SMTP_PASS) {
       throw new Error(
         "❌ Missing SMTP credentials. Please set SMTP_USER and SMTP_PASS in .env file"
       );
     }
-    
+
     transporter = nodemailer.createTransport({
       host: process.env.SMTP_HOST,
       port: parseInt(process.env.SMTP_PORT),
@@ -41,7 +41,7 @@ function createTransporter() {
     // Use Gmail by default
     const emailUser = process.env.EMAIL_USER || process.env.GMAIL_USER;
     const emailPass = process.env.EMAIL_PASS || process.env.GMAIL_APP_PASSWORD;
-    
+
     // Validate credentials
     if (!emailUser || !emailPass) {
       throw new Error(
@@ -49,7 +49,7 @@ function createTransporter() {
         "For Gmail, create an App Password at: https://myaccount.google.com/apppasswords"
       );
     }
-    
+
     console.log("📧 Using Gmail SMTP server with user:", emailUser);
     transporter = nodemailer.createTransport({
       service: "gmail",
@@ -82,7 +82,7 @@ export async function sendNewsletterEmail(userEmail, userName, newsletterData) {
 
     const info = await transporter.sendMail(mailOptions);
     console.log(`✅ Newsletter sent to ${userEmail}:`, info.messageId);
-    
+
     return {
       success: true,
       messageId: info.messageId,
@@ -113,7 +113,7 @@ export async function sendBulkNewsletters(users, generateNewsletterForUser) {
     try {
       // Generate newsletter data for this user
       const newsletterData = await generateNewsletterForUser(user.id);
-      
+
       if (!newsletterData) {
         results.failed++;
         results.details.push({
@@ -126,13 +126,13 @@ export async function sendBulkNewsletters(users, generateNewsletterForUser) {
 
       // Send email
       const result = await sendNewsletterEmail(user.email, user.name, newsletterData);
-      
+
       if (result.success) {
         results.sent++;
       } else {
         results.failed++;
       }
-      
+
       results.details.push(result);
 
       // Add delay to avoid rate limiting (250ms between emails)
@@ -335,11 +335,11 @@ function generateNewsletterHTML(userName, newsletter) {
     </div>
 
     <div class="footer">
-      <p>This newsletter was generated on ${new Date(newsletter.generatedAt).toLocaleDateString('en-US', { 
-        year: 'numeric', 
-        month: 'long', 
-        day: 'numeric' 
-      })}</p>
+      <p>This newsletter was generated on ${new Date(newsletter.generatedAt).toLocaleDateString('en-US', {
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric'
+  })}</p>
       <p>You're receiving this because you've subscribed to EcoFlow newsletters.</p>
       <p style="margin-top: 15px;">
         <a href="#" style="color: #059669; text-decoration: none;">Manage Preferences</a> | 
