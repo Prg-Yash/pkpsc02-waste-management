@@ -1,5 +1,5 @@
-import { PutObjectCommand } from '@aws-sdk/client-s3';
-import { s3Client, bucketName, region } from './s3.js';
+import { PutObjectCommand } from "@aws-sdk/client-s3";
+import { s3Client, bucketName, region } from "./s3.js";
 
 /**
  * Upload a file buffer to S3
@@ -9,23 +9,23 @@ import { s3Client, bucketName, region } from './s3.js';
  * @returns {Promise<string>} Public URL of uploaded file
  */
 export async function uploadToS3(buffer, key, contentType) {
-    try {
-        const command = new PutObjectCommand({
-            Bucket: bucketName,
-            Key: key,
-            Body: buffer,
-            ContentType: contentType,
-            //   ACL: 'public-read', // Make file publicly accessible
-        });
+  try {
+    const command = new PutObjectCommand({
+      Bucket: bucketName,
+      Key: key,
+      Body: buffer,
+      ContentType: contentType,
+      //   ACL: 'public-read', // Make file publicly accessible
+    });
 
-        await s3Client.send(command);
+    await s3Client.send(command);
 
-        // Return public URL
-        return getFileUrl(key);
-    } catch (error) {
-        console.error('S3 upload error:', error);
-        throw new Error(`Failed to upload file to S3: ${error.message}`);
-    }
+    // Return public URL
+    return getFileUrl(key);
+  } catch (error) {
+    console.error("S3 upload error:", error);
+    throw new Error(`Failed to upload file to S3: ${error.message}`);
+  }
 }
 
 /**
@@ -34,7 +34,7 @@ export async function uploadToS3(buffer, key, contentType) {
  * @returns {string} Public URL
  */
 export function getFileUrl(key) {
-    return `https://${bucketName}.s3.${region}.amazonaws.com/${key}`;
+  return `https://${bucketName}.s3.${region}.amazonaws.com/${key}`;
 }
 
 /**
@@ -44,9 +44,9 @@ export function getFileUrl(key) {
  * @returns {string} S3 key
  */
 export function generateWasteReportKey(reportId, originalFileName) {
-    const timestamp = Date.now();
-    const sanitizedFileName = sanitizeFileName(originalFileName);
-    return `waste-reports/${reportId}/${timestamp}-${sanitizedFileName}`;
+  const timestamp = Date.now();
+  const sanitizedFileName = sanitizeFileName(originalFileName);
+  return `waste-reports/${reportId}/${timestamp}-${sanitizedFileName}`;
 }
 
 /**
@@ -56,9 +56,9 @@ export function generateWasteReportKey(reportId, originalFileName) {
  * @returns {string} S3 key
  */
 export function generateWasteCollectionKey(wasteId, originalFileName) {
-    const timestamp = Date.now();
-    const sanitizedFileName = sanitizeFileName(originalFileName);
-    return `waste-collections/${wasteId}/${timestamp}-${sanitizedFileName}`;
+  const timestamp = Date.now();
+  const sanitizedFileName = sanitizeFileName(originalFileName);
+  return `waste-collections/${wasteId}/${timestamp}-${sanitizedFileName}`;
 }
 
 /**
@@ -68,9 +68,21 @@ export function generateWasteCollectionKey(wasteId, originalFileName) {
  * @returns {string} S3 key
  */
 export function generateUserFileKey(userId, originalFileName) {
-    const timestamp = Date.now();
-    const sanitizedFileName = sanitizeFileName(originalFileName);
-    return `users/${userId}/${timestamp}-${sanitizedFileName}`;
+  const timestamp = Date.now();
+  const sanitizedFileName = sanitizeFileName(originalFileName);
+  return `users/${userId}/${timestamp}-${sanitizedFileName}`;
+}
+
+/**
+ * Generate S3 key for marketplace listing image
+ * @param {string} userId - User ID (seller)
+ * @param {string} originalFileName - Original file name
+ * @returns {string} S3 key
+ */
+export function generateMarketplaceImageKey(userId, originalFileName) {
+  const timestamp = Date.now();
+  const sanitizedFileName = sanitizeFileName(originalFileName);
+  return `marketplace/${userId}/${timestamp}-${sanitizedFileName}`;
 }
 
 /**
@@ -79,12 +91,12 @@ export function generateUserFileKey(userId, originalFileName) {
  * @returns {string} Sanitized file name
  */
 function sanitizeFileName(fileName) {
-    // Remove path separators and keep only the file name
-    const baseName = fileName.replace(/^.*[\\\/]/, '');
+  // Remove path separators and keep only the file name
+  const baseName = fileName.replace(/^.*[\\\/]/, "");
 
-    // Replace spaces and special characters with hyphens
-    return baseName
-        .replace(/[^a-zA-Z0-9._-]/g, '-')
-        .replace(/-+/g, '-')
-        .toLowerCase();
+  // Replace spaces and special characters with hyphens
+  return baseName
+    .replace(/[^a-zA-Z0-9._-]/g, "-")
+    .replace(/-+/g, "-")
+    .toLowerCase();
 }
