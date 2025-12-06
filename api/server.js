@@ -8,6 +8,7 @@ import wasteRoutes from "./routes/waste.js";
 import notificationRoutes from "./routes/notifications.js";
 import webhookRoutes from "./routes/webhooks.js";
 import leaderboardRoutes from "./routes/leaderboard.js";
+import routePlannerRoutes from "./routes/routePlanner.js";
 
 const app = express();
 
@@ -69,6 +70,7 @@ app.get("/", (req, res) => {
             notifications: "/api/notifications",
             webhook: "/api/webhooks/clerk",
             leaderboard: "/api/leaderboard/global",
+            routePlanner: "/api/route-planner",
         },
     });
 });
@@ -79,6 +81,7 @@ app.use("/api/waste", wasteRoutes);
 app.use("/api/notifications", notificationRoutes);
 app.use("/api/webhooks", webhookRoutes);
 app.use("/api/leaderboard", leaderboardRoutes);
+app.use("/api/route-planner", routePlannerRoutes);
 
 // 404 handler
 app.use((req, res) => {
