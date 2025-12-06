@@ -62,6 +62,13 @@ router.post('/add', authenticateUser, async (req, res) => {
             return res.status(400).json({ error: 'wasteId is required' });
         }
 
+        // Validate user has address fields set
+        if (!req.user.city || !req.user.state || !req.user.country) {
+            return res.status(400).json({
+                error: 'Please update your profile with city, state, and country before reporting or collecting waste.'
+            });
+        }
+
         // Validate user has collector enabled
         if (!req.user.enableCollector) {
             return res.status(403).json({
