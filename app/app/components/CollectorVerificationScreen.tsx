@@ -16,11 +16,9 @@ import {
 import { Alert, Linking } from "react-native";
 import * as ImagePicker from "expo-image-picker";
 import * as Location from "expo-location";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { PendingWasteReport } from "../services/wasteCollectionService";
-import {
-  compareWasteImages,
-  validateSimilarity,
-} from "../services/geminiSimilarityService";
+import { verifyBeforeImage, verifyAfterImage } from "../services/geminiService";
 import { validateProximity } from "../utils/locationUtils";
 import { submitCollectionVerification } from "../services/wasteCollectionService";
 import {
@@ -35,7 +33,13 @@ interface CollectorVerificationScreenProps {
   onCancel: () => void;
 }
 
-type VerificationStep = "capture" | "verifying" | "success" | "failed";
+type VerificationStep =
+  | "capture-before"
+  | "verifying-before"
+  | "capture-after"
+  | "verifying-after"
+  | "success"
+  | "failed";
 
 export default function CollectorVerificationScreen({
   report,
@@ -43,10 +47,11 @@ export default function CollectorVerificationScreen({
   onSuccess,
   onCancel,
 }: CollectorVerificationScreenProps) {
-  const [step, setStep] = React.useState<VerificationStep>("capture");
-  const [collectorImageUri, setCollectorImageUri] = React.useState<
-    string | null
-  >(null);
+  const [step, setStep] = React.useState<VerificationStep>("capture-before");
+  const [beforeImageUri, setBeforeImageUri] = React.useState<string | null>(
+    null
+  );
+  const [afterImageUri, setAfterImageUri] = React.useState<string | null>(null);
   const [verificationMessage, setVerificationMessage] =
     React.useState<string>("");
   const [isLoading, setIsLoading] = React.useState(false);
@@ -58,7 +63,40 @@ export default function CollectorVerificationScreen({
     longitude: number;
   } | null>(null);
 
-  const pickImage = async () => {
+  // Load previously captured before image if exists
+  React.useEffect(() => {
+    loadBeforeImage();
+  }, []);
+
+  const loadBeforeImage = async () => {
+    try {
+      const storedUri = await AsyncStorage.getItem(`before_image_${report.id}`);
+      if (storedUri) {
+        setBeforeImageUri(storedUri);
+        setStep("capture-after"); // Jump to after image if before already captured
+      }
+    } catch (error) {
+      console.error("Error loading before image:", error);
+    }
+  };
+
+  const saveBeforeImage = async (uri: string) => {
+    try {
+      await AsyncStorage.setItem(`before_image_${report.id}`, uri);
+    } catch (error) {
+      console.error("Error saving before image:", error);
+    }
+  };
+
+  const clearBeforeImage = async () => {
+    try {
+      await AsyncStorage.removeItem(`before_image_${report.id}`);
+    } catch (error) {
+      console.error("Error clearing before image:", error);
+    }
+  };
+
+  const pickImage = async (isBeforeImage: boolean = true) => {
     try {
       const result = await ImagePicker.launchCameraAsync({
         mediaTypes: ["images"],
@@ -67,7 +105,11 @@ export default function CollectorVerificationScreen({
       });
 
       if (!result.canceled) {
-        setCollectorImageUri(result.assets[0].uri);
+        if (isBeforeImage) {
+          setBeforeImageUri(result.assets[0].uri);
+        } else {
+          setAfterImageUri(result.assets[0].uri);
+        }
       }
     } catch (error) {
       console.error("Error picking image:", error);
@@ -75,7 +117,7 @@ export default function CollectorVerificationScreen({
     }
   };
 
-  const pickFromGallery = async () => {
+  const pickFromGallery = async (isBeforeImage: boolean = true) => {
     try {
       const result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ["images"],
@@ -84,7 +126,11 @@ export default function CollectorVerificationScreen({
       });
 
       if (!result.canceled) {
-        setCollectorImageUri(result.assets[0].uri);
+        if (isBeforeImage) {
+          setBeforeImageUri(result.assets[0].uri);
+        } else {
+          setAfterImageUri(result.assets[0].uri);
+        }
       }
     } catch (error) {
       console.error("Error picking from gallery:", error);
@@ -92,14 +138,15 @@ export default function CollectorVerificationScreen({
     }
   };
 
-  const handleVerify = async () => {
-    if (!collectorImageUri) {
-      Alert.alert("Error", "Please capture a verification image first");
+  // STEP 1: Verify "before" image - checks similarity with original report
+  const handleVerifyBefore = async () => {
+    if (!beforeImageUri) {
+      Alert.alert("Error", "Please capture a before image first");
       return;
     }
 
     setIsLoading(true);
-    setStep("verifying");
+    setStep("verifying-before");
 
     try {
       // Step 1: Get current location
@@ -113,7 +160,7 @@ export default function CollectorVerificationScreen({
       const collectorLat = location.coords.latitude;
       const collectorLon = location.coords.longitude;
 
-      // Store collector location for dumping grounds
+      // Store collector location
       setCollectorLocation({
         latitude: collectorLat,
         longitude: collectorLon,
@@ -132,61 +179,153 @@ export default function CollectorVerificationScreen({
       if (!proximityCheck.isValid) {
         setStep("failed");
         setVerificationMessage(
-          `Location verification failed: ${proximityCheck.message}`
+          `Location verification failed: ${proximityCheck.message}\n\nYou must be within 500m of the waste location.`
         );
         setIsLoading(false);
         return;
       }
 
-      // Step 3: Run AI similarity check
-      console.log("🤖 Running AI similarity check...");
-      const similarityResult = await compareWasteImages(
+      // Step 3: Run Gemini AI similarity check (before vs original)
+      console.log("🤖 Running AI similarity check (before image)...");
+      const beforeVerification = await verifyBeforeImage(
         report.imageUrl,
-        collectorImageUri,
-        report.aiAnalysis.category
+        beforeImageUri
       );
 
       // Step 4: Validate AI result
-      const validation = validateSimilarity(similarityResult);
-
-      if (!validation.isValid) {
+      if (!beforeVerification.isValid) {
         setStep("failed");
-        setVerificationMessage(`AI Verification Failed: ${validation.reason}`);
+        setVerificationMessage(
+          `Before Image Verification Failed ❌\n\n${
+            beforeVerification.message
+          }\n\nDetails:\n• Location Match: ${
+            beforeVerification.details?.locationMatch ? "✓" : "✗"
+          }\n• Waste Match: ${
+            beforeVerification.details?.wasteMatch ? "✓" : "✗"
+          }\n• Landmarks Match: ${
+            beforeVerification.details?.landmarksMatch ? "✓" : "✗"
+          }\n\nConfidence: ${(beforeVerification.confidence * 100).toFixed(1)}%`
+        );
         setIsLoading(false);
         return;
       }
 
-      // Step 5: Submit to backend
+      // Success! Save before image and move to after image step
+      await saveBeforeImage(beforeImageUri);
+      setStep("capture-after");
+      setVerificationMessage(
+        `Before Image Verified ✅\n\n${
+          beforeVerification.message
+        }\n\nConfidence: ${(beforeVerification.confidence * 100).toFixed(
+          1
+        )}%\n\nNow capture the AFTER image showing the area is clean!`
+      );
+      setIsLoading(false);
+
+      Alert.alert(
+        "Before Image Verified! ✅",
+        `${beforeVerification.message}\n\nConfidence: ${(
+          beforeVerification.confidence * 100
+        ).toFixed(
+          1
+        )}%\n\nNow please capture an AFTER image showing that the waste has been removed and the area is clean.`,
+        [{ text: "Continue" }]
+      );
+    } catch (error) {
+      console.error("❌ Before verification error:", error);
+      setStep("failed");
+      setVerificationMessage(
+        `Error: ${error instanceof Error ? error.message : "Unknown error"}`
+      );
+      setIsLoading(false);
+    }
+  };
+
+  // STEP 2: Verify "after" image - checks if waste is removed and area is clean
+  const handleVerifyAfter = async () => {
+    if (!afterImageUri || !beforeImageUri) {
+      Alert.alert("Error", "Please capture an after image first");
+      return;
+    }
+
+    setIsLoading(true);
+    setStep("verifying-after");
+
+    try {
+      // Run Gemini AI verification (before vs after)
+      console.log("🧹 Running AI removal verification (after image)...");
+      const afterVerification = await verifyAfterImage(
+        beforeImageUri,
+        afterImageUri
+      );
+
+      // Validate AI result
+      if (!afterVerification.isValid) {
+        setStep("failed");
+        setVerificationMessage(
+          `After Image Verification Failed ❌\n\n${
+            afterVerification.message
+          }\n\nDetails:\n• Waste Removed: ${
+            afterVerification.details?.wasteRemoved ? "✓" : "✗"
+          }\n• Ground Clean: ${
+            afterVerification.details?.groundClean ? "✓" : "✗"
+          }\n• Landmarks Same: ${
+            afterVerification.details?.landmarksSame ? "✓" : "✗"
+          }\n• Same Location: ${
+            afterVerification.details?.sameLocation ? "✓" : "✗"
+          }\n• Image Fresh: ${
+            afterVerification.details?.imageFresh ? "✓" : "✗"
+          }\n• Lighting Consistent: ${
+            afterVerification.details?.lightingConsistent ? "✓" : "✗"
+          }\n\nConfidence: ${(afterVerification.confidence * 100).toFixed(1)}%`
+        );
+        setIsLoading(false);
+        return;
+      }
+
+      // Submit to backend (only after image gets uploaded to S3)
       console.log("📤 Submitting collection verification...");
+      if (!collectorLocation) {
+        throw new Error("Collector location not found");
+      }
+
       await submitCollectionVerification({
         reportId: report.id,
         collectorId: userId,
-        collectorImageUri: collectorImageUri,
-        collectorLatitude: collectorLat,
-        collectorLongitude: collectorLon,
-        verificationData: similarityResult,
+        afterImageUri: afterImageUri, // Only after image sent to backend
+        collectorLatitude: collectorLocation.latitude,
+        collectorLongitude: collectorLocation.longitude,
+        verificationData: {
+          sameWaste: afterVerification.isValid,
+          matchConfidence: afterVerification.confidence,
+          notes: afterVerification.message,
+          ...afterVerification.details,
+        },
       });
+
+      // Clear before image from storage
+      await clearBeforeImage();
 
       // Success!
       setStep("success");
       setVerificationMessage(
-        `✅ Collection verified! ${validation.reason}\n📍 ${proximityCheck.message}`
+        `✅ Collection Verified!\n\n${
+          afterVerification.message
+        }\n\nConfidence: ${(afterVerification.confidence * 100).toFixed(1)}%`
       );
 
       // Find nearest dumping grounds
       const grounds = findSuitableDumpingGrounds(
         report.aiAnalysis.wasteType,
-        collectorLat,
-        collectorLon,
+        collectorLocation.latitude,
+        collectorLocation.longitude,
         3
       );
       setNearestDumpingGrounds(grounds);
 
       setIsLoading(false);
-
-      // Don't auto-redirect - let user see dumping grounds first
     } catch (error) {
-      console.error("❌ Verification error:", error);
+      console.error("❌ After verification error:", error);
       setStep("failed");
       setVerificationMessage(
         `Error: ${error instanceof Error ? error.message : "Unknown error"}`
@@ -213,7 +352,8 @@ export default function CollectorVerificationScreen({
     return colorMap[wasteType] || "$gray9";
   };
 
-  if (step === "verifying") {
+  if (step === "verifying-before" || step === "verifying-after") {
+    const isBeforeStep = step === "verifying-before";
     return (
       <Theme name="light">
         <YStack
@@ -225,11 +365,22 @@ export default function CollectorVerificationScreen({
         >
           <Spinner size="large" color="$blue9" />
           <H4 color="$gray12" marginTop="$4" textAlign="center">
-            Verifying Collection...
+            {isBeforeStep
+              ? "Verifying Before Image..."
+              : "Verifying After Image..."}
           </H4>
           <Paragraph color="$gray10" textAlign="center" marginTop="$2">
-            • Checking location proximity{"\n"}• Running AI similarity analysis
-            {"\n"}• Validating waste match
+            {isBeforeStep ? (
+              <>
+                • Checking location proximity{"\n"}• Comparing with original
+                report{"\n"}• Validating landmarks and waste match
+              </>
+            ) : (
+              <>
+                • Checking if waste is removed{"\n"}• Verifying ground is clean
+                {"\n"}• Validating same location{"\n"}• Checking image freshness
+              </>
+            )}
           </Paragraph>
         </YStack>
       </Theme>
@@ -380,8 +531,15 @@ export default function CollectorVerificationScreen({
           <YStack gap="$3" marginTop="$6" width="100%">
             <Button
               onPress={() => {
-                setStep("capture");
-                setCollectorImageUri(null);
+                // Reset to appropriate step
+                if (beforeImageUri && !afterImageUri) {
+                  setStep("capture-after");
+                  setAfterImageUri(null);
+                } else {
+                  setStep("capture-before");
+                  setBeforeImageUri(null);
+                  clearBeforeImage();
+                }
               }}
               backgroundColor="$blue9"
               color="white"
@@ -390,7 +548,10 @@ export default function CollectorVerificationScreen({
               Try Again
             </Button>
             <Button
-              onPress={onCancel}
+              onPress={async () => {
+                await clearBeforeImage();
+                onCancel();
+              }}
               backgroundColor="$gray5"
               color="$gray12"
               fontWeight="600"
@@ -403,18 +564,39 @@ export default function CollectorVerificationScreen({
     );
   }
 
-  // Step: "capture"
+  // Step: "capture-before" or "capture-after"
+  const isBeforeStep = step === "capture-before";
+  const currentImageUri = isBeforeStep ? beforeImageUri : afterImageUri;
+  const stepTitle = isBeforeStep
+    ? "Step 1: Before Collection"
+    : "Step 2: After Collection";
+  const stepDescription = isBeforeStep
+    ? "Capture the waste BEFORE you start collecting"
+    : "Capture the area AFTER collection (clean ground)";
+
   return (
     <Theme name="light">
       <ScrollView flex={1} backgroundColor="$background">
         {/* Header */}
         <YStack backgroundColor="$blue9" padding="$5" paddingTop="$10">
           <H2 color="white" fontWeight="bold">
-            Verify Collection
+            {stepTitle}
           </H2>
           <Paragraph color="white" opacity={0.9} marginTop="$1">
-            Capture the waste to verify collection
+            {stepDescription}
           </Paragraph>
+          {!isBeforeStep && (
+            <YStack
+              backgroundColor="$green2"
+              padding="$3"
+              borderRadius="$3"
+              marginTop="$3"
+            >
+              <Text color="$green11" fontWeight="600" fontSize="$3">
+                ✅ Before image verified! Now show the clean area.
+              </Text>
+            </YStack>
+          )}
         </YStack>
 
         {/* Report Info */}
@@ -476,6 +658,30 @@ export default function CollectorVerificationScreen({
           )}
         </YStack>
 
+        {/* Show Before Image if in after step */}
+        {!isBeforeStep && beforeImageUri && (
+          <>
+            <Separator borderColor="$gray5" marginHorizontal="$4" />
+            <YStack
+              margin="$4"
+              padding="$4"
+              backgroundColor="white"
+              borderRadius="$4"
+              elevation="$2"
+            >
+              <H4 color="$gray12" marginBottom="$3">
+                Your Before Image ✅
+              </H4>
+              <Image
+                source={{ uri: beforeImageUri }}
+                width="100%"
+                height={200}
+                borderRadius="$3"
+              />
+            </YStack>
+          </>
+        )}
+
         <Separator borderColor="$gray5" marginHorizontal="$4" />
 
         {/* Collector Image */}
@@ -487,19 +693,25 @@ export default function CollectorVerificationScreen({
           elevation="$2"
         >
           <H4 color="$gray12" marginBottom="$3">
-            Your Verification Image
+            {isBeforeStep
+              ? "Before Collection Image"
+              : "After Collection Image"}
           </H4>
-          {collectorImageUri ? (
+          {currentImageUri ? (
             <>
               <Image
-                source={{ uri: collectorImageUri }}
+                source={{ uri: currentImageUri }}
                 width="100%"
                 height={200}
                 borderRadius="$3"
                 marginBottom="$3"
               />
               <Button
-                onPress={() => setCollectorImageUri(null)}
+                onPress={() =>
+                  isBeforeStep
+                    ? setBeforeImageUri(null)
+                    : setAfterImageUri(null)
+                }
                 backgroundColor="$gray5"
                 color="$gray12"
                 fontWeight="600"
@@ -510,7 +722,7 @@ export default function CollectorVerificationScreen({
           ) : (
             <YStack gap="$3">
               <Button
-                onPress={pickImage}
+                onPress={() => pickImage(isBeforeStep)}
                 backgroundColor="$blue9"
                 color="white"
                 fontWeight="600"
@@ -519,7 +731,7 @@ export default function CollectorVerificationScreen({
                 Take Photo
               </Button>
               <Button
-                onPress={pickFromGallery}
+                onPress={() => pickFromGallery(isBeforeStep)}
                 backgroundColor="$gray8"
                 color="white"
                 fontWeight="600"
@@ -534,18 +746,25 @@ export default function CollectorVerificationScreen({
         {/* Action Buttons */}
         <YStack padding="$4" gap="$3">
           <Button
-            onPress={handleVerify}
+            onPress={isBeforeStep ? handleVerifyBefore : handleVerifyAfter}
             backgroundColor="$green9"
             color="white"
             fontWeight="600"
-            disabled={!collectorImageUri || isLoading}
-            opacity={!collectorImageUri || isLoading ? 0.5 : 1}
+            disabled={!currentImageUri || isLoading}
+            opacity={!currentImageUri || isLoading ? 0.5 : 1}
             size="$5"
           >
-            {isLoading ? "Verifying..." : "Verify with AI"}
+            {isLoading
+              ? "Verifying..."
+              : isBeforeStep
+              ? "Verify Before Image with AI"
+              : "Verify After Image & Complete"}
           </Button>
           <Button
-            onPress={onCancel}
+            onPress={async () => {
+              await clearBeforeImage();
+              onCancel();
+            }}
             backgroundColor="$gray5"
             color="$gray12"
             fontWeight="600"
@@ -566,11 +785,25 @@ export default function CollectorVerificationScreen({
           marginBottom="$4"
         >
           <H4 color="$blue11" fontWeight="bold" marginBottom="$2" fontSize="$3">
-            ℹ️ Verification Process
+            ℹ️{" "}
+            {isBeforeStep
+              ? "Before Image Requirements"
+              : "After Image Requirements"}
           </H4>
           <Paragraph color="$blue11" fontSize="$2">
-            • Must be within 500m of location{"\n"}• AI checks if waste matches
-            original{"\n"}• Confidence must be ≥60%
+            {isBeforeStep ? (
+              <>
+                • Must be within 500m of location{"\n"}• Image must match
+                original report{"\n"}• Landmarks and waste must be visible{"\n"}
+                • AI confidence must be ≥60%
+              </>
+            ) : (
+              <>
+                • Waste must be completely removed{"\n"}• Ground must be clean
+                {"\n"}• Landmarks must match before image{"\n"}• Image must be
+                fresh (not reused){"\n"}• AI confidence must be ≥60%
+              </>
+            )}
           </Paragraph>
         </YStack>
       </ScrollView>
