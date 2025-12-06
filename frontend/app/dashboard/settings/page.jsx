@@ -11,6 +11,11 @@ export default function ProfilePage() {
   const [message, setMessage] = useState({ type: '', text: '' });
   const [notifications, setNotifications] = useState([]);
   const [loadingNotifications, setLoadingNotifications] = useState(false);
+  const [showOtpModal, setShowOtpModal] = useState(false);
+  const [otp, setOtp] = useState(['', '', '', '', '', '']);
+  const [sendingOtp, setSendingOtp] = useState(false);
+  const [verifyingOtp, setVerifyingOtp] = useState(false);
+  const [phoneVerified, setPhoneVerified] = useState(false);
   
   const [userData, setUserData] = useState({
     name: '',
@@ -234,6 +239,73 @@ export default function ProfilePage() {
 
   const handleInputChange = (field, value) => {
     setUserData(prev => ({ ...prev, [field]: value }));
+  };
+
+  const sendOtp = async () => {
+    if (!userData.phone || userData.phone.length < 10) {
+      setMessage({ type: 'error', text: 'Please enter a valid phone number' });
+      return;
+    }
+
+    try {
+      setSendingOtp(true);
+      // Simulate OTP sending - replace with actual API call
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      
+      setShowOtpModal(true);
+      setMessage({ type: 'success', text: 'OTP sent to your phone number' });
+      setTimeout(() => setMessage({ type: '', text: '' }), 3000);
+    } catch (error) {
+      setMessage({ type: 'error', text: 'Failed to send OTP' });
+    } finally {
+      setSendingOtp(false);
+    }
+  };
+
+  const verifyOtp = async () => {
+    const otpValue = otp.join('');
+    if (otpValue.length !== 6) {
+      setMessage({ type: 'error', text: 'Please enter complete OTP' });
+      return;
+    }
+
+    try {
+      setVerifyingOtp(true);
+      // Simulate OTP verification - replace with actual API call
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      
+      // For demo, accept any 6-digit OTP
+      setPhoneVerified(true);
+      setShowOtpModal(false);
+      setMessage({ type: 'success', text: 'Phone number verified successfully!' });
+      setTimeout(() => setMessage({ type: '', text: '' }), 3000);
+    } catch (error) {
+      setMessage({ type: 'error', text: 'Invalid OTP. Please try again.' });
+    } finally {
+      setVerifyingOtp(false);
+    }
+  };
+
+  const handleOtpChange = (index, value) => {
+    if (value.length > 1) return;
+    if (!/^[0-9]*$/.test(value)) return;
+
+    const newOtp = [...otp];
+    newOtp[index] = value;
+    setOtp(newOtp);
+
+    // Auto-focus next input
+    if (value && index < 5) {
+      const nextInput = document.getElementById(`otp-${index + 1}`);
+      if (nextInput) nextInput.focus();
+    }
+  };
+
+  const handleOtpKeyDown = (index, e) => {
+    if (e.key === 'Backspace' && !otp[index] && index > 0) {
+      const prevInput = document.getElementById(`otp-${index - 1}`);
+      if (prevInput) prevInput.focus();
+    }
   };
 
   if (loading) {
@@ -632,13 +704,44 @@ export default function ProfilePage() {
                 <label className="block text-sm font-semibold text-gray-700 mb-2">
                   Phone Number
                 </label>
-                <input
-                  type="tel"
-                  value={userData.phone}
-                  onChange={(e) => handleInputChange('phone', e.target.value)}
-                  className="w-full px-4 py-3 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition-all duration-300"
-                  placeholder="+91 98765 43210"
-                />
+                <div className="flex gap-2">
+                  <input
+                    type="tel"
+                    value={userData.phone}
+                    onChange={(e) => handleInputChange('phone', e.target.value)}
+                    className="flex-1 px-4 py-3 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition-all duration-300"
+                    placeholder="+91 98765 43210"
+                    disabled={phoneVerified}
+                  />
+                  {!phoneVerified ? (
+                    <button
+                      type="button"
+                      onClick={sendOtp}
+                      disabled={sendingOtp || !userData.phone}
+                      className="px-6 py-3 bg-linear-to-r from-blue-500 to-blue-600 text-white rounded-lg font-semibold hover:from-blue-600 hover:to-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-300 flex items-center gap-2 whitespace-nowrap"
+                    >
+                      {sendingOtp ? (
+                        <>
+                          <Loader className="w-4 h-4 animate-spin" />
+                          Sending...
+                        </>
+                      ) : (
+                        'Verify'
+                      )}
+                    </button>
+                  ) : (
+                    <div className="px-6 py-3 bg-emerald-100 text-emerald-700 rounded-lg font-semibold flex items-center gap-2 whitespace-nowrap">
+                      <CheckCircle className="w-4 h-4" />
+                      Verified
+                    </div>
+                  )}
+                </div>
+                {phoneVerified && (
+                  <p className="text-xs text-emerald-600 mt-1 flex items-center gap-1">
+                    <CheckCircle className="w-3 h-3" />
+                    Phone number has been verified
+                  </p>
+                )}
               </div>
               <div className="pt-4 border-t border-gray-100">
                 <p className="text-sm font-semibold text-gray-700 mb-3">Location Information</p>
@@ -851,6 +954,73 @@ export default function ProfilePage() {
             </div>
           </div>
         </div>
+
+        {/* OTP Verification Modal */}
+        {showOtpModal && (
+          <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+            <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6 relative">
+              <button
+                onClick={() => setShowOtpModal(false)}
+                className="absolute top-4 right-4 text-gray-400 hover:text-gray-600 transition-colors"
+              >
+                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+
+              <div className="text-center mb-6">
+                <div className="w-16 h-16 bg-linear-to-br from-blue-500 to-blue-600 rounded-full flex items-center justify-center mx-auto mb-4">
+                  <Bell className="w-8 h-8 text-white" />
+                </div>
+                <h2 className="text-2xl font-bold text-gray-800 mb-2">Verify Phone Number</h2>
+                <p className="text-sm text-gray-600">
+                  Enter the 6-digit code sent to <span className="font-semibold">{userData.phone}</span>
+                </p>
+              </div>
+
+              <div className="flex justify-center gap-2 mb-6">
+                {otp.map((digit, index) => (
+                  <input
+                    key={index}
+                    id={`otp-${index}`}
+                    type="text"
+                    maxLength={1}
+                    value={digit}
+                    onChange={(e) => handleOtpChange(index, e.target.value)}
+                    onKeyDown={(e) => handleOtpKeyDown(index, e)}
+                    className="w-12 h-12 text-center text-xl font-bold border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:outline-none transition-all"
+                  />
+                ))}
+              </div>
+
+              <button
+                onClick={verifyOtp}
+                disabled={verifyingOtp || otp.join('').length !== 6}
+                className="w-full py-3 bg-linear-to-r from-blue-500 to-blue-600 text-white rounded-lg font-semibold hover:from-blue-600 hover:to-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-300 flex items-center justify-center gap-2 mb-4"
+              >
+                {verifyingOtp ? (
+                  <>
+                    <Loader className="w-5 h-5 animate-spin" />
+                    Verifying...
+                  </>
+                ) : (
+                  <>
+                    <CheckCircle className="w-5 h-5" />
+                    Verify OTP
+                  </>
+                )}
+              </button>
+
+              <button
+                onClick={sendOtp}
+                disabled={sendingOtp}
+                className="w-full text-sm text-blue-600 hover:text-blue-700 font-medium transition-colors"
+              >
+                {sendingOtp ? 'Sending...' : 'Resend OTP'}
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* Save Button */}
         <div className="sticky bottom-6">
