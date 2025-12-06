@@ -7,14 +7,14 @@ export async function GET(request) {
     const { searchParams } = new URL(request.url);
     const status = searchParams.get('status');
     const city = searchParams.get('city');
-    
+
     // Build query parameters
     const params = new URLSearchParams();
     if (status) params.append('status', status);
     if (city) params.append('city', city);
-    
+
     const apiUrl = `${API_BASE_URL}/api/waste/report?${params.toString()}`;
-    
+
     const response = await fetch(apiUrl, {
       method: 'GET',
       headers: {
@@ -33,7 +33,7 @@ export async function GET(request) {
 
     const data = await response.json();
     return NextResponse.json(data);
-    
+
   } catch (error) {
     console.error('Proxy Error:', error);
     return NextResponse.json(
@@ -47,11 +47,11 @@ export async function POST(request) {
   try {
     // Get the FormData from the request
     const formData = await request.formData();
-    
+
     const apiUrl = `${API_BASE_URL}/api/waste/report`;
-    
+
     console.log('Waste Report Proxy: Forwarding to', apiUrl);
-    
+
     // Forward the FormData directly to the backend
     const response = await fetch(apiUrl, {
       method: 'POST',
@@ -72,7 +72,7 @@ export async function POST(request) {
         statusText: response.statusText,
         responseText: responseText.substring(0, 500)
       });
-      
+
       // Try to parse as JSON
       let errorDetails;
       try {
@@ -80,7 +80,7 @@ export async function POST(request) {
       } catch (e) {
         errorDetails = { error: responseText };
       }
-      
+
       return NextResponse.json(
         { error: 'Failed to submit waste report', details: errorDetails },
         { status: response.status }
@@ -90,7 +90,7 @@ export async function POST(request) {
     // Parse successful response
     const data = JSON.parse(responseText);
     return NextResponse.json(data);
-    
+
   } catch (error) {
     console.error('Waste Report Proxy Error:', error);
     return NextResponse.json(

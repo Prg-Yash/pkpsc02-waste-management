@@ -3,9 +3,9 @@
 import { useState, useRef, useEffect } from 'react';
 import { useUser, UserButton } from '@clerk/nextjs';
 import Link from 'next/link';
-import { 
-  MapPin, Camera, Trash2, Recycle, Package, Droplets, 
-  Leaf, Zap, ArrowLeft, CheckCircle, AlertCircle, 
+import {
+  MapPin, Camera, Trash2, Recycle, Package, Droplets,
+  Leaf, Zap, ArrowLeft, CheckCircle, AlertCircle,
   Upload, X, Loader2, TrendingUp, Award, Target, ChevronDown, Search
 } from 'lucide-react';
 import { GoogleMap, Marker, Autocomplete } from '@react-google-maps/api';
@@ -15,7 +15,7 @@ import { useGoogleMaps } from '@/app/providers/GoogleMapsProvider';
 export default function ReportWaste() {
   const { user } = useUser();
   const { isLoaded, loadError } = useGoogleMaps();
-  
+
   const [location, setLocation] = useState(null);
   const [loadingLocation, setLoadingLocation] = useState(false);
   const [locationError, setLocationError] = useState('');
@@ -86,9 +86,9 @@ export default function ReportWaste() {
       });
 
       if (!response.ok) throw new Error('Failed to analyze image');
-      
+
       const data = await response.json();
-      
+
       // Auto-fill weight and description
       if (data.estimatedWeight) {
         setWeight(data.estimatedWeight.toString());
@@ -122,11 +122,11 @@ export default function ReportWaste() {
       if (window.google && window.google.maps) {
         const geocoder = new window.google.maps.Geocoder();
         const latlng = { lat: latitude, lng: longitude };
-        
+
         geocoder.geocode({ location: latlng }, (results, status) => {
           if (status === 'OK' && results[0]) {
             setFullAddress(results[0].formatted_address);
-            
+
             // Extract city, state, country from address components
             const components = results[0].address_components;
             const addressData = {
@@ -134,7 +134,7 @@ export default function ReportWaste() {
               state: '',
               country: ''
             };
-            
+
             components.forEach(component => {
               if (component.types.includes('locality')) {
                 addressData.city = component.long_name;
@@ -146,7 +146,7 @@ export default function ReportWaste() {
                 addressData.country = component.long_name;
               }
             });
-            
+
             setAddress(addressData);
           }
         });
@@ -160,27 +160,27 @@ export default function ReportWaste() {
   const onPlaceSelected = () => {
     if (autocomplete) {
       const place = autocomplete.getPlace();
-      
+
       if (place.geometry) {
         const lat = place.geometry.location.lat();
         const lng = place.geometry.location.lng();
-        
+
         setLocation({
           latitude: lat,
           longitude: lng,
           accuracy: 10,
         });
-        
+
         setMapCenter({ lat, lng });
         setFullAddress(place.formatted_address || '');
-        
+
         // Extract address components
         const addressData = {
           city: '',
           state: '',
           country: ''
         };
-        
+
         if (place.address_components) {
           place.address_components.forEach(component => {
             if (component.types.includes('locality')) {
@@ -194,7 +194,7 @@ export default function ReportWaste() {
             }
           });
         }
-        
+
         setAddress(addressData);
         setShowMap(true);
       }
@@ -205,13 +205,13 @@ export default function ReportWaste() {
   const onMapClick = (e) => {
     const lat = e.latLng.lat();
     const lng = e.latLng.lng();
-    
+
     setLocation({
       latitude: lat,
       longitude: lng,
       accuracy: 10,
     });
-    
+
     setMapCenter({ lat, lng });
     getAddressFromCoordinates(lat, lng);
   };
@@ -231,19 +231,19 @@ export default function ReportWaste() {
       (position) => {
         const lat = position.coords.latitude;
         const lng = position.coords.longitude;
-        
+
         setLocation({
           latitude: lat,
           longitude: lng,
           accuracy: position.coords.accuracy,
         });
-        
+
         setMapCenter({ lat, lng });
         setShowMap(true);
-        
+
         // Fetch address from coordinates
         getAddressFromCoordinates(lat, lng);
-        
+
         setLoadingLocation(false);
       },
       (error) => {
@@ -331,10 +331,10 @@ export default function ReportWaste() {
     try {
       // Create FormData for multipart/form-data submission
       const formData = new FormData();
-      
+
       // Add the image file
       formData.append('image', photo.file);
-      
+
       // Add required fields
       formData.append('userId', user.id);
       // Use full address as location (stored as locationRaw in backend)
@@ -342,7 +342,7 @@ export default function ReportWaste() {
       formData.append('isLocationLatLng', 'true');
       formData.append('latitude', location.latitude.toString());
       formData.append('longitude', location.longitude.toString());
-      
+
       // Add AI analysis as JSON string (required by API)
       const aiAnalysis = aiAnalysisData || {
         category: parseFloat(weight) >= 10 ? 'large' : 'small',
@@ -352,7 +352,7 @@ export default function ReportWaste() {
         notes: description || 'User submitted waste report'
       };
       formData.append('aiAnalysis', JSON.stringify(aiAnalysis));
-      
+
       // Add optional address fields if available
       if (address.city) formData.append('city', address.city);
       if (address.state) formData.append('state', address.state);
@@ -394,9 +394,9 @@ export default function ReportWaste() {
         getCurrentLocation();
       }, 3000);
     } catch (error) {
-    console.error('Error submitting waste report:', error);
-    setIsSubmitting(false);
-    alert(`Failed to submit report: ${error.message}`);
+      console.error('Error submitting waste report:', error);
+      setIsSubmitting(false);
+      alert(`Failed to submit report: ${error.message}`);
     }
   };
 
@@ -405,7 +405,7 @@ export default function ReportWaste() {
   return (
     <div className="min-h-screen bg-linear-to-br from-slate-50 via-emerald-50 to-teal-50">
       <div className="max-w-[1600px] mx-auto p-4 sm:p-6 lg:p-8">
-        
+
         {/* Header */}
         <div className="bg-white rounded-2xl shadow-xl p-6 sm:p-8 border border-gray-100 mb-6">
           <div className="flex items-center gap-4">
@@ -520,10 +520,10 @@ export default function ReportWaste() {
         <form onSubmit={handleSubmit} className="space-y-4">
           {/* Main Grid Layout */}
           <div className="grid grid-cols-1 lg:grid-cols-5 gap-4">
-            
+
             {/* Left Column - Waste Type Selection */}
             <div className="lg:col-span-3 space-y-4">
-              
+
               {/* Waste Type Selection */}
               <div className="bg-white rounded-xl shadow-md p-4 border border-gray-100">
                 <div className="flex items-center gap-2 mb-4">
@@ -594,7 +594,7 @@ export default function ReportWaste() {
                         <p className="text-sm text-gray-600 font-semibold">Open Camera</p>
                       </div>
                     </button>
-                    
+
                     <div className="relative">
                       <div className="absolute inset-0 flex items-center">
                         <div className="w-full border-t border-gray-200"></div>
@@ -782,7 +782,7 @@ export default function ReportWaste() {
 
             {/* Right Column - Location & Summary */}
             <div className="lg:col-span-2 space-y-4">
-              
+
               {/* Location */}
               <div className="bg-white rounded-xl shadow-md p-4 border border-gray-100">
                 <div className="flex items-center justify-between mb-4">
@@ -822,45 +822,45 @@ export default function ReportWaste() {
                         onLoad={setAutocomplete}
                         onPlaceChanged={onPlaceSelected}
                       >
-                      <div className="relative">
-                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-                        <input
-                          type="text"
-                          placeholder="Search for an address..."
-                          className="w-full pl-10 pr-4 py-2 border-2 border-gray-200 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none transition-all text-sm"
-                        />
-                      </div>
-                    </Autocomplete>
-                  </div>
-
-                  {/* Map Display */}
-                  {showMap && (
-                    <div className="mb-4 rounded-lg overflow-hidden border-2 border-emerald-200">
-                      <GoogleMap
-                        mapContainerStyle={{ width: '100%', height: '250px' }}
-                        center={mapCenter}
-                        zoom={15}
-                        onClick={onMapClick}
-                      >
-                        {location && (
-                          <Marker
-                            position={{ lat: location.latitude, lng: location.longitude }}
-                            draggable={true}
-                            onDragEnd={(e) => {
-                              const lat = e.latLng.lat();
-                              const lng = e.latLng.lng();
-                              setLocation({
-                                latitude: lat,
-                                longitude: lng,
-                                accuracy: 10,
-                              });
-                              getAddressFromCoordinates(lat, lng);
-                            }}
+                        <div className="relative">
+                          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                          <input
+                            type="text"
+                            placeholder="Search for an address..."
+                            className="w-full pl-10 pr-4 py-2 border-2 border-gray-200 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none transition-all text-sm"
                           />
-                        )}
-                      </GoogleMap>
+                        </div>
+                      </Autocomplete>
                     </div>
-                  )}
+
+                    {/* Map Display */}
+                    {showMap && (
+                      <div className="mb-4 rounded-lg overflow-hidden border-2 border-emerald-200">
+                        <GoogleMap
+                          mapContainerStyle={{ width: '100%', height: '250px' }}
+                          center={mapCenter}
+                          zoom={15}
+                          onClick={onMapClick}
+                        >
+                          {location && (
+                            <Marker
+                              position={{ lat: location.latitude, lng: location.longitude }}
+                              draggable={true}
+                              onDragEnd={(e) => {
+                                const lat = e.latLng.lat();
+                                const lng = e.latLng.lng();
+                                setLocation({
+                                  latitude: lat,
+                                  longitude: lng,
+                                  accuracy: 10,
+                                });
+                                getAddressFromCoordinates(lat, lng);
+                              }}
+                            />
+                          )}
+                        </GoogleMap>
+                      </div>
+                    )}
                   </>
                 )}
 
@@ -870,7 +870,7 @@ export default function ReportWaste() {
                       <MapPin className="w-5 h-5 text-green-600 mt-0.5 shrink-0" />
                       <div className="flex-1">
                         <p className="font-bold text-green-900 text-sm mb-2">Location Captured</p>
-                        
+
                         {/* Full Address */}
                         {fullAddress && (
                           <div className="mb-3 p-2 bg-white/60 rounded-lg">
@@ -878,7 +878,7 @@ export default function ReportWaste() {
                             <p className="text-green-800 text-xs">{fullAddress}</p>
                           </div>
                         )}
-                        
+
                         {/* City, State, Country */}
                         {(address.city || address.state || address.country) && (
                           <div className="mb-3 p-2 bg-white/60 rounded-lg">
@@ -888,7 +888,7 @@ export default function ReportWaste() {
                             </p>
                           </div>
                         )}
-                        
+
                         <div className="space-y-1 text-xs">
                           <p className="text-green-700">
                             <span className="font-medium">Lat:</span> {location.latitude.toFixed(6)}
@@ -930,7 +930,7 @@ export default function ReportWaste() {
                   <CheckCircle className="w-5 h-5" />
                   Report Summary
                 </h3>
-                
+
                 <div className="space-y-2 text-sm">
                   <div className="flex items-center justify-between py-2 border-b border-white/20">
                     <span className="text-xs opacity-90">Waste Type</span>
@@ -938,28 +938,28 @@ export default function ReportWaste() {
                       {selectedWasteInfo ? selectedWasteInfo.name : 'Not selected'}
                     </span>
                   </div>
-                  
+
                   <div className="flex items-center justify-between py-2 border-b border-white/20">
                     <span className="text-xs opacity-90">Photo</span>
                     <span className="font-bold text-xs">
                       {photo ? 'Captured ✓' : 'Not captured'}
                     </span>
                   </div>
-                  
+
                   <div className="flex items-center justify-between py-2 border-b border-white/20">
                     <span className="text-xs opacity-90">Weight</span>
                     <span className="font-bold text-xs">
                       {weight ? `${weight} kg ✓` : 'Not added'}
                     </span>
                   </div>
-                  
+
                   <div className="flex items-center justify-between py-2 border-b border-white/20">
                     <span className="text-xs opacity-90">Location</span>
                     <span className="font-bold text-xs">
                       {location ? 'Detected ✓' : 'Detecting...'}
                     </span>
                   </div>
-                  
+
                   <div className="flex items-center justify-between py-2 border-b border-white/20">
                     <span className="text-xs opacity-90">Description</span>
                     <span className="font-bold text-xs">
