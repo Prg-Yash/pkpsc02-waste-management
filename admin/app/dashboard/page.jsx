@@ -1,81 +1,181 @@
 "use client"
 
+import { useState, useEffect } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { AdminHeader } from "@/components/admin-header"
-import { FileText, Users, Truck, MapPin, TrendingUp, AlertTriangle, CheckCircle, Clock } from "lucide-react"
+import { FileText, Users, Truck, MapPin, TrendingUp, AlertTriangle, CheckCircle, Clock, Loader2 } from "lucide-react"
 import { motion } from "framer-motion"
 import { AnimatedContainer, StaggerContainer, StaggerItem, HoverScale } from "@/components/animated-container"
 
-const stats = [
-  {
-    title: "Total Reports",
-    value: "1,284",
-    change: "+12%",
-    icon: FileText,
-    trend: "up",
-  },
-  {
-    title: "Active Users",
-    value: "8,432",
-    change: "+8%",
-    icon: Users,
-    trend: "up",
-  },
-  {
-    title: "Waste Collected",
-    value: "42.5 tons",
-    change: "+15%",
-    icon: Truck,
-    trend: "up",
-  },
-  {
-    title: "Hotspots Identified",
-    value: "23",
-    change: "-5%",
-    icon: MapPin,
-    trend: "down",
-  },
-]
-
-const recentReports = [
-  {
-    id: 1,
-    location: "Park Avenue, Zone A",
-    type: "Plastic Waste",
-    status: "pending",
-    date: "2024-12-06",
-  },
-  {
-    id: 2,
-    location: "Main Street Market",
-    type: "Organic Waste",
-    status: "in-progress",
-    date: "2024-12-06",
-  },
-  {
-    id: 3,
-    location: "Green Plaza",
-    type: "E-Waste",
-    status: "completed",
-    date: "2024-12-05",
-  },
-  {
-    id: 4,
-    location: "Industrial Zone B",
-    type: "Hazardous Waste",
-    status: "pending",
-    date: "2024-12-05",
-  },
-]
-
 export default function AdminDashboard() {
+  const [stats, setStats] = useState([])
+  const [recentReports, setRecentReports] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [totalTokens, setTotalTokens] = useState(0)
+
+  useEffect(() => {
+    fetchDashboardData()
+  }, [])
+
+  const fetchDashboardData = async () => {
+    try {
+      setLoading(true)
+
+      // Fetch all waste reports
+      const wasteResponse = await fetch('/api/waste-reports')
+      const wasteData = await wasteResponse.json()
+      const allWastes = wasteData.wastes || []
+
+      // Fetch all users
+      const usersResponse = await fetch('/api/users')
+      const usersData = await usersResponse.json()
+      const allUsers = usersData.users || []
+
+      // Calculate stats
+      const totalReports = allWastes.length
+      const collectedWastes = allWastes.filter(w => w.status === 'COLLECTED')
+      const pendingWastes = allWastes.filter(w => w.status === 'PENDING')
+      const inProgressWastes = allWastes.filter(w => w.status === 'IN_PROGRESS')
+
+      // Calculate total weight collected
+      const totalWeightKg = collectedWastes.reduce((sum, waste) => {
+        const weight = waste.aiAnalysis?.estimatedWeightKg || 0
+        return sum + weight
+      }, 0)
+
+      // Calculate hotspots (areas with 3+ wastes within 500m)
+      const hotspots = calculateHotspots(allWastes)
+
+      // Calculate total tokens from all users
+      const totalTokensSum = allUsers.reduce((sum, user) => sum + (user.globalPoints || 0), 0)
+
+      // Get recent reports (last 10)
+      const recent = allWastes
+        .sort((a, b) => new Date(b.reportedAt) - new Date(a.reportedAt))
+        .slice(0, 10)
+        .map(waste => ({
+          id: waste.id,
+          location: waste.locationRaw || `${waste.city || 'Unknown'}, ${waste.state || ''}`,
+          type: waste.aiAnalysis?.wasteType || waste.wasteType || 'Mixed Waste',
+          status: waste.status.toLowerCase().replace('_', '-'),
+          date: new Date(waste.reportedAt).toISOString().split('T')[0],
+          city: waste.city,
+          reporter: waste.reporter?.name || 'Unknown',
+        }))
+
+      // Update stats
+      setStats([
+        {
+          title: "Total Reports",
+          value: totalReports.toLocaleString(),
+          change: `${pendingWastes.length} pending`,
+          icon: FileText,
+          trend: "up",
+        },
+        {
+          title: "Active Users",
+          value: allUsers.length.toLocaleString(),
+          change: `${allUsers.filter(u => u.enableCollector).length} collectors`,
+          icon: Users,
+          trend: "up",
+        },
+        {
+          title: "Waste Collected",
+          value: totalWeightKg >= 1000 
+            ? `${(totalWeightKg / 1000).toFixed(1)} tons`
+            : `${totalWeightKg.toFixed(1)} kg`,
+          change: `${collectedWastes.length} collections`,
+          icon: Truck,
+          trend: "up",
+        },
+        {
+          title: "Hotspots Identified",
+          value: hotspots.toString(),
+          change: `${inProgressWastes.length} in progress`,
+          icon: MapPin,
+          trend: hotspots > 0 ? "up" : "down",
+        },
+      ])
+
+      setRecentReports(recent)
+      setTotalTokens(totalTokensSum)
+
+    } catch (error) {
+      console.error('Error fetching dashboard data:', error)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const calculateHotspots = (wastes) => {
+    if (!wastes || wastes.length === 0) return 0
+
+    const validWastes = wastes.filter(w => {
+      const lat = parseFloat(w.latitude)
+      const lng = parseFloat(w.longitude)
+      return !isNaN(lat) && !isNaN(lng)
+    })
+
+    let hotspots = 0
+    const processed = new Set()
+
+    validWastes.forEach((waste, index) => {
+      if (processed.has(index)) return
+
+      let nearby = 0
+      for (let i = index + 1; i < validWastes.length; i++) {
+        if (processed.has(i)) continue
+
+        const other = validWastes[i]
+        const distance = getDistance(
+          waste.latitude, waste.longitude,
+          other.latitude, other.longitude
+        )
+
+        if (distance <= 0.5) { // 500m radius
+          nearby++
+          processed.add(i)
+        }
+      }
+
+      if (nearby >= 2) {
+        hotspots++
+      }
+      processed.add(index)
+    })
+
+    return hotspots
+  }
+
+  const getDistance = (lat1, lon1, lat2, lon2) => {
+    const R = 6371 // Earth's radius in km
+    const dLat = (lat2 - lat1) * Math.PI / 180
+    const dLon = (lon2 - lon1) * Math.PI / 180
+    const a = 
+      Math.sin(dLat/2) * Math.sin(dLat/2) +
+      Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+      Math.sin(dLon/2) * Math.sin(dLon/2)
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a))
+    return R * c
+  }
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center min-h-[400px]">
+        <div className="text-center">
+          <Loader2 className="w-12 h-12 animate-spin text-primary mx-auto mb-4" />
+          <p className="text-muted-foreground">Loading dashboard data...</p>
+        </div>
+      </div>
+    )
+  }
   return (
     <div className="space-y-6">
       <AnimatedContainer>
         <AdminHeader
           title="Admin Dashboard"
           subtitle="Overview of waste management operations"
-          stats={{ label: "Total Tokens", value: "125,840" }}
+          stats={{ label: "Total Tokens", value: totalTokens.toLocaleString() }}
         />
       </AnimatedContainer>
 
@@ -96,13 +196,8 @@ export default function AdminDashboard() {
                       >
                         {stat.value}
                       </motion.p>
-                      <p
-                        className={`mt-1 flex items-center gap-1 text-xs font-medium ${
-                          stat.trend === "up" ? "text-primary" : "text-destructive"
-                        }`}
-                      >
-                        <TrendingUp className={`h-3 w-3 ${stat.trend === "down" ? "rotate-180" : ""}`} />
-                        {stat.change} from last month
+                      <p className="mt-1 text-xs font-medium text-muted-foreground">
+                        {stat.change}
                       </p>
                     </div>
                     <motion.div
@@ -166,17 +261,17 @@ function StatusBadge({ status }) {
     pending: {
       icon: Clock,
       label: "Pending",
-      className: "border-warning bg-warning/10 text-warning-foreground",
+      className: "border-yellow-500 bg-yellow-500/10 text-yellow-700",
     },
     "in-progress": {
       icon: AlertTriangle,
       label: "In Progress",
-      className: "border-primary bg-primary/10 text-primary",
+      className: "border-blue-500 bg-blue-500/10 text-blue-700",
     },
-    completed: {
+    collected: {
       icon: CheckCircle,
-      label: "Completed",
-      className: "border-primary bg-primary/10 text-primary",
+      label: "Collected",
+      className: "border-green-500 bg-green-500/10 text-green-700",
     },
   }[status] || {
     icon: Clock,
