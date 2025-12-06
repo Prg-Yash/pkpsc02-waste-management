@@ -93,6 +93,7 @@ const CollectPage = () => {
           status: waste.status.toLowerCase(),
           date: new Date(waste.reportedAt || waste.createdAt).toISOString().split('T')[0],
           collectorId: waste.collector?.id || null,
+          routeCollectorId: waste.routeCollector?.id || null,
           reportedImage: waste.imageUrl,
           collectorImageUrl: waste.collectorImageUrl,
           reportedLocation: {
@@ -125,12 +126,76 @@ const CollectPage = () => {
     }
   };
 
-  const handleStatusChange = (taskId, newStatus) => {
-    setTasks(tasks.map(task => 
-      task.id === taskId ? { ...task, status: newStatus, collectorId: user.id } : task
-    ));
-    
-    console.log('Task status updated successfully');
+  const handleAddToRoute = async (taskId) => {
+    try {
+      // Get user profile to check location
+      const userResponse = await fetch('/api/user/me');
+      if (!userResponse.ok) {
+        throw new Error('Failed to fetch user profile');
+      }
+      const userData = await userResponse.json();
+      const userProfile = userData.user || userData;
+
+      // Find the task to check its location
+      const task = tasks.find(t => t.id === taskId);
+      if (!task) {
+        throw new Error('Waste not found');
+      }
+
+      // Check if user's state and country match waste location
+      if (userProfile.state && task.state && userProfile.state.toLowerCase() !== task.state.toLowerCase()) {
+        alert(`❌ Cannot add to route: This waste is in ${task.state}, but your profile location is ${userProfile.state}. You can only collect waste from your registered state.`);
+        return;
+      }
+
+      if (userProfile.country && task.country && userProfile.country.toLowerCase() !== task.country.toLowerCase()) {
+        alert(`❌ Cannot add to route: This waste is in ${task.country}, but your profile location is ${userProfile.country}. You can only collect waste from your registered country.`);
+        return;
+      }
+
+      const response = await fetch('/api/route-planner-proxy', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          wasteId: taskId,
+          action: 'add'
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to add waste to route');
+      }
+
+      // Update local state to reflect the change
+      console.log('Adding to route - User ID:', user?.id);
+      console.log('Backend response:', data);
+      
+      setTasks(tasks.map(task => {
+        if (task.id === taskId) {
+          const updatedTask = { 
+            ...task, 
+            status: 'in_progress', 
+            collectorId: user?.id,
+            routeCollectorId: user?.id
+          };
+          console.log('Updated task:', updatedTask);
+          return updatedTask;
+        }
+        return task;
+      }));
+
+      alert('✅ Waste added to your route successfully!');
+      
+      // Note: We don't refresh here to preserve the local state update
+      // The backend relations might not be populated immediately
+    } catch (error) {
+      console.error('Error adding to route:', error);
+      alert(`❌ Failed to add to route: ${error.message}`);
+    }
   };
 
   const handleImageUpload = (e) => {
@@ -306,10 +371,11 @@ const CollectPage = () => {
       pending: { color: 'bg-gray-100 text-gray-700 border-gray-200', icon: Clock },
       in_progress: { color: 'bg-emerald-50 text-emerald-700 border-emerald-200', icon: Trash2 },
       completed: { color: 'bg-emerald-100 text-emerald-800 border-emerald-300', icon: CheckCircle },
+      collected: { color: 'bg-emerald-100 text-emerald-800 border-emerald-300', icon: CheckCircle },
       verified: { color: 'bg-emerald-100 text-emerald-800 border-emerald-300', icon: CheckCircle },
     };
 
-    const { color, icon: Icon } = statusConfig[status];
+    const { color, icon: Icon } = statusConfig[status] || statusConfig.pending;
 
     return (
       <span className={`px-3 py-1.5 rounded-lg text-xs font-semibold border ${color} flex items-center gap-1 transition-all duration-300`}>
@@ -364,7 +430,9 @@ const CollectPage = () => {
                 onChange={(e) => setFilterStatus(e.target.value)}
                 className="px-4 py-3 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition-all duration-300"
               >
+                <option value="">All Status</option>
                 <option value="PENDING">Pending</option>
+                <option value="IN_PROGRESS">In Progress</option>
                 <option value="COLLECTED">Collected</option>
               </select>
 
@@ -496,13 +564,17 @@ const CollectPage = () => {
                     <div className="flex justify-end gap-3">
                       {task.status === 'pending' && (
                         <button 
-                          onClick={() => handleStatusChange(task.id, 'in_progress')}
+                          onClick={() => handleAddToRoute(task.id)}
                           className="px-6 py-2.5 bg-linear-to-r from-emerald-500 to-teal-600 text-white rounded-lg font-semibold hover:from-emerald-600 hover:to-teal-700 transition-all duration-300 transform hover:scale-105 shadow-md hover:shadow-lg"
                         >
-                          Add to Map Router
+                          Add to Map Route
                         </button>
                       )}
-                      {task.status === 'in_progress' && task.collectorId === user?.id && (
+                      {task.status === 'in_progress' && (() => {
+                        const isMyTask = task.routeCollectorId === user?.id || task.collectorId === user?.id;
+                        console.log(`Task ${task.id}: status=${task.status}, routeCollectorId=${task.routeCollectorId}, collectorId=${task.collectorId}, userId=${user?.id}, isMyTask=${isMyTask}`);
+                        return isMyTask;
+                      })() && (
                         <button 
                           onClick={() => setSelectedTask(task)}
                           className="px-6 py-2.5 bg-linear-to-r from-emerald-500 to-teal-600 text-white rounded-lg font-semibold hover:from-emerald-600 hover:to-teal-700 transition-all duration-300 transform hover:scale-105 shadow-md hover:shadow-lg"
@@ -510,7 +582,7 @@ const CollectPage = () => {
                           Complete & Verify
                         </button>
                       )}
-                      {task.status === 'in_progress' && task.collectorId !== user?.id && (
+                      {task.status === 'in_progress' && !(task.routeCollectorId === user?.id || task.collectorId === user?.id) && (
                         <span className="px-6 py-2.5 bg-gray-50 text-gray-700 border border-gray-200 rounded-lg text-sm font-semibold flex items-center gap-2">
                           <Clock className="w-4 h-4" />
                           In progress by another collector

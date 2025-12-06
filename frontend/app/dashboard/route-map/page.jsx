@@ -32,6 +32,16 @@ export default function RouteMapPage() {
   const [mapError, setMapError] = useState(null);
   const [userLocation, setUserLocation] = useState(null);
   const [loadingUserLocation, setLoadingUserLocation] = useState(false);
+  
+  // Verification modal states
+  const [selectedWaste, setSelectedWaste] = useState(null);
+  const [verificationImage, setVerificationImage] = useState(null);
+  const [verificationStatus, setVerificationStatus] = useState('idle');
+  const [verificationResult, setVerificationResult] = useState(null);
+  const [currentLocation, setCurrentLocation] = useState(null);
+  const [locationError, setLocationError] = useState('');
+  const [reward, setReward] = useState(0);
+  const [geminiAnalysis, setGeminiAnalysis] = useState(null);
 
   // Get user's current location
   useEffect(() => {
@@ -69,9 +79,9 @@ export default function RouteMapPage() {
   const fetchCollectionLocations = async () => {
     try {
       setLoading(true);
-      const apiUrl = `/api/waste-proxy?status=PENDING`;
       
-      const response = await fetch(apiUrl, {
+      // Fetch only the user's route (in-progress collections assigned to them)
+      const response = await fetch('/api/route-planner-proxy', {
         method: 'GET',
         headers: {
           'Content-Type': 'application/json',
@@ -79,15 +89,15 @@ export default function RouteMapPage() {
       });
 
       if (!response.ok) {
-        throw new Error('Failed to fetch locations');
+        throw new Error('Failed to fetch route');
       }
 
       const data = await response.json();
-      const wastesArray = Array.isArray(data) ? data : (data.wastes || []);
+      const wastesArray = data.route || [];
       
-      // Transform to location format with priority
+      // Transform to location format with priority - only show IN_PROGRESS waste
       const transformedLocations = wastesArray
-        .filter(waste => waste.latitude && waste.longitude)
+        .filter(waste => waste.latitude && waste.longitude && waste.status === 'IN_PROGRESS')
         .map((waste, index) => ({
           id: waste.id,
           position: {
@@ -101,6 +111,12 @@ export default function RouteMapPage() {
           city: waste.city,
           imageUrl: waste.imageUrl,
           reportedAt: waste.reportedAt,
+          reportedLocation: {
+            latitude: waste.latitude,
+            longitude: waste.longitude,
+          },
+          aiAnalysis: waste.aiAnalysis,
+          status: waste.status?.toLowerCase() || 'in_progress',
         }));
 
       setLocations(transformedLocations);
@@ -119,7 +135,7 @@ export default function RouteMapPage() {
 
   // Calculate route based on priority order
   const calculateRoute = useCallback(() => {
-    if (locations.length < 2) return;
+    if (locations.length === 0) return;
     
     // Check if Google Maps is loaded
     if (!window.google || !window.google.maps || !window.google.maps.DirectionsService) {
@@ -132,12 +148,21 @@ export default function RouteMapPage() {
     
     const sortedLocations = [...locations].sort((a, b) => a.priority - b.priority);
     
-    const origin = sortedLocations[0].position;
+    // Use user location as origin if available, otherwise first collection point
+    const origin = userLocation || sortedLocations[0].position;
     const destination = sortedLocations[sortedLocations.length - 1].position;
-    const waypoints = sortedLocations.slice(1, -1).map(loc => ({
-      location: loc.position,
-      stopover: true,
-    }));
+    
+    // If using user location as origin, include all collection points as waypoints
+    // Otherwise, include all except first and last
+    const waypoints = userLocation 
+      ? sortedLocations.slice(0, -1).map(loc => ({
+          location: loc.position,
+          stopover: true,
+        }))
+      : sortedLocations.slice(1, -1).map(loc => ({
+          location: loc.position,
+          stopover: true,
+        }));
 
     const directionsService = new window.google.maps.DirectionsService();
 
@@ -171,11 +196,11 @@ export default function RouteMapPage() {
         setIsCalculatingRoute(false);
       }
     );
-  }, [locations]);
+  }, [locations, userLocation]);
 
   // Auto-calculate route when locations change and map is loaded
   useEffect(() => {
-    if (locations.length >= 2 && isMapLoaded) {
+    if (locations.length >= 1 && isMapLoaded) {
       calculateRoute();
     }
   }, [locations, isMapLoaded, calculateRoute]);
@@ -254,6 +279,153 @@ export default function RouteMapPage() {
     if (priority === 1) return 'High';
     if (priority === 2) return 'Medium';
     return 'Low';
+  };
+
+  const handleImageUpload = (e) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setVerificationImage(reader.result);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const getCurrentLocation = () => {
+    setLocationError('');
+    if (!navigator.geolocation) {
+      setLocationError('Geolocation is not supported by your browser');
+      return;
+    }
+
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        setCurrentLocation({
+          latitude: position.coords.latitude,
+          longitude: position.coords.longitude,
+        });
+      },
+      (error) => {
+        setLocationError('Unable to retrieve your location');
+        console.error('Location error:', error);
+      }
+    );
+  };
+
+  const handleVerify = async () => {
+    if (!selectedWaste || !verificationImage) return;
+
+    setVerificationStatus('verifying');
+    setGeminiAnalysis(null);
+    
+    try {
+      // Get current location
+      if (!currentLocation) {
+        await new Promise((resolve, reject) => {
+          navigator.geolocation.getCurrentPosition(
+            (position) => {
+              const location = {
+                latitude: position.coords.latitude,
+                longitude: position.coords.longitude,
+              };
+              setCurrentLocation(location);
+              resolve(location);
+            },
+            (error) => {
+              setLocationError('Location required for verification');
+              reject(error);
+            }
+          );
+        });
+      }
+
+      // Call Gemini API for verification
+      const response = await fetch('/api/verify-waste', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          collectedImage: verificationImage,
+          reportedImage: selectedWaste.imageUrl,
+          location: currentLocation,
+          reportedLocation: selectedWaste.reportedLocation,
+          wasteType: selectedWaste.wasteType,
+          amount: `${selectedWaste.amount} kg`,
+          aiAnalysis: selectedWaste.aiAnalysis,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        const errorMsg = data.details || data.error || 'Verification failed';
+        throw new Error(errorMsg);
+      }
+
+      const result = data.parsedResult || data;
+      setVerificationResult(result);
+      setGeminiAnalysis(result.notes || data.analysis);
+      
+      // Check if verification passed
+      if (result.overallMatch || result.success) {
+        // Convert base64 to blob for API submission
+        const base64Response = await fetch(verificationImage);
+        const blob = await base64Response.blob();
+        const file = new File([blob], 'collection-proof.jpg', { type: 'image/jpeg' });
+
+        const formData = new FormData();
+        formData.append('userId', user.id);
+        formData.append('collectorImage', file);
+        formData.append('latitude', currentLocation.latitude.toString());
+        formData.append('longitude', currentLocation.longitude.toString());
+
+        const collectResponse = await fetch(`${API_CONFIG.BASE_URL}/api/waste/${selectedWaste.id}/collect`, {
+          method: 'POST',
+          headers: {
+            'x-user-id': user.id,
+          },
+          body: formData,
+        });
+
+        if (!collectResponse.ok) {
+          const errorData = await collectResponse.json();
+          setVerificationStatus('verified-failed');
+          setVerificationResult({
+            ...result,
+            backendError: errorData.error || 'Failed to submit collection',
+            showBackendError: true
+          });
+          return;
+        }
+
+        setVerificationStatus('success');
+        
+        const baseReward = parseInt(selectedWaste.amount) * 2;
+        const confidence = result.confidence || (result.matchConfidence / 100) || 0.8;
+        const earnedReward = Math.floor(baseReward * confidence);
+        setReward(earnedReward);
+
+        // Refresh the locations list
+        await fetchCollectionLocations();
+        
+        // Close modal after short delay
+        setTimeout(() => {
+          setSelectedWaste(null);
+          setVerificationImage(null);
+          setVerificationResult(null);
+        }, 3000);
+      } else {
+        setVerificationStatus('verified-failed');
+      }
+    } catch (error) {
+      console.error('Verification error:', error);
+      setVerificationStatus('failure');
+      setVerificationResult({
+        error: error.message || 'Verification failed. Please try again.'
+      });
+    }
   };
 
   return (
@@ -502,8 +674,8 @@ export default function RouteMapPage() {
                 <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
                   <MapPin className="w-8 h-8 text-gray-400" />
                 </div>
-                <p className="text-gray-600 font-medium">No collection points available</p>
-                <p className="text-sm text-gray-500 mt-2">All pending collections have been completed!</p>
+                <p className="text-gray-600 font-medium">No waste in your route</p>
+                <p className="text-sm text-gray-500 mt-2">Add waste to your route from the Collect Waste page to see them here!</p>
               </div>
             ) : (
               <div className="space-y-3 max-h-[500px] overflow-y-auto">
@@ -562,6 +734,15 @@ export default function RouteMapPage() {
                             {location.city}
                           </span>
                         </div>
+
+                        {/* Complete & Verify Button */}
+                        <button
+                          onClick={() => setSelectedWaste(location)}
+                          className="w-full mt-3 py-2 bg-linear-to-r from-emerald-500 to-teal-600 text-white rounded-lg text-sm font-semibold hover:from-emerald-600 hover:to-teal-700 transition-all duration-300 transform hover:scale-105 shadow-md hover:shadow-lg flex items-center justify-center gap-2"
+                        >
+                          <CheckCircle className="w-4 h-4" />
+                          Complete & Verify
+                        </button>
                       </div>
                     </div>
                   </div>
@@ -592,6 +773,174 @@ export default function RouteMapPage() {
             )}
           </div>
         </div>
+
+        {/* Verification Modal */}
+        {selectedWaste && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+            <div className="bg-white rounded-2xl shadow-2xl max-w-4xl w-full max-h-[90vh] overflow-y-auto">
+              <div className="p-6 border-b border-gray-200 sticky top-0 bg-white z-10">
+                <div className="flex items-center justify-between">
+                  <h2 className="text-2xl font-bold text-gray-800">Complete Collection</h2>
+                  <button
+                    onClick={() => {
+                      setSelectedWaste(null);
+                      setVerificationImage(null);
+                      setVerificationResult(null);
+                      setVerificationStatus('idle');
+                    }}
+                    className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+                  >
+                    <span className="text-2xl">&times;</span>
+                  </button>
+                </div>
+              </div>
+
+              <div className="p-6 space-y-6">
+                {/* Waste Details */}
+                <div className="bg-gray-50 rounded-xl p-4">
+                  <h3 className="font-semibold text-gray-800 mb-2">Waste Details</h3>
+                  <div className="space-y-2 text-sm">
+                    <p><span className="font-medium">Location:</span> {selectedWaste.address}</p>
+                    <p><span className="font-medium">Type:</span> {selectedWaste.wasteType}</p>
+                    <p><span className="font-medium">Amount:</span> {selectedWaste.amount} kg</p>
+                  </div>
+                  {selectedWaste.imageUrl && (
+                    <div className="mt-3">
+                      <p className="text-xs text-gray-600 mb-2">Reported Image:</p>
+                      <img 
+                        src={selectedWaste.imageUrl} 
+                        alt="Reported waste" 
+                        className="w-full h-48 object-cover rounded-lg"
+                      />
+                    </div>
+                  )}
+                </div>
+
+                {/* Upload Collection Proof */}
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-2">
+                    Upload Collection Proof
+                  </label>
+                  <input
+                    type="file"
+                    accept="image/*"
+                    onChange={handleImageUpload}
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
+                  />
+                  {verificationImage && (
+                    <div className="mt-3">
+                      <img 
+                        src={verificationImage} 
+                        alt="Collection proof" 
+                        className="w-full h-48 object-cover rounded-lg"
+                      />
+                    </div>
+                  )}
+                </div>
+
+                {/* Location Status */}
+                <div className="bg-blue-50 rounded-lg p-4">
+                  <button
+                    onClick={getCurrentLocation}
+                    className="flex items-center gap-2 text-blue-700 font-medium"
+                  >
+                    <MapPin className="w-5 h-5" />
+                    {currentLocation ? '✓ Location Captured' : 'Get Current Location'}
+                  </button>
+                  {locationError && <p className="text-red-600 text-sm mt-2">{locationError}</p>}
+                </div>
+
+                {/* Verification Results */}
+                {verificationResult && (
+                  <div className={`rounded-xl p-4 ${
+                    verificationStatus === 'success' 
+                      ? 'bg-green-50 border-2 border-green-500' 
+                      : 'bg-red-50 border-2 border-red-500'
+                  }`}>
+                    <h3 className={`font-bold mb-3 ${
+                      verificationStatus === 'success' ? 'text-green-800' : 'text-red-800'
+                    }`}>
+                      {verificationStatus === 'success' ? '✓ Verification Successful!' : '✗ Verification Failed'}
+                    </h3>
+                    
+                    {verificationResult.error ? (
+                      <p className="text-red-700">{verificationResult.error}</p>
+                    ) : (
+                      <div className="space-y-2 text-sm">
+                        {verificationResult.imageMatch !== undefined && (
+                          <p>
+                            <span className="font-medium">Image Match:</span>{' '}
+                            <span className={verificationResult.imageMatch ? 'text-green-700' : 'text-red-700'}>
+                              {verificationResult.imageMatch ? '✓ Passed' : '✗ Failed'}
+                            </span>
+                            {verificationResult.matchConfidence && ` (${verificationResult.matchConfidence}% confidence)`}
+                          </p>
+                        )}
+                        {verificationResult.locationMatch !== undefined && (
+                          <p>
+                            <span className="font-medium">Location Match:</span>{' '}
+                            <span className={verificationResult.locationMatch ? 'text-green-700' : 'text-red-700'}>
+                              {verificationResult.locationMatch ? '✓ Passed' : '✗ Failed'}
+                            </span>
+                            {verificationResult.distance && ` (${verificationResult.distance.toFixed(2)} km away)`}
+                          </p>
+                        )}
+                        {geminiAnalysis && (
+                          <div className="mt-3 p-3 bg-white rounded-lg">
+                            <p className="font-medium mb-1">AI Analysis:</p>
+                            <p className="text-gray-700">{geminiAnalysis}</p>
+                          </div>
+                        )}
+                        {verificationStatus === 'success' && reward > 0 && (
+                          <p className="text-lg font-bold text-green-700 mt-3">
+                            🎉 Earned: {reward} points!
+                          </p>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Action Buttons */}
+                <div className="flex gap-3">
+                  <button
+                    onClick={() => {
+                      setSelectedWaste(null);
+                      setVerificationImage(null);
+                      setVerificationResult(null);
+                      setVerificationStatus('idle');
+                    }}
+                    className="flex-1 px-6 py-3 border-2 border-gray-300 text-gray-700 rounded-lg font-semibold hover:bg-gray-50 transition-colors"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={handleVerify}
+                    disabled={!verificationImage || verificationStatus === 'verifying' || verificationStatus === 'success'}
+                    className="flex-1 px-6 py-3 bg-linear-to-r from-emerald-500 to-teal-600 text-white rounded-lg font-semibold hover:from-emerald-600 hover:to-teal-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-300 transform hover:scale-105 shadow-md hover:shadow-lg flex items-center justify-center gap-2"
+                  >
+                    {verificationStatus === 'verifying' ? (
+                      <>
+                        <Loader2 className="w-5 h-5 animate-spin" />
+                        Verifying...
+                      </>
+                    ) : verificationStatus === 'success' ? (
+                      <>
+                        <CheckCircle className="w-5 h-5" />
+                        Completed!
+                      </>
+                    ) : (
+                      <>
+                        <CheckCircle className="w-5 h-5" />
+                        Verify & Complete
+                      </>
+                    )}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

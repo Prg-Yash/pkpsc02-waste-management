@@ -3,7 +3,6 @@
 import React, { useState, useEffect } from 'react';
 import { useUser } from '@clerk/nextjs';
 import { User, Shield, Bell, Save, Loader, CheckCircle, AlertCircle, Trash2 } from 'lucide-react';
-import { API_CONFIG } from '@/lib/api-config';
 
 export default function SettingsPage() {
   const { user: clerkUser } = useUser();
@@ -15,6 +14,9 @@ export default function SettingsPage() {
     name: '',
     email: '',
     phone: '',
+    city: '',
+    state: '',
+    country: '',
     enableCollector: false,
     reportPoints: 0,
     collectionPoints: 0,
@@ -29,26 +31,50 @@ export default function SettingsPage() {
   const fetchUserData = async () => {
     try {
       setLoading(true);
-      const response = await fetch(`${API_CONFIG.BASE_URL}/api/user/me`, {
+      
+      // Set default data from Clerk user immediately
+      setUserData(prev => ({
+        ...prev,
+        name: clerkUser.fullName || '',
+        email: clerkUser.primaryEmailAddress?.emailAddress || '',
+      }));
+
+      const response = await fetch('/api/user/me', {
         headers: {
-          'x-user-id': clerkUser.id,
+          'Content-Type': 'application/json',
         },
       });
 
-      if (!response.ok) throw new Error('Failed to fetch user data');
+      if (!response.ok) {
+        const contentType = response.headers.get('content-type');
+        if (contentType && contentType.includes('application/json')) {
+          const errorData = await response.json();
+          throw new Error(errorData.error || 'Failed to fetch user data');
+        }
+        throw new Error('Failed to fetch user data');
+      }
 
       const data = await response.json();
       setUserData({
         name: data.user.name || clerkUser.fullName || '',
         email: data.user.email || clerkUser.primaryEmailAddress?.emailAddress || '',
         phone: data.user.phone || '',
+        city: data.user.city || '',
+        state: data.user.state || '',
+        country: data.user.country || '',
         enableCollector: data.user.enableCollector || false,
         reportPoints: data.user.reportPoints || 0,
         collectionPoints: data.user.collectionPoints || 0,
       });
+      
+      // Clear any previous error messages
+      setMessage({ type: '', text: '' });
     } catch (error) {
       console.error('Error fetching user data:', error);
-      setMessage({ type: 'error', text: 'Failed to load user data' });
+      const errorMessage = error.message === 'Failed to fetch' 
+        ? 'Cannot connect to backend server. Please ensure the API is running.'
+        : `Failed to load user data: ${error.message}`;
+      setMessage({ type: 'error', text: errorMessage });
     } finally {
       setLoading(false);
     }
@@ -59,37 +85,54 @@ export default function SettingsPage() {
       setSaving(true);
       setMessage({ type: '', text: '' });
 
-      const response = await fetch(`${API_CONFIG.BASE_URL}/api/user/me`, {
+      const response = await fetch('/api/user/me', {
         method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',
-          'x-user-id': clerkUser.id,
         },
         body: JSON.stringify({
           name: userData.name,
           phone: userData.phone,
+          city: userData.city,
+          state: userData.state,
+          country: userData.country,
           enableCollector: userData.enableCollector,
         }),
       });
 
-      if (!response.ok) throw new Error('Failed to update settings');
+      if (!response.ok) {
+        const contentType = response.headers.get('content-type');
+        if (contentType && contentType.includes('application/json')) {
+          const errorData = await response.json();
+          throw new Error(errorData.error || 'Failed to update settings');
+        }
+        throw new Error('Failed to update settings');
+      }
 
       const data = await response.json();
-      setMessage({ type: 'success', text: 'Settings saved successfully!' });
+      setMessage({ type: 'success', text: data.message || 'Settings saved successfully!' });
       
       // Update local state with response
-      setUserData(prev => ({
-        ...prev,
-        name: data.user.name || prev.name,
-        phone: data.user.phone || prev.phone,
-        enableCollector: data.user.enableCollector,
-      }));
+      if (data.user) {
+        setUserData(prev => ({
+          ...prev,
+          name: data.user.name || prev.name,
+          phone: data.user.phone || prev.phone,
+          city: data.user.city || prev.city,
+          state: data.user.state || prev.state,
+          country: data.user.country || prev.country,
+          enableCollector: data.user.enableCollector !== undefined ? data.user.enableCollector : prev.enableCollector,
+        }));
+      }
 
       // Clear message after 3 seconds
       setTimeout(() => setMessage({ type: '', text: '' }), 3000);
     } catch (error) {
       console.error('Error saving settings:', error);
-      setMessage({ type: 'error', text: 'Failed to save settings. Please try again.' });
+      const errorMessage = error.message === 'Failed to fetch'
+        ? 'Cannot connect to backend server. Please ensure the API is running.'
+        : `Failed to save settings: ${error.message}`;
+      setMessage({ type: 'error', text: errorMessage });
     } finally {
       setSaving(false);
     }
@@ -187,6 +230,55 @@ export default function SettingsPage() {
                   className="w-full px-4 py-3 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition-all duration-300"
                   placeholder="+91 98765 43210"
                 />
+              </div>
+              <div className="pt-4 border-t border-gray-100">
+                <p className="text-sm font-semibold text-gray-700 mb-3">Location Information</p>
+                <div className="space-y-4">
+                  <div>
+                    <label className="block text-sm font-semibold text-gray-700 mb-2">
+                      City <span className="text-red-500">*</span>
+                    </label>
+                    <input
+                      type="text"
+                      value={userData.city}
+                      onChange={(e) => handleInputChange('city', e.target.value)}
+                      className="w-full px-4 py-3 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition-all duration-300"
+                      placeholder="Enter your city"
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-semibold text-gray-700 mb-2">
+                      State <span className="text-red-500">*</span>
+                    </label>
+                    <input
+                      type="text"
+                      value={userData.state}
+                      onChange={(e) => handleInputChange('state', e.target.value)}
+                      className="w-full px-4 py-3 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition-all duration-300"
+                      placeholder="Enter your state"
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-semibold text-gray-700 mb-2">
+                      Country <span className="text-red-500">*</span>
+                    </label>
+                    <input
+                      type="text"
+                      value={userData.country}
+                      onChange={(e) => handleInputChange('country', e.target.value)}
+                      className="w-full px-4 py-3 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition-all duration-300"
+                      placeholder="Enter your country"
+                      required
+                    />
+                  </div>
+                </div>
+                <div className="mt-3 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                  <p className="text-xs text-blue-700">
+                    <strong>Required:</strong> Please update your location before reporting or collecting waste.
+                  </p>
+                </div>
               </div>
             </div>
           </div>

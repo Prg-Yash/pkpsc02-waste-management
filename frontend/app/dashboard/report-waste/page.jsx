@@ -398,9 +398,9 @@ export default function ReportWaste() {
         getCurrentLocation();
       }, 3000);
     } catch (error) {
-      console.error('Error submitting waste report:', error);
-      setIsSubmitting(false);
-      alert(`Failed to submit report: ${error.message}\n\nPlease make sure the API server is running on ${API_CONFIG.BASE_URL}`);
+    console.error('Error submitting waste report:', error);
+    setIsSubmitting(false);
+    alert(`Failed to submit report: ${error.message}`);
     }
   };
 

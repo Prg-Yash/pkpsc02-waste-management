@@ -264,6 +264,7 @@ router.get("/report", async (req, res) => {
             include: {
                 reporter: true,
                 collector: true,
+                routeCollector: true,
             },
             orderBy: {
                 createdAt: "desc",
@@ -304,6 +305,7 @@ router.post(
                 where: { id: wasteId },
                 include: {
                     reporter: true,
+                    routeCollector: true,
                 },
             });
 
@@ -352,12 +354,14 @@ router.post(
                     data: {
                         status: "COLLECTED",
                         collectorId: req.user.id,
+                        routeCollectorId: null, // Clear route assignment after collection
                         collectedAt: new Date(),
                         ...(collectorImageUrl && { collectorImageUrl }),
                     },
                     include: {
                         reporter: true,
                         collector: true,
+                        routeCollector: true,
                     },
                 }),
                 prisma.user.update({
