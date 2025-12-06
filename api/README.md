@@ -36,6 +36,7 @@ Complete backend API for the EcoFlow waste management system built with Express.
 ### Installation
 
 1. **Install dependencies**:
+
 ```bash
 cd api
 npm install
@@ -65,6 +66,7 @@ NODE_ENV="development"
 ```
 
 3. **Initialize database**:
+
 ```bash
 npx prisma generate
 npx prisma migrate dev --name init
@@ -92,6 +94,7 @@ aws s3api put-bucket-policy --bucket your-bucket-name --policy '{
 ```
 
 **Create IAM User** with these permissions:
+
 - `s3:PutObject` - Upload files
 - `s3:GetObject` - Read files
 - Attach to bucket: `your-bucket-name`
@@ -99,6 +102,7 @@ aws s3api put-bucket-policy --bucket your-bucket-name --policy '{
 Add credentials to `.env` file.
 
 5. **Start development server**:
+
 ```bash
 npm run dev
 ```
@@ -115,6 +119,7 @@ The API will be available at `http://localhost:3000`
 ### Test Upload Interface
 
 Open `test-upload.html` in your browser to test file uploads:
+
 ```bash
 # Open in browser
 start api/test-upload.html  # Windows
@@ -123,6 +128,7 @@ xdg-open api/test-upload.html  # Linux
 ```
 
 The test interface provides forms for:
+
 - Reporting waste with image upload
 - Collecting waste with collection proof image
 
@@ -131,13 +137,12 @@ The test interface provides forms for:
 ### Enums
 
 **WasteStatus**:
+
 - `PENDING` - Awaiting collection
 - `COLLECTED` - Successfully collected
 
-**WasteType**:
-- `PLASTIC`, `METAL`, `ORGANIC`, `E_WASTE`, `PAPER`, `GLASS`, `MIXED`, `OTHER`
-
 **NotificationType**:
+
 - `WASTE_REPORTED` - New waste report created
 - `WASTE_COLLECTED` - Waste has been collected
 - `COLLECTOR_ENABLED` - User enabled collector mode
@@ -145,6 +150,7 @@ The test interface provides forms for:
 ### Models
 
 **User**
+
 - `id` (String, PK) - Clerk user ID
 - `email` (String, unique)
 - `name` (String, optional)
@@ -153,14 +159,19 @@ The test interface provides forms for:
 - Relations: reportedWastes, collectedWastes, notifications
 
 **WasteReport**
+
 - `id` (String, PK)
 - `reporterId` (String, FK → User)
 - `collectorId` (String, optional, FK → User)
 - `imageUrl` (String) - S3 URL of waste image
 - `collectorImageUrl` (String, optional) - S3 URL of collection proof
-- `note` (String, optional)
-- `wasteType` (WasteType enum)
-- `estimatedAmountKg` (Float, optional)
+- `aiAnalysis` (JSON, optional) - AI-generated waste analysis containing:
+  - `category`: "small" | "large"
+  - `wasteType`: waste classification
+  - `estimatedWeightKg`: estimated weight
+  - `confidence`: AI confidence score
+  - `notes`: AI-generated observations
+  - Additional fields based on category (segregation, recyclability, overflow level, etc.)
 - `locationRaw` (String) - Address or coordinates
 - `isLocationLatLng` (Boolean)
 - `latitude`, `longitude` (Float, optional)
@@ -171,6 +182,7 @@ The test interface provides forms for:
 - `createdAt`, `updatedAt` (DateTime) - System timestamps
 
 **Notification**
+
 - `id` (String, PK)
 - `userId` (String, FK → User)
 - `type` (NotificationType enum)
@@ -185,10 +197,12 @@ The test interface provides forms for:
 ### How it works:
 
 1. Frontend passes `userId` via:
+
    - Header: `x-user-id: user_xxxxx`
    - OR Body: `{ "userId": "user_xxxxx" }`
 
 2. Backend validates:
+
    - User exists in Prisma database
    - Rejects with 401 if missing/invalid
 
@@ -203,14 +217,17 @@ The `/api/webhooks/clerk` endpoint is the ONLY place using Clerk authentication 
 ### User Management
 
 #### GET /api/user/me
+
 Get current user profile with waste reports.
 
 **Headers**:
+
 ```
 x-user-id: user_xxxxx
 ```
 
 **Response**:
+
 ```json
 {
   "user": {
@@ -226,14 +243,17 @@ x-user-id: user_xxxxx
 ```
 
 #### PATCH /api/user/me
+
 Update user profile.
 
 **Headers**:
+
 ```
 x-user-id: user_xxxxx
 ```
 
 **Body**:
+
 ```json
 {
   "name": "Jane Doe",
@@ -243,6 +263,7 @@ x-user-id: user_xxxxx
 ```
 
 **Response**:
+
 ```json
 {
   "user": {
@@ -261,59 +282,74 @@ x-user-id: user_xxxxx
 ### Waste Reports
 
 #### POST /api/waste/report
+
 Create new waste report with image upload.
 
 **Content-Type**: `multipart/form-data`
 
 **Headers**:
+
 ```
 x-user-id: user_xxxxx
 ```
 
 **Form Fields**:
+
 - `image` (File, **required**) - Waste image file (max 10MB)
 - `userId` (String, **required**) - Reporter user ID
 - `location` (String, **required**) - Address or coordinates
-- `wasteType` (String, **required**) - One of: PLASTIC, METAL, ORGANIC, E_WASTE, PAPER, GLASS, MIXED, OTHER
+- `aiAnalysis` (String, **required**) - JSON string containing AI analysis with required fields:
+  - `category`: "small" | "large"
+  - `wasteType`: waste classification (e.g., "plastic", "organic", "metal", "e-waste", "hazardous", "mixed")
+  - `confidence`: number (0-1)
+  - `estimatedWeightKg`: number
+  - `notes`: string
+  - Additional category-specific fields
 - `isLocationLatLng` (Boolean, optional) - If true, location is coordinates
 - `latitude` (Number, optional) - Latitude coordinate
 - `longitude` (Number, optional) - Longitude coordinate
-- `estimatedAmountKg` (Number, optional) - Estimated weight in kg
-- `note` (String, optional) - Additional notes
 - `city` (String, optional) - City name
 - `state` (String, optional) - State/province name
 - `country` (String, optional) - Country name
 
 **cURL Example**:
+
 ```bash
 curl -X POST http://localhost:3000/api/waste/report \
   -H "x-user-id: user_xxxxx" \
   -F "image=@waste-photo.jpg" \
   -F "userId=user_xxxxx" \
   -F "location=123 Main St, Mumbai" \
-  -F "wasteType=PLASTIC" \
-  -F "estimatedAmountKg=5.5" \
+  -F 'aiAnalysis={"category":"small","wasteType":"plastic","confidence":0.95,"estimatedWeightKg":5.5,"segregation":[{"label":"bottles","count":3}],"recyclabilityPercent":80,"contaminationLevel":"low","hazardous":false,"notes":"Clean plastic bottles, easy to recycle"}' \
   -F "city=Mumbai" \
   -F "state=Maharashtra" \
-  -F "country=India" \
-  -F "note=Large pile near entrance"
+  -F "country=India"
 ```
 
 **Response**:
+
 ```json
 {
   "waste": {
     "id": "clxxx123",
     "reporterId": "user_xxxxx",
     "imageUrl": "https://your-bucket.s3.us-east-1.amazonaws.com/waste-reports/clxxx123/1733475600000-waste-photo.jpg",
-    "wasteType": "PLASTIC",
     "status": "PENDING",
-    "estimatedAmountKg": 5.5,
+    "aiAnalysis": {
+      "category": "small",
+      "wasteType": "plastic",
+      "confidence": 0.95,
+      "estimatedWeightKg": 5.5,
+      "segregation": [{ "label": "bottles", "count": 3 }],
+      "recyclabilityPercent": 80,
+      "contaminationLevel": "low",
+      "hazardous": false,
+      "notes": "Clean plastic bottles, easy to recycle"
+    },
     "locationRaw": "123 Main St, Mumbai",
     "city": "Mumbai",
     "state": "Maharashtra",
     "country": "India",
-    "note": "Large pile near entrance",
     "reporter": {
       "id": "user_xxxxx",
       "name": "John Doe",
@@ -328,19 +364,23 @@ curl -X POST http://localhost:3000/api/waste/report \
 ```
 
 **Storage Details**:
+
 - Images are uploaded to S3: `waste-reports/{reportId}/{timestamp}-{filename}`
 - File size limit: 10MB
 - Supported formats: All image types (JPEG, PNG, HEIC, etc.)
 
 #### GET /api/waste/report
+
 List waste reports with filters.
 
 **Query Parameters**:
+
 - `status` (default: "PENDING") - Filter by status
 - `city` - Filter by city
 - `mine=true` - Only current user's reports (requires `x-user-id`)
 
 **Examples**:
+
 ```
 GET /api/waste/report?status=PENDING
 GET /api/waste/report?city=Mumbai&status=PENDING
@@ -348,6 +388,7 @@ GET /api/waste/report?mine=true
 ```
 
 **Response**:
+
 ```json
 {
   "wastes": [
@@ -364,6 +405,7 @@ GET /api/waste/report?mine=true
 ```
 
 #### POST /api/waste/:id/collect
+
 Collect a waste report with optional collection proof image (collector only).
 
 **URL**: `/api/waste/clxxx123/collect`
@@ -371,11 +413,13 @@ Collect a waste report with optional collection proof image (collector only).
 **Content-Type**: `multipart/form-data`
 
 **Headers**:
+
 ```
 x-user-id: user_yyyyy
 ```
 
 **Form Fields**:
+
 - `userId` (String, **required**) - Collector user ID
 - `collectorImage` (File, optional) - Collection proof image (max 10MB)
 - `collectorLocation` (String, optional) - Collection location
@@ -384,6 +428,7 @@ x-user-id: user_yyyyy
 - `longitude` (Number, optional) - Longitude coordinate
 
 **cURL Example**:
+
 ```bash
 curl -X POST http://localhost:3000/api/waste/clxxx123/collect \
   -H "x-user-id: user_yyyyy" \
@@ -393,11 +438,13 @@ curl -X POST http://localhost:3000/api/waste/clxxx123/collect \
 ```
 
 **Requirements**:
+
 - User must have `enableCollector: true`
 - Waste must be `PENDING`
 - Collector cannot collect their own waste
 
 **Response**:
+
 ```json
 {
   "waste": {
@@ -407,13 +454,13 @@ curl -X POST http://localhost:3000/api/waste/clxxx123/collect \
     "collectorImageUrl": "https://your-bucket.s3.us-east-1.amazonaws.com/waste-collections/clxxx123/1733475700000-collected-proof.jpg",
     "imageUrl": "https://your-bucket.s3.us-east-1.amazonaws.com/waste-reports/clxxx123/1733475600000-waste-photo.jpg",
     "wasteType": "PLASTIC",
-    "reporter": { 
+    "reporter": {
       "id": "user_xxxxx",
-      "name": "John Doe" 
+      "name": "John Doe"
     },
-    "collector": { 
+    "collector": {
       "id": "user_yyyyy",
-      "name": "Jane Collector" 
+      "name": "Jane Collector"
     },
     "reportedAt": "2025-12-06T10:30:00Z",
     "collectedAt": "2025-12-06T11:00:00Z",
@@ -424,10 +471,12 @@ curl -X POST http://localhost:3000/api/waste/clxxx123/collect \
 ```
 
 **Storage Details**:
+
 - Collection proof images stored at: `waste-collections/{wasteId}/{timestamp}-{filename}`
 - Both reporter and collector receive notifications
 
 **Error Responses**:
+
 - `403` - Collector mode not enabled
 - `404` - Waste not found
 - `400` - Already collected
@@ -437,17 +486,21 @@ curl -X POST http://localhost:3000/api/waste/clxxx123/collect \
 ### Notifications
 
 #### GET /api/notifications
+
 Get user notifications.
 
 **Headers**:
+
 ```
 x-user-id: user_xxxxx
 ```
 
 **Query Parameters**:
+
 - `unreadOnly=true` - Only unread notifications
 
 **Response**:
+
 ```json
 {
   "notifications": [
@@ -468,16 +521,19 @@ x-user-id: user_xxxxx
 ```
 
 #### PATCH /api/notifications/[id]/read
+
 Mark notification as read.
 
 **URL**: `/api/notifications/notif_123/read`
 
 **Headers**:
+
 ```
 x-user-id: user_xxxxx
 ```
 
 **Response**:
+
 ```json
 {
   "notification": {
@@ -493,16 +549,19 @@ x-user-id: user_xxxxx
 ### Webhooks
 
 #### POST /api/webhooks/clerk
+
 Clerk webhook for user synchronization.
 
 **This endpoint is managed by Clerk** - no manual calls needed.
 
 **Events handled**:
+
 - `user.created` - Creates user in database
 - `user.updated` - Updates user info
 - `user.deleted` - Removes user
 
 **Headers** (set by Clerk):
+
 ```
 svix-id: msg_xxxxx
 svix-timestamp: 1234567890
@@ -522,6 +581,7 @@ All endpoints return consistent error format:
 ```
 
 **Status Codes**:
+
 - `400` - Bad Request (validation error)
 - `401` - Unauthorized (missing/invalid userId)
 - `403` - Forbidden (insufficient permissions)
@@ -579,6 +639,7 @@ xdg-open api/test-upload.html
 ```
 
 Features:
+
 - ✅ Report waste with image upload
 - ✅ Collect waste with proof image
 - ✅ Real-time image preview
@@ -588,6 +649,7 @@ Features:
 ### Manual Testing with cURL
 
 **Create waste report with image**:
+
 ```bash
 curl -X POST http://localhost:3000/api/waste/report \
   -H "x-user-id: user_xxxxx" \
@@ -600,23 +662,27 @@ curl -X POST http://localhost:3000/api/waste/report \
 ```
 
 **Get user profile**:
+
 ```bash
 curl http://localhost:3000/api/user/me \
   -H "x-user-id: user_xxxxx"
 ```
 
 **List pending waste**:
+
 ```bash
 curl "http://localhost:3000/api/waste/report?status=PENDING"
 ```
 
 **List user's waste reports**:
+
 ```bash
 curl "http://localhost:3000/api/waste/report?mine=true" \
   -H "x-user-id: user_xxxxx"
 ```
 
 **Collect waste with proof image**:
+
 ```bash
 curl -X POST http://localhost:3000/api/waste/clxxx123/collect \
   -H "x-user-id: user_yyyyy" \
@@ -625,12 +691,14 @@ curl -X POST http://localhost:3000/api/waste/clxxx123/collect \
 ```
 
 **Get notifications**:
+
 ```bash
 curl http://localhost:3000/api/notifications \
   -H "x-user-id: user_xxxxx"
 ```
 
 **Mark notification as read**:
+
 ```bash
 curl -X PATCH http://localhost:3000/api/notifications/notif_123/read \
   -H "x-user-id: user_xxxxx"
@@ -649,42 +717,53 @@ curl -X PATCH http://localhost:3000/api/notifications/notif_123/read \
 ## 🚨 Common Issues
 
 ### Database Connection Error
+
 **Issue**: Cannot connect to PostgreSQL  
 **Solution**: Verify `DATABASE_URL` in `.env` and ensure PostgreSQL is running
 
 ### S3 Upload Fails
+
 **Issue**: "S3 configuration missing" or upload errors  
-**Solution**: 
+**Solution**:
+
 - Check all AWS credentials in `.env`
 - Verify IAM user has `s3:PutObject` permission
 - Ensure bucket exists and region matches
 - Check bucket policy allows public read on objects
 
 ### Clerk Webhook Fails
+
 **Issue**: 400 error or signature verification fails  
-**Solution**: 
+**Solution**:
+
 - Check `CLERK_WEBHOOK_SECRET` matches Clerk dashboard
 - Ensure webhook route receives raw body (handled automatically)
 - Verify svix headers are present
 
 ### User Not Found (401)
+
 **Issue**: API returns 401 even with valid userId  
 **Solution**: Ensure user was synced via Clerk webhook first
 
 ### File Upload Too Large
+
 **Issue**: "File too large" error  
-**Solution**: 
+**Solution**:
+
 - Max file size is 10MB
 - Compress images before upload
 - Adjust limit in `routes/waste.js` if needed
 
 ### Migration Errors
+
 **Issue**: Prisma migration fails  
 **Solution**: Reset database with `npx prisma migrate reset` (dev only!)
 
 ### CORS Errors
+
 **Issue**: Browser blocks API requests  
-**Solution**: 
+**Solution**:
+
 - Server already has CORS enabled for all origins
 - Check if `x-user-id` header is allowed
 - Verify API is running on correct port
@@ -763,6 +842,7 @@ MIT License - Feel free to use for personal and commercial projects.
 ## 🤝 Support
 
 For issues or questions:
+
 1. Check error logs in terminal console
 2. Verify all environment variables are set correctly
 3. Ensure database migrations are up to date
