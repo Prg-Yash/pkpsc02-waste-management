@@ -8,13 +8,14 @@ import {
   Leaf, Zap, ArrowLeft, CheckCircle, AlertCircle, 
   Upload, X, Loader2, TrendingUp, Award, Target, ChevronDown, Search
 } from 'lucide-react';
-import { GoogleMap, LoadScript, Marker, Autocomplete } from '@react-google-maps/api';
+import { GoogleMap, Marker, Autocomplete } from '@react-google-maps/api';
 import { API_CONFIG, WASTE_TYPE_MAPPING } from '@/lib/api-config';
-
-const libraries = ['places'];
+import { useGoogleMaps } from '@/app/providers/GoogleMapsProvider';
 
 export default function ReportWaste() {
   const { user } = useUser();
+  const { isLoaded, loadError } = useGoogleMaps();
+  
   const [location, setLocation] = useState(null);
   const [loadingLocation, setLoadingLocation] = useState(false);
   const [locationError, setLocationError] = useState('');
@@ -793,12 +794,21 @@ export default function ReportWaste() {
                 </div>
 
                 {/* Google Maps Search */}
-                <LoadScript googleMapsApiKey={process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY || ''} libraries={libraries}>
-                  <div className="mb-4">
-                    <Autocomplete
-                      onLoad={setAutocomplete}
-                      onPlaceChanged={onPlaceSelected}
-                    >
+                {loadError ? (
+                  <div className="mb-4 p-4 bg-red-50 rounded-lg text-red-700 text-sm">
+                    Failed to load Google Maps. Please check your API key.
+                  </div>
+                ) : !isLoaded ? (
+                  <div className="mb-4 p-4 bg-gray-50 rounded-lg flex items-center justify-center">
+                    <Loader2 className="w-5 h-5 animate-spin text-emerald-600" />
+                  </div>
+                ) : (
+                  <>
+                    <div className="mb-4">
+                      <Autocomplete
+                        onLoad={setAutocomplete}
+                        onPlaceChanged={onPlaceSelected}
+                      >
                       <div className="relative">
                         <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
                         <input
@@ -838,7 +848,8 @@ export default function ReportWaste() {
                       </GoogleMap>
                     </div>
                   )}
-                </LoadScript>
+                  </>
+                )}
 
                 {location ? (
                   <div className="bg-linear-to-br from-green-50 to-emerald-50 border-2 border-green-200 rounded-lg p-4">

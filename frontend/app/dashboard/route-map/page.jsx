@@ -6,8 +6,9 @@ import {
   MapPin, Navigation, Trash2, CheckCircle, Clock, 
   ArrowUp, ArrowDown, Route, Loader2, Target, TrendingUp
 } from 'lucide-react';
-import { GoogleMap, LoadScript, Marker, DirectionsRenderer } from '@react-google-maps/api';
+import { GoogleMap, Marker, DirectionsRenderer } from '@react-google-maps/api';
 import { API_CONFIG } from '@/lib/api-config';
+import { useGoogleMaps } from '@/app/providers/GoogleMapsProvider';
 
 const mapContainerStyle = {
   width: '100%',
@@ -21,6 +22,8 @@ const defaultCenter = {
 
 export default function RouteMapPage() {
   const { user } = useUser();
+  const { isLoaded, loadError } = useGoogleMaps();
+  
   const [locations, setLocations] = useState([]);
   const [loading, setLoading] = useState(true);
   const [center, setCenter] = useState(defaultCenter);
@@ -28,8 +31,6 @@ export default function RouteMapPage() {
   const [totalDistance, setTotalDistance] = useState('');
   const [totalDuration, setTotalDuration] = useState('');
   const [isCalculatingRoute, setIsCalculatingRoute] = useState(false);
-  const [isMapLoaded, setIsMapLoaded] = useState(false);
-  const [mapError, setMapError] = useState(null);
   const [userLocation, setUserLocation] = useState(null);
   const [loadingUserLocation, setLoadingUserLocation] = useState(false);
   
@@ -200,10 +201,10 @@ export default function RouteMapPage() {
 
   // Auto-calculate route when locations change and map is loaded
   useEffect(() => {
-    if (locations.length >= 1 && isMapLoaded) {
+    if (locations.length >= 1 && isLoaded) {
       calculateRoute();
     }
-  }, [locations, isMapLoaded, calculateRoute]);
+  }, [locations, isLoaded, calculateRoute]);
 
   // Move location up in priority
   const movePriorityUp = (id) => {
@@ -542,13 +543,13 @@ export default function RouteMapPage() {
           {/* Map Section */}
           <div className="lg:col-span-2 bg-white rounded-2xl shadow-xl overflow-hidden border border-gray-100">
             <div className="h-[600px] relative">
-              {mapError ? (
+              {loadError ? (
                 <div className="flex flex-col items-center justify-center h-full p-8 text-center">
                   <div className="w-20 h-20 bg-red-100 rounded-full flex items-center justify-center mb-4">
                     <MapPin className="w-10 h-10 text-red-600" />
                   </div>
                   <h3 className="text-xl font-bold text-gray-900 mb-2">Google Maps API Error</h3>
-                  <p className="text-gray-600 mb-4 max-w-md">{mapError}</p>
+                  <p className="text-gray-600 mb-4 max-w-md">{loadError?.message || 'Failed to load Google Maps'}</p>
                   <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 max-w-2xl text-left">
                     <p className="text-sm font-semibold text-yellow-900 mb-2">🔧 Setup Required:</p>
                     <ol className="text-sm text-yellow-800 space-y-2 list-decimal list-inside">
@@ -574,27 +575,16 @@ export default function RouteMapPage() {
                     </div>
                   </div>
                 </div>
-              ) : loading ? (
+              ) : !isLoaded || loading ? (
                 <div className="flex items-center justify-center h-full">
                   <Loader2 className="w-12 h-12 text-emerald-600 animate-spin" />
                 </div>
               ) : (
-                <LoadScript 
-                  googleMapsApiKey={process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY || 'YOUR_GOOGLE_MAPS_API_KEY'}
-                  onLoad={() => {
-                    setIsMapLoaded(true);
-                    setMapError(null);
-                  }}
-                  onError={(error) => {
-                    console.error('Error loading Google Maps:', error);
-                    setMapError('Failed to load Google Maps. Please check your API key and ensure Maps JavaScript API is enabled in Google Cloud Console.');
-                  }}
+                <GoogleMap
+                  mapContainerStyle={mapContainerStyle}
+                  center={center}
+                  zoom={12}
                 >
-                  <GoogleMap
-                    mapContainerStyle={mapContainerStyle}
-                    center={center}
-                    zoom={12}
-                  >
                     {/* Show user's current location */}
                     {userLocation && (
                       <Marker
@@ -639,7 +629,6 @@ export default function RouteMapPage() {
                       />
                     )}
                   </GoogleMap>
-                </LoadScript>
               )}
 
               {isCalculatingRoute && (
