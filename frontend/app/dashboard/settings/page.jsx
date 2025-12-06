@@ -4,6 +4,8 @@ import React, { useState, useEffect } from 'react';
 import { useUser } from '@clerk/nextjs';
 import { User, Shield, Bell, Save, Loader, CheckCircle, AlertCircle, Trash2, TrendingUp, Award, MapPin, Calendar } from 'lucide-react';
 
+const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000';
+
 export default function ProfilePage() {
   const { user: clerkUser } = useUser();
   const [loading, setLoading] = useState(true);
@@ -30,6 +32,7 @@ export default function ProfilePage() {
     state: '',
     country: '',
     enableCollector: false,
+    newsletterEnabled: true,
     reporterPoints: 0,
     collectorPoints: 0,
     globalPoints: 0,
@@ -48,9 +51,11 @@ export default function ProfilePage() {
   const fetchNotifications = async () => {
     try {
       setLoadingNotifications(true);
-      const response = await fetch('https://jeanene-unexposed-ingrid.ngrok-free.dev/api/notifications', {
+      console.log('Fetching notifications from API:', `${API_URL}/api/notifications`);
+      const response = await fetch(`${API_URL}/api/notifications`, {
         headers: {
           'Content-Type': 'application/json',
+          'x-user-id': clerkUser?.id,
         },
       });
 
@@ -75,10 +80,11 @@ export default function ProfilePage() {
 
   const markNotificationAsRead = async (notificationId) => {
     try {
-      const response = await fetch(`https://jeanene-unexposed-ingrid.ngrok-free.dev/api/notifications/${notificationId}/read`, {
+      const response = await fetch(`${API_URL}/api/notifications/${notificationId}/read`, {
         method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',
+          'x-user-id': clerkUser?.id,
         },
       });
 
@@ -207,6 +213,7 @@ export default function ProfilePage() {
           state: userData.state,
           country: userData.country,
           enableCollector: userData.enableCollector,
+          newsletterEnabled: userData.newsletterEnabled,
         }),
       });
 
@@ -244,6 +251,7 @@ export default function ProfilePage() {
           state: data.user.state || prev.state,
           country: data.user.country || prev.country,
           enableCollector: data.user.enableCollector !== undefined ? data.user.enableCollector : prev.enableCollector,
+          newsletterEnabled: data.user.newsletterEnabled !== undefined ? data.user.newsletterEnabled : prev.newsletterEnabled,
         }));
 
         // Update phone verification status
@@ -279,7 +287,7 @@ export default function ProfilePage() {
       setSendingOtp(true);
       setMessage({ type: '', text: '' });
 
-      const response = await fetch('https://jeanene-unexposed-ingrid.ngrok-free.dev/api/phone/send-otp', {
+      const response = await fetch(`${API_URL}/api/phone/send-otp`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -639,8 +647,8 @@ export default function ProfilePage() {
                               </p>
                             </div>
                             <span className={`text-xs px-2 py-1 rounded-full font-bold whitespace-nowrap ${waste.status === 'COLLECTED' ? 'bg-emerald-500 text-white' :
-                                waste.status === 'IN_PROGRESS' ? 'bg-yellow-500 text-white' :
-                                  'bg-blue-500 text-white'
+                              waste.status === 'IN_PROGRESS' ? 'bg-yellow-500 text-white' :
+                                'bg-blue-500 text-white'
                               }`}>
                               {waste.status}
                             </span>
@@ -798,8 +806,8 @@ export default function ProfilePage() {
         {/* Message Alert */}
         {message.text && (
           <div className={`rounded-2xl p-4 flex items-center gap-3 shadow-lg ${message.type === 'success'
-              ? 'bg-emerald-50 border-2 border-emerald-300'
-              : 'bg-red-50 border-2 border-red-300'
+            ? 'bg-emerald-50 border-2 border-emerald-300'
+            : 'bg-red-50 border-2 border-red-300'
             }`}>
             {message.type === 'success' ? (
               <CheckCircle className="w-6 h-6 text-emerald-600" />
@@ -972,8 +980,8 @@ export default function ProfilePage() {
                   <div className="flex items-center gap-2 mb-2">
                     <h3 className="text-lg font-bold text-green-800">Enable WhatsApp Messaging</h3>
                     <span className={`px-3 py-1 rounded-full text-xs font-bold ${whatsappEnabled
-                        ? 'bg-green-500 text-white'
-                        : 'bg-gray-300 text-gray-700'
+                      ? 'bg-green-500 text-white'
+                      : 'bg-gray-300 text-gray-700'
                       }`}>
                       {whatsappEnabled ? 'ENABLED' : 'DISABLED'}
                     </span>
@@ -1140,8 +1148,8 @@ export default function ProfilePage() {
                   <div className="flex items-center gap-2 mb-2">
                     <h3 className="text-lg font-bold text-emerald-800">Become a Waste Collector</h3>
                     <span className={`px-3 py-1 rounded-full text-xs font-bold ${userData.enableCollector
-                        ? 'bg-emerald-500 text-white'
-                        : 'bg-gray-300 text-gray-700'
+                      ? 'bg-emerald-500 text-white'
+                      : 'bg-gray-300 text-gray-700'
                       }`}>
                       {userData.enableCollector ? 'ACTIVE' : 'INACTIVE'}
                     </span>
@@ -1195,6 +1203,66 @@ export default function ProfilePage() {
                 </div>
               )}
             </div>
+
+            {/* Newsletter Subscription Toggle */}
+            <div className="bg-linear-to-br from-blue-50 to-indigo-50 rounded-2xl p-6 border border-blue-300">
+              <div className="flex items-start justify-between gap-4">
+                <div className="flex-1">
+                  <div className="flex items-center gap-2 mb-2">
+                    <Bell className="w-5 h-5 text-blue-600" />
+                    <h3 className="text-lg font-bold text-blue-800">Newsletter Subscription</h3>
+                    <span className={`px-3 py-1 rounded-full text-xs font-bold ${userData.newsletterEnabled
+                      ? 'bg-blue-500 text-white'
+                      : 'bg-gray-300 text-gray-700'
+                      }`}>
+                      {userData.newsletterEnabled ? 'SUBSCRIBED' : 'UNSUBSCRIBED'}
+                    </span>
+                  </div>
+                  <p className="text-sm text-blue-700 mb-4">
+                    {userData.newsletterEnabled
+                      ? 'You are subscribed to our newsletter. You\'ll receive personalized waste management updates for your city and state via email.'
+                      : 'Subscribe to receive personalized newsletter with waste management statistics, environmental impact, and insights for your city and state.'
+                    }
+                  </p>
+                  <div className="space-y-2">
+                    <div className="flex items-center gap-2 text-sm text-blue-700">
+                      <CheckCircle className="w-4 h-4" />
+                      <span>City-specific waste reports and statistics</span>
+                    </div>
+                    <div className="flex items-center gap-2 text-sm text-blue-700">
+                      <CheckCircle className="w-4 h-4" />
+                      <span>State-wide environmental impact metrics</span>
+                    </div>
+                    <div className="flex items-center gap-2 text-sm text-blue-700">
+                      <CheckCircle className="w-4 h-4" />
+                      <span>Top collectors and community achievements</span>
+                    </div>
+                    <div className="flex items-center gap-2 text-sm text-blue-700">
+                      <CheckCircle className="w-4 h-4" />
+                      <span>Personalized insights and recommendations</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div className="mt-6 pt-6 border-t border-blue-200">
+                <button
+                  onClick={() => handleInputChange('newsletterEnabled', !userData.newsletterEnabled)}
+                  className={`w-full px-6 py-4 rounded-xl font-bold transition-all duration-300 transform hover:scale-105 shadow-lg hover:shadow-xl flex items-center justify-center gap-2 ${userData.newsletterEnabled
+                    ? 'bg-gray-400 hover:bg-gray-500 text-white'
+                    : 'bg-linear-to-r from-blue-500 to-indigo-600 text-white hover:from-blue-600 hover:to-indigo-700'
+                    }`}
+                >
+                  <Bell className="w-5 h-5" />
+                  {userData.newsletterEnabled ? 'Unsubscribe from Newsletter' : 'Subscribe to Newsletter'}
+                </button>
+                <p className="text-xs text-center text-blue-600 mt-3 font-medium">
+                  {userData.newsletterEnabled
+                    ? '📧 You will receive monthly updates about waste management in your area'
+                    : '✉️ Stay informed about environmental activities in your city'
+                  }
+                </p>
+              </div>
+            </div>
           </div>
         </div>
 
@@ -1217,8 +1285,8 @@ export default function ProfilePage() {
                 <h2 className="text-2xl font-bold mb-2">Waste Report Details</h2>
                 <div className="flex items-center gap-2">
                   <span className={`px-3 py-1 rounded-full text-xs font-bold ${selectedWasteDetail.status === 'COLLECTED' ? 'bg-emerald-500' :
-                      selectedWasteDetail.status === 'IN_PROGRESS' ? 'bg-yellow-500' :
-                        'bg-blue-500'
+                    selectedWasteDetail.status === 'IN_PROGRESS' ? 'bg-yellow-500' :
+                      'bg-blue-500'
                     }`}>
                     {selectedWasteDetail.status}
                   </span>
