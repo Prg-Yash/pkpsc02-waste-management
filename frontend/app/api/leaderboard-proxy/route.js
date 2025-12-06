@@ -5,7 +5,7 @@ const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'https://jeanene-unexpos
 export async function POST(request) {
   try {
     const body = await request.json();
-    const { type, userId } = body;
+    const { type, userId, page = 1, pageSize = 5 } = body;
 
     if (!userId) {
       return NextResponse.json(
@@ -27,7 +27,7 @@ export async function POST(request) {
         endpoint = '/api/leaderboard/global';
     }
 
-    const apiUrl = `${API_BASE_URL}${endpoint}?userId=${userId}`;
+    const apiUrl = `${API_BASE_URL}${endpoint}?userId=${userId}&page=${page}&pageSize=${pageSize}`;
 
     let response;
     try {
