@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { useUser } from '@clerk/nextjs';
-import { LayoutDashboard, BarChart3, Trash2, User, MapPin, Users, Trophy, Route, Flame, BookOpen } from 'lucide-react';
+import { LayoutDashboard, BarChart3, Trash2, User, MapPin, Users, Trophy, Route, Flame, BookOpen, ShoppingCart } from 'lucide-react';
 import { EcoFlowSidebar } from '@/components/ui/sidebar';
 import { GoogleMapsProvider } from '@/app/providers/GoogleMapsProvider';
 
@@ -55,6 +55,11 @@ export default function DashboardLayout({ children }) {
       label: 'Report Waste',
       href: '/dashboard/report-waste',
       icon: MapPin,
+    },
+    {
+      label: 'Marketplace',
+      href: '/dashboard/marketplace',
+      icon: ShoppingCart,
     },
   ];
 

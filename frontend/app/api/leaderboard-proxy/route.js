@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'https://jeanene-unexposed-ingrid.ngrok-free.dev';
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'https://api.ecoflow.devally.in';
 
 export async function POST(request) {
   try {
