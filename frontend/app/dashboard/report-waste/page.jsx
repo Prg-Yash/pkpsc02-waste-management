@@ -3,18 +3,19 @@
 import { useState, useRef, useEffect } from 'react';
 import { useUser, UserButton } from '@clerk/nextjs';
 import Link from 'next/link';
-import { 
-  MapPin, Camera, Trash2, Recycle, Package, Droplets, 
-  Leaf, Zap, ArrowLeft, CheckCircle, AlertCircle, 
+import {
+  MapPin, Camera, Trash2, Recycle, Package, Droplets,
+  Leaf, Zap, ArrowLeft, CheckCircle, AlertCircle,
   Upload, X, Loader2, TrendingUp, Award, Target, ChevronDown, Search
 } from 'lucide-react';
-import { GoogleMap, LoadScript, Marker, Autocomplete } from '@react-google-maps/api';
+import { GoogleMap, Marker, Autocomplete } from '@react-google-maps/api';
 import { API_CONFIG, WASTE_TYPE_MAPPING } from '@/lib/api-config';
-
-const libraries = ['places'];
+import { useGoogleMaps } from '@/app/providers/GoogleMapsProvider';
 
 export default function ReportWaste() {
   const { user } = useUser();
+  const { isLoaded, loadError } = useGoogleMaps();
+
   const [location, setLocation] = useState(null);
   const [loadingLocation, setLoadingLocation] = useState(false);
   const [locationError, setLocationError] = useState('');
@@ -85,9 +86,9 @@ export default function ReportWaste() {
       });
 
       if (!response.ok) throw new Error('Failed to analyze image');
-      
+
       const data = await response.json();
-      
+
       // Auto-fill weight and description
       if (data.estimatedWeight) {
         setWeight(data.estimatedWeight.toString());
@@ -121,11 +122,11 @@ export default function ReportWaste() {
       if (window.google && window.google.maps) {
         const geocoder = new window.google.maps.Geocoder();
         const latlng = { lat: latitude, lng: longitude };
-        
+
         geocoder.geocode({ location: latlng }, (results, status) => {
           if (status === 'OK' && results[0]) {
             setFullAddress(results[0].formatted_address);
-            
+
             // Extract city, state, country from address components
             const components = results[0].address_components;
             const addressData = {
@@ -133,7 +134,7 @@ export default function ReportWaste() {
               state: '',
               country: ''
             };
-            
+
             components.forEach(component => {
               if (component.types.includes('locality')) {
                 addressData.city = component.long_name;
@@ -145,7 +146,7 @@ export default function ReportWaste() {
                 addressData.country = component.long_name;
               }
             });
-            
+
             setAddress(addressData);
           }
         });
@@ -159,27 +160,27 @@ export default function ReportWaste() {
   const onPlaceSelected = () => {
     if (autocomplete) {
       const place = autocomplete.getPlace();
-      
+
       if (place.geometry) {
         const lat = place.geometry.location.lat();
         const lng = place.geometry.location.lng();
-        
+
         setLocation({
           latitude: lat,
           longitude: lng,
           accuracy: 10,
         });
-        
+
         setMapCenter({ lat, lng });
         setFullAddress(place.formatted_address || '');
-        
+
         // Extract address components
         const addressData = {
           city: '',
           state: '',
           country: ''
         };
-        
+
         if (place.address_components) {
           place.address_components.forEach(component => {
             if (component.types.includes('locality')) {
@@ -193,7 +194,7 @@ export default function ReportWaste() {
             }
           });
         }
-        
+
         setAddress(addressData);
         setShowMap(true);
       }
@@ -204,13 +205,13 @@ export default function ReportWaste() {
   const onMapClick = (e) => {
     const lat = e.latLng.lat();
     const lng = e.latLng.lng();
-    
+
     setLocation({
       latitude: lat,
       longitude: lng,
       accuracy: 10,
     });
-    
+
     setMapCenter({ lat, lng });
     getAddressFromCoordinates(lat, lng);
   };
@@ -230,19 +231,19 @@ export default function ReportWaste() {
       (position) => {
         const lat = position.coords.latitude;
         const lng = position.coords.longitude;
-        
+
         setLocation({
           latitude: lat,
           longitude: lng,
           accuracy: position.coords.accuracy,
         });
-        
+
         setMapCenter({ lat, lng });
         setShowMap(true);
-        
+
         // Fetch address from coordinates
         getAddressFromCoordinates(lat, lng);
-        
+
         setLoadingLocation(false);
       },
       (error) => {
@@ -300,8 +301,6 @@ export default function ReportWaste() {
           preview: URL.createObjectURL(blob),
         });
         closeCamera();
-        // Analyze the captured image
-        analyzeWasteImage(file);
       }, 'image/jpeg', 0.95);
     }
   };
@@ -332,10 +331,10 @@ export default function ReportWaste() {
     try {
       // Create FormData for multipart/form-data submission
       const formData = new FormData();
-      
+
       // Add the image file
       formData.append('image', photo.file);
-      
+
       // Add required fields
       formData.append('userId', user.id);
       // Use full address as location (stored as locationRaw in backend)
@@ -343,7 +342,7 @@ export default function ReportWaste() {
       formData.append('isLocationLatLng', 'true');
       formData.append('latitude', location.latitude.toString());
       formData.append('longitude', location.longitude.toString());
-      
+
       // Add AI analysis as JSON string (required by API)
       const aiAnalysis = aiAnalysisData || {
         category: parseFloat(weight) >= 10 ? 'large' : 'small',
@@ -353,20 +352,17 @@ export default function ReportWaste() {
         notes: description || 'User submitted waste report'
       };
       formData.append('aiAnalysis', JSON.stringify(aiAnalysis));
-      
+
       // Add optional address fields if available
       if (address.city) formData.append('city', address.city);
       if (address.state) formData.append('state', address.state);
       if (address.country) formData.append('country', address.country);
 
-      // Make API call to report waste
-      const apiUrl = `${API_CONFIG.BASE_URL}${API_CONFIG.ENDPOINTS.WASTE_REPORT}`;
-      const response = await fetch(apiUrl, {
+      // Make API call to report waste via proxy to avoid CORS/ngrok issues
+      const proxyUrl = '/api/waste-proxy';
+      const response = await fetch(proxyUrl, {
         method: 'POST',
-        headers: {
-          'x-user-id': user.id,
-        },
-        body: formData,
+        body: formData, // Proxy will forward FormData with proper headers
       });
 
       if (!response.ok) {
@@ -400,7 +396,7 @@ export default function ReportWaste() {
     } catch (error) {
       console.error('Error submitting waste report:', error);
       setIsSubmitting(false);
-      alert(`Failed to submit report: ${error.message}\n\nPlease make sure the API server is running on ${API_CONFIG.BASE_URL}`);
+      alert(`Failed to submit report: ${error.message}`);
     }
   };
 
@@ -409,7 +405,7 @@ export default function ReportWaste() {
   return (
     <div className="min-h-screen bg-linear-to-br from-slate-50 via-emerald-50 to-teal-50">
       <div className="max-w-[1600px] mx-auto p-4 sm:p-6 lg:p-8">
-        
+
         {/* Header */}
         <div className="bg-white rounded-2xl shadow-xl p-6 sm:p-8 border border-gray-100 mb-6">
           <div className="flex items-center gap-4">
@@ -524,10 +520,10 @@ export default function ReportWaste() {
         <form onSubmit={handleSubmit} className="space-y-4">
           {/* Main Grid Layout */}
           <div className="grid grid-cols-1 lg:grid-cols-5 gap-4">
-            
+
             {/* Left Column - Waste Type Selection */}
             <div className="lg:col-span-3 space-y-4">
-              
+
               {/* Waste Type Selection */}
               <div className="bg-white rounded-xl shadow-md p-4 border border-gray-100">
                 <div className="flex items-center gap-2 mb-4">
@@ -598,7 +594,7 @@ export default function ReportWaste() {
                         <p className="text-sm text-gray-600 font-semibold">Open Camera</p>
                       </div>
                     </button>
-                    
+
                     <div className="relative">
                       <div className="absolute inset-0 flex items-center">
                         <div className="w-full border-t border-gray-200"></div>
@@ -619,8 +615,6 @@ export default function ReportWaste() {
                               file,
                               preview: URL.createObjectURL(file),
                             });
-                            // Analyze the uploaded image
-                            analyzeWasteImage(file);
                           }
                         }}
                         className="hidden"
@@ -690,13 +684,33 @@ export default function ReportWaste() {
                         <X className="w-4 h-4" />
                       </button>
                     </div>
-                    <button
-                      type="button"
-                      onClick={() => setPhoto(null)}
-                      className="w-full bg-gray-200 hover:bg-gray-300 text-gray-900 font-semibold py-2 px-4 rounded-lg text-sm"
-                    >
-                      Retake Photo
-                    </button>
+                    <div className="grid grid-cols-2 gap-3">
+                      <button
+                        type="button"
+                        onClick={() => analyzeWasteImage(photo.file)}
+                        disabled={isAnalyzing}
+                        className="bg-linear-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 text-white font-semibold py-2 px-4 rounded-lg text-sm flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-300"
+                      >
+                        {isAnalyzing ? (
+                          <>
+                            <Loader2 className="w-4 h-4 animate-spin" />
+                            Analyzing...
+                          </>
+                        ) : (
+                          <>
+                            <Zap className="w-4 h-4" />
+                            Analyze with AI
+                          </>
+                        )}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setPhoto(null)}
+                        className="bg-gray-200 hover:bg-gray-300 text-gray-900 font-semibold py-2 px-4 rounded-lg text-sm transition-colors"
+                      >
+                        Retake Photo
+                      </button>
+                    </div>
                   </div>
                 )}
 
@@ -768,7 +782,7 @@ export default function ReportWaste() {
 
             {/* Right Column - Location & Summary */}
             <div className="lg:col-span-2 space-y-4">
-              
+
               {/* Location */}
               <div className="bg-white rounded-xl shadow-md p-4 border border-gray-100">
                 <div className="flex items-center justify-between mb-4">
@@ -793,52 +807,62 @@ export default function ReportWaste() {
                 </div>
 
                 {/* Google Maps Search */}
-                <LoadScript googleMapsApiKey={process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY || ''} libraries={libraries}>
-                  <div className="mb-4">
-                    <Autocomplete
-                      onLoad={setAutocomplete}
-                      onPlaceChanged={onPlaceSelected}
-                    >
-                      <div className="relative">
-                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-                        <input
-                          type="text"
-                          placeholder="Search for an address..."
-                          className="w-full pl-10 pr-4 py-2 border-2 border-gray-200 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none transition-all text-sm"
-                        />
-                      </div>
-                    </Autocomplete>
+                {loadError ? (
+                  <div className="mb-4 p-4 bg-red-50 rounded-lg text-red-700 text-sm">
+                    Failed to load Google Maps. Please check your API key.
                   </div>
-
-                  {/* Map Display */}
-                  {showMap && (
-                    <div className="mb-4 rounded-lg overflow-hidden border-2 border-emerald-200">
-                      <GoogleMap
-                        mapContainerStyle={{ width: '100%', height: '250px' }}
-                        center={mapCenter}
-                        zoom={15}
-                        onClick={onMapClick}
+                ) : !isLoaded ? (
+                  <div className="mb-4 p-4 bg-gray-50 rounded-lg flex items-center justify-center">
+                    <Loader2 className="w-5 h-5 animate-spin text-emerald-600" />
+                  </div>
+                ) : (
+                  <>
+                    <div className="mb-4">
+                      <Autocomplete
+                        onLoad={setAutocomplete}
+                        onPlaceChanged={onPlaceSelected}
                       >
-                        {location && (
-                          <Marker
-                            position={{ lat: location.latitude, lng: location.longitude }}
-                            draggable={true}
-                            onDragEnd={(e) => {
-                              const lat = e.latLng.lat();
-                              const lng = e.latLng.lng();
-                              setLocation({
-                                latitude: lat,
-                                longitude: lng,
-                                accuracy: 10,
-                              });
-                              getAddressFromCoordinates(lat, lng);
-                            }}
+                        <div className="relative">
+                          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                          <input
+                            type="text"
+                            placeholder="Search for an address..."
+                            className="w-full pl-10 pr-4 py-2 border-2 border-gray-200 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none transition-all text-sm"
                           />
-                        )}
-                      </GoogleMap>
+                        </div>
+                      </Autocomplete>
                     </div>
-                  )}
-                </LoadScript>
+
+                    {/* Map Display */}
+                    {showMap && (
+                      <div className="mb-4 rounded-lg overflow-hidden border-2 border-emerald-200">
+                        <GoogleMap
+                          mapContainerStyle={{ width: '100%', height: '250px' }}
+                          center={mapCenter}
+                          zoom={15}
+                          onClick={onMapClick}
+                        >
+                          {location && (
+                            <Marker
+                              position={{ lat: location.latitude, lng: location.longitude }}
+                              draggable={true}
+                              onDragEnd={(e) => {
+                                const lat = e.latLng.lat();
+                                const lng = e.latLng.lng();
+                                setLocation({
+                                  latitude: lat,
+                                  longitude: lng,
+                                  accuracy: 10,
+                                });
+                                getAddressFromCoordinates(lat, lng);
+                              }}
+                            />
+                          )}
+                        </GoogleMap>
+                      </div>
+                    )}
+                  </>
+                )}
 
                 {location ? (
                   <div className="bg-linear-to-br from-green-50 to-emerald-50 border-2 border-green-200 rounded-lg p-4">
@@ -846,7 +870,7 @@ export default function ReportWaste() {
                       <MapPin className="w-5 h-5 text-green-600 mt-0.5 shrink-0" />
                       <div className="flex-1">
                         <p className="font-bold text-green-900 text-sm mb-2">Location Captured</p>
-                        
+
                         {/* Full Address */}
                         {fullAddress && (
                           <div className="mb-3 p-2 bg-white/60 rounded-lg">
@@ -854,7 +878,7 @@ export default function ReportWaste() {
                             <p className="text-green-800 text-xs">{fullAddress}</p>
                           </div>
                         )}
-                        
+
                         {/* City, State, Country */}
                         {(address.city || address.state || address.country) && (
                           <div className="mb-3 p-2 bg-white/60 rounded-lg">
@@ -864,7 +888,7 @@ export default function ReportWaste() {
                             </p>
                           </div>
                         )}
-                        
+
                         <div className="space-y-1 text-xs">
                           <p className="text-green-700">
                             <span className="font-medium">Lat:</span> {location.latitude.toFixed(6)}
@@ -906,7 +930,7 @@ export default function ReportWaste() {
                   <CheckCircle className="w-5 h-5" />
                   Report Summary
                 </h3>
-                
+
                 <div className="space-y-2 text-sm">
                   <div className="flex items-center justify-between py-2 border-b border-white/20">
                     <span className="text-xs opacity-90">Waste Type</span>
@@ -914,28 +938,28 @@ export default function ReportWaste() {
                       {selectedWasteInfo ? selectedWasteInfo.name : 'Not selected'}
                     </span>
                   </div>
-                  
+
                   <div className="flex items-center justify-between py-2 border-b border-white/20">
                     <span className="text-xs opacity-90">Photo</span>
                     <span className="font-bold text-xs">
                       {photo ? 'Captured ✓' : 'Not captured'}
                     </span>
                   </div>
-                  
+
                   <div className="flex items-center justify-between py-2 border-b border-white/20">
                     <span className="text-xs opacity-90">Weight</span>
                     <span className="font-bold text-xs">
                       {weight ? `${weight} kg ✓` : 'Not added'}
                     </span>
                   </div>
-                  
+
                   <div className="flex items-center justify-between py-2 border-b border-white/20">
                     <span className="text-xs opacity-90">Location</span>
                     <span className="font-bold text-xs">
                       {location ? 'Detected ✓' : 'Detecting...'}
                     </span>
                   </div>
-                  
+
                   <div className="flex items-center justify-between py-2 border-b border-white/20">
                     <span className="text-xs opacity-90">Description</span>
                     <span className="font-bold text-xs">

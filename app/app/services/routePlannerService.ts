@@ -33,14 +33,15 @@ export async function addToRoutePlanner(
   userId: string
 ): Promise<{ success: boolean; report: RouteReport }> {
   try {
-    const response = await fetch(`${API_URL}/api/route-planner`, {
+    const response = await fetch(`${API_URL}/api/route-planner/add`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
+        "x-user-id": userId,
+        "ngrok-skip-browser-warning": "true",
       },
       body: JSON.stringify({
-        reportId,
-        userId,
+        wasteId: reportId,
       }),
     });
 
@@ -67,11 +68,13 @@ export async function fetchRoutePlannerReports(
 ): Promise<RouteReport[]> {
   try {
     const response = await fetch(
-      `${API_URL}/api/route-planner/${userId}`,
+      `${API_URL}/api/route-planner`,
       {
         method: "GET",
         headers: {
           "Content-Type": "application/json",
+          "x-user-id": userId,
+          "ngrok-skip-browser-warning": "true",
         },
       }
     );
@@ -82,10 +85,10 @@ export async function fetchRoutePlannerReports(
 
     const data = await response.json();
     console.log(
-      `✅ Fetched ${data.reports.length} reports from route planner`
+      `✅ Fetched ${data.route.length} reports from route planner`
     );
 
-    return data.reports;
+    return data.route;
   } catch (error: any) {
     console.error("❌ Error fetching route planner reports:", error);
     throw error;
@@ -101,12 +104,17 @@ export async function removeFromRoutePlanner(
 ): Promise<{ success: boolean }> {
   try {
     const response = await fetch(
-      `${API_URL}/api/route-planner/${reportId}?userId=${userId}`,
+      `${API_URL}/api/route-planner/remove`,
       {
-        method: "DELETE",
+        method: "POST",
         headers: {
           "Content-Type": "application/json",
+          "x-user-id": userId,
+          "ngrok-skip-browser-warning": "true",
         },
+        body: JSON.stringify({
+          wasteId: reportId,
+        }),
       }
     );
 

@@ -14,6 +14,7 @@ import {
   Image,
 } from "tamagui";
 import { useUser } from "@clerk/clerk-expo";
+import { router } from "expo-router";
 import { Alert, RefreshControl } from "react-native";
 import * as Location from "expo-location";
 import {
@@ -27,6 +28,13 @@ import {
 } from "../utils/locationUtils";
 import { addToRoutePlanner } from "../services/routePlannerService";
 import CollectorVerificationScreen from "../components/CollectorVerificationScreen";
+import {
+  fetchUserProfile,
+  isProfileComplete,
+  canCollectWaste,
+  getProfileCompletionMessage,
+} from "../services/userService";
+import { validateUserLocation } from "../utils/locationValidation";
 
 export default function CollectWasteScreen() {
   const { user } = useUser();
@@ -109,7 +117,68 @@ export default function CollectWasteScreen() {
     setRefreshing(false);
   };
 
-  const handleCollect = (report: PendingWasteReport) => {
+  const handleCollect = async (report: PendingWasteReport) => {
+    if (!user) return;
+
+    // Check profile completion and collector mode
+    try {
+      const profile = await fetchUserProfile(user.id);
+
+      if (!isProfileComplete(profile)) {
+        Alert.alert(
+          "Profile Incomplete ⚠️",
+          getProfileCompletionMessage(profile) +
+            "\n\nPlease go to the Profile tab to complete your information before collecting waste.",
+          [
+            {
+              text: "Go to Profile",
+              onPress: () => router.push("/(tabs)/profile"),
+            },
+          ]
+        );
+        return;
+      }
+
+      if (!canCollectWaste(profile)) {
+        Alert.alert(
+          "Collector Mode Disabled ❌",
+          "You must enable Collector Mode in your profile to collect waste.\n\nGo to Profile → Enable Collector Mode",
+          [
+            {
+              text: "Go to Profile",
+              onPress: () => router.push("/(tabs)/profile"),
+            },
+          ]
+        );
+        return;
+      }
+
+      // Validate current location against profile state
+      if (userLocation && profile.state && profile.country) {
+        const validation = validateUserLocation(
+          profile.state,
+          profile.country,
+          userLocation.latitude,
+          userLocation.longitude
+        );
+
+        if (!validation.isValid && validation.message) {
+          Alert.alert("Location Mismatch", validation.message, [
+            { text: "Cancel", style: "cancel" },
+            {
+              text: "Update Profile",
+              onPress: () => router.push("/(tabs)/profile"),
+            },
+          ]);
+          return;
+        }
+      }
+    } catch (error) {
+      console.error("Error checking profile:", error);
+      Alert.alert("Error", "Failed to verify profile. Please try again.");
+      return;
+    }
+
     setSelectedReport(report);
   };
 
@@ -133,6 +202,65 @@ export default function CollectWasteScreen() {
 
   const handleAddToRoute = async (report: PendingWasteReport) => {
     if (!user) return;
+
+    // Check profile completion and collector mode
+    try {
+      const profile = await fetchUserProfile(user.id);
+
+      if (!isProfileComplete(profile)) {
+        Alert.alert(
+          "Profile Incomplete ⚠️",
+          getProfileCompletionMessage(profile) +
+            "\n\nPlease go to the Profile tab to complete your information before adding to route.",
+          [
+            {
+              text: "Go to Profile",
+              onPress: () => router.push("/(tabs)/profile"),
+            },
+          ]
+        );
+        return;
+      }
+
+      if (!canCollectWaste(profile)) {
+        Alert.alert(
+          "Collector Mode Disabled ❌",
+          "You must enable Collector Mode in your profile to add waste to your route.\n\nGo to Profile → Enable Collector Mode",
+          [
+            {
+              text: "Go to Profile",
+              onPress: () => router.push("/(tabs)/profile"),
+            },
+          ]
+        );
+        return;
+      }
+
+      // Validate current location against profile state
+      if (userLocation && profile.state && profile.country) {
+        const validation = validateUserLocation(
+          profile.state,
+          profile.country,
+          userLocation.latitude,
+          userLocation.longitude
+        );
+
+        if (!validation.isValid && validation.message) {
+          Alert.alert("Location Mismatch", validation.message, [
+            { text: "Cancel", style: "cancel" },
+            {
+              text: "Update Profile",
+              onPress: () => router.push("/(tabs)/profile"),
+            },
+          ]);
+          return;
+        }
+      }
+    } catch (error) {
+      console.error("Error checking profile:", error);
+      Alert.alert("Error", "Failed to verify profile. Please try again.");
+      return;
+    }
 
     try {
       await addToRoutePlanner(report.id, user.id);

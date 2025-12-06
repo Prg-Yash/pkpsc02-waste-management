@@ -25,9 +25,7 @@ export default function AppHeader({ onNotificationPress }: AppHeaderProps) {
     getUserLocation();
     if (user) {
       loadUnreadCount();
-      // Poll for unread count every 30 seconds
-      const interval = setInterval(loadUnreadCount, 30000);
-      return () => clearInterval(interval);
+      // Don't auto-poll - only reload when user opens notifications modal
     }
   }, [user]);
 

@@ -34,6 +34,12 @@ import {
   formatLocation,
   type LocationData,
 } from "@/services/locationService";
+import {
+  fetchUserProfile,
+  isProfileComplete,
+  getProfileCompletionMessage,
+} from "../services/userService";
+import { validateUserLocation } from "../utils/locationValidation";
 
 type ScreenState = "picker" | "analyzing" | "result" | "submitting" | "success";
 
@@ -85,6 +91,26 @@ export default function ReportWasteScreen() {
   }, []);
 
   const pickImageFromCamera = async () => {
+    // Check profile completion first
+    if (user) {
+      try {
+        const profile = await fetchUserProfile(user.id);
+        if (!isProfileComplete(profile)) {
+          Alert.alert(
+            "Profile Incomplete ⚠️",
+            getProfileCompletionMessage(profile) +
+              "\n\nPlease go to the Profile tab to complete your information before reporting waste.",
+            [{ text: "OK", onPress: () => router.push("/(tabs)/profile") }]
+          );
+          return;
+        }
+      } catch (error) {
+        console.error("Error checking profile:", error);
+        Alert.alert("Error", "Failed to verify profile. Please try again.");
+        return;
+      }
+    }
+
     try {
       const result = await ImagePicker.launchCameraAsync({
         mediaTypes: ImagePicker.MediaTypeOptions.Images,
@@ -102,6 +128,26 @@ export default function ReportWasteScreen() {
   };
 
   const pickImageFromGallery = async () => {
+    // Check profile completion first
+    if (user) {
+      try {
+        const profile = await fetchUserProfile(user.id);
+        if (!isProfileComplete(profile)) {
+          Alert.alert(
+            "Profile Incomplete ⚠️",
+            getProfileCompletionMessage(profile) +
+              "\n\nPlease go to the Profile tab to complete your information before reporting waste.",
+            [{ text: "OK", onPress: () => router.push("/(tabs)/profile") }]
+          );
+          return;
+        }
+      } catch (error) {
+        console.error("Error checking profile:", error);
+        Alert.alert("Error", "Failed to verify profile. Please try again.");
+        return;
+      }
+    }
+
     try {
       const result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ImagePicker.MediaTypeOptions.Images,
@@ -127,6 +173,42 @@ export default function ReportWasteScreen() {
     try {
       const loc = await Location.getCurrentPositionAsync({});
       const { latitude, longitude } = loc.coords;
+
+      // Validate location against user's profile state
+      if (user) {
+        try {
+          const profile = await fetchUserProfile(user.id);
+          if (profile.state && profile.country) {
+            const validation = validateUserLocation(
+              profile.state,
+              profile.country,
+              latitude,
+              longitude
+            );
+
+            if (!validation.isValid && validation.message) {
+              setLoadingLocation(false);
+              Alert.alert("Location Mismatch", validation.message, [
+                {
+                  text: "Cancel",
+                  style: "cancel",
+                  onPress: () => {
+                    setImageUri(null);
+                    setState("picker");
+                  },
+                },
+                {
+                  text: "Update Profile",
+                  onPress: () => router.push("/(tabs)/profile"),
+                },
+              ]);
+              return;
+            }
+          }
+        } catch (error) {
+          console.error("Error validating location:", error);
+        }
+      }
 
       // Get address details from coordinates
       const geocoded = await reverseGeocode(latitude, longitude);
