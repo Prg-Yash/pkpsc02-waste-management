@@ -1203,6 +1203,163 @@ curl -X POST http://localhost:3000/api/waste/clxxx123/collect \
 
 ---
 
+### Public Route Planner API (WhatsApp Integration)
+
+#### Overview
+
+Public endpoints for WhatsApp AI agent integration. These endpoints do not require authentication headers and use phone number-based validation instead.
+
+**Use Cases:**
+- WhatsApp bot commands ("Show Route Planner", "Remove {wasteId}")
+- External integrations with phone verification
+- Mobile apps with WhatsApp integration
+
+**Security:**
+- Requires `phoneVerified === true`
+- Requires `whatsappMessagingEnabled === true`
+- Validates user permissions before operations
+
+---
+
+#### GET /api/public/route-planner
+
+Fetch route planner data by phone number.
+
+**Query Parameters**:
+```
+phone: +91XXXXXXXXXX (or 918097296453)
+```
+
+**Example Request**:
+```bash
+curl "http://localhost:3000/api/public/route-planner?phone=918097296453"
+```
+
+**Response**:
+```json
+{
+  "success": true,
+  "user": {
+    "id": "user_xxxxx",
+    "name": "John Doe",
+    "phone": "918097296453",
+    "phoneVerified": true,
+    "whatsappMessagingEnabled": true,
+    "enableCollector": true,
+    "address": "Pune, Maharashtra, India"
+  },
+  "routePlanner": [
+    {
+      "id": "clxxx123",
+      "wasteType": "Plastic",
+      "status": "IN_PROGRESS",
+      "location": "123 Main Street, Pune",
+      "latitude": 18.5204,
+      "longitude": 73.8567,
+      "imageUrl": "https://s3.../image.jpg",
+      "reporter": {
+        "id": "user_abc",
+        "name": "Jane Smith"
+      },
+      "estimatedWeight": 5.2,
+      "createdAt": "2025-12-07T10:00:00Z",
+      "reportedAt": "2025-12-07T10:00:00Z"
+    }
+  ],
+  "count": 1,
+  "whatsappMessage": "*ROUTE PLANNER SUMMARY* (EcoFlow)\\n\\nHello John Doe!\\nYou currently have *1* waste location scheduled for pickup.\\n\\n========================================\\n\\n*#1* - Plastic Waste\\nWaste ID: clxxx123\\nStatus: IN_PROGRESS\\nReported By: Jane Smith\\nLocation: 123 Main Street, Pune\\nView on Map:\\nhttps://www.google.com/maps/dir/?api=1&destination=18.5204,73.8567\\n\\n========================================\\n*Need help?*\\n- Send 'Help' for all commands\\n- Send 'Remove {wasteId}' to remove from route\\nThank you for keeping our city clean!",
+  "message": "Successfully retrieved 1 waste location from route planner"
+}
+```
+
+**Error Responses**:
+- `400` - Phone number is required
+- `404` - User not found
+- `403` - Phone not verified
+- `403` - WhatsApp messaging not enabled
+- `403` - Collector mode not enabled
+
+**WhatsApp Message Format**:
+The `whatsappMessage` field contains a pre-formatted message with:
+- User greeting
+- Waste count
+- Individual waste details with **Waste ID** (for removal)
+- Google Maps links
+- Complete optimized route link
+- Help instructions
+
+---
+
+#### POST /api/public/route-planner/remove
+
+Remove waste from route planner using phone number + waste ID.
+
+**Body**:
+```json
+{
+  "phone": "+91XXXXXXXXXX",
+  "wasteId": "clxxx123"
+}
+```
+
+**Example Request**:
+```bash
+curl -X POST http://localhost:3000/api/public/route-planner/remove \
+  -H "Content-Type: application/json" \
+  -d '{
+    "phone": "918097296453",
+    "wasteId": "clxxx123"
+  }'
+```
+
+**Response**:
+```json
+{
+  "success": true,
+  "message": "Waste removed from route planner successfully",
+  "waste": {
+    "id": "clxxx123",
+    "wasteType": "Plastic",
+    "status": "PENDING",
+    "location": "123 Main Street, Pune",
+    "reporter": {
+      "id": "user_abc",
+      "name": "Jane Smith"
+    }
+  }
+}
+```
+
+**Requirements**:
+- Phone number must be verified (`phoneVerified === true`)
+- WhatsApp messaging must be enabled (`whatsappMessagingEnabled === true`)
+- Waste must exist in database
+- Waste must be in user's route (`routeCollectorId === user.id`)
+- Waste status must be `IN_PROGRESS`
+
+**Error Responses**:
+- `400` - Phone number or waste ID is required
+- `404` - User not found
+- `403` - Phone not verified
+- `403` - WhatsApp messaging not enabled
+- `404` - Waste not found
+- `403` - Waste not in your route
+- `400` - Waste status is not IN_PROGRESS
+
+**WhatsApp Command Flow**:
+1. User sends: "Remove clxxx123"
+2. WhatsApp AI extracts: phone (from sender) + wasteId (from message)
+3. Calls: `POST /api/public/route-planner/remove`
+4. Returns success/error message to user
+
+**Operation Details**:
+- Status: `IN_PROGRESS` → `PENDING`
+- `routeCollectorId`: `user.id` → `null`
+- Waste becomes available for other collectors
+- No points deduction (removal is allowed)
+
+---
+
 ## 🔧 Error Responses
 
 All endpoints return consistent error format:
