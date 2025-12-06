@@ -73,13 +73,6 @@ router.post(
     authenticateUser,
     async (req, res) => {
         try {
-            // Validate user has address fields set
-            if (!req.user.city || !req.user.state || !req.user.country) {
-                return res.status(400).json({
-                    error: "Please update your profile with city, state, and country before reporting or collecting waste."
-                });
-            }
-
             const {
                 location,
                 isLocationLatLng,
@@ -212,43 +205,6 @@ router.post(
                 },
             });
 
-            // Step 6: Notify collectors in the same state
-            // Find all collectors with enableCollector=true and matching state
-            const collectorsInState = await prisma.user.findMany({
-                where: {
-                    enableCollector: true,
-                    state: req.user.state, // Match reporter's state
-                    id: { not: req.user.id }, // Exclude the reporter themselves
-                },
-                select: {
-                    id: true,
-                    name: true,
-                },
-            });
-
-            // Send notification to each collector in parallel
-            const notificationPromises = collectorsInState.map((collector) =>
-                createNotification({
-                    userId: collector.id,
-                    type: "WASTE_REPORTED",
-                    title: "New Waste Available",
-                    body: `Clear the Waste: ${parsedAiAnalysis.wasteType.toUpperCase()} waste reported in ${req.user.city || "your area"}, ${req.user.state}. Collect it to earn points!`,
-                    data: {
-                        wasteReportId: updatedWasteReport.id,
-                        reporterState: req.user.state,
-                        reporterCity: req.user.city,
-                        wasteType: parsedAiAnalysis.wasteType,
-                        location: location,
-                    },
-                })
-            );
-
-            await Promise.all(notificationPromises);
-
-            console.log(
-                `✅ Notified ${collectorsInState.length} collector(s) in ${req.user.state}`
-            );
-
             res.status(201).json({ waste: updatedWasteReport });
         } catch (error) {
             console.error("Error creating waste report:", error);
@@ -337,13 +293,6 @@ router.post(
             const { collectorLocation, isLocationLatLng, latitude, longitude } =
                 req.body;
 
-            // Validate user has address fields set
-            if (!req.user.city || !req.user.state || !req.user.country) {
-                return res.status(400).json({
-                    error: "Please update your profile with city, state, and country before reporting or collecting waste."
-                });
-            }
-
             // Validate user has collector enabled
             if (!req.user.enableCollector) {
                 return res.status(403).json({
@@ -381,6 +330,19 @@ router.post(
             if (waste.status !== "IN_PROGRESS") {
                 return res.status(400).json({
                     error: `Cannot collect waste with status: ${waste.status}`,
+                });
+            }
+
+            // Validate location: waste must be in user's registered state and country
+            if (waste.state && req.user.state && waste.state !== req.user.state) {
+                return res.status(403).json({
+                    error: `Cannot collect waste from ${waste.state}. You are registered in ${req.user.state}. Please update your location in settings.`
+                });
+            }
+
+            if (waste.country && req.user.country && waste.country !== req.user.country) {
+                return res.status(403).json({
+                    error: `Cannot collect waste from ${waste.country}. You are registered in ${req.user.country}. Please update your location in settings.`
                 });
             }
 

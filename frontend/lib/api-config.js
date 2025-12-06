@@ -5,6 +5,9 @@ export const API_CONFIG = {
     WASTE_REPORT: '/api/waste/report',
     WASTE_COLLECT: '/api/waste/collect',
     VERIFY_WASTE: '/api/verify-waste',
+    LEADERBOARD_REPORTERS: '/api/leaderboard/reporters',
+    LEADERBOARD_COLLECTORS: '/api/leaderboard/collectors',
+    LEADERBOARD_GLOBAL: '/api/leaderboard/global',
   },
 };
 
