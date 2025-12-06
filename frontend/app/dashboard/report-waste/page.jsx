@@ -176,32 +176,15 @@ export default function ReportWaste() {
         
         {/* Header */}
         <div className="bg-white rounded-2xl shadow-xl p-6 sm:p-8 border border-gray-100 mb-6">
-          <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-4">
-            <div className="flex items-center gap-4">
-              <Link 
-                href="/dashboard"
-                className="p-3 hover:bg-gray-100 rounded-xl transition-colors"
-              >
-                <ArrowLeft className="w-6 h-6 text-gray-600" />
-              </Link>
-              <div className="p-4 bg-linear-to-br from-green-500 to-emerald-600 rounded-2xl shadow-lg">
-                <Trash2 className="w-10 h-10 text-white" />
-              </div>
-              <div>
-                <h1 className="text-3xl sm:text-4xl font-bold bg-linear-to-r from-green-600 to-emerald-600 bg-clip-text text-transparent">
-                  Report Waste
-                </h1>
-                <p className="text-gray-600 mt-1">Submit waste collection reports</p>
-              </div>
+          <div className="flex items-center gap-4">
+            <div className="p-4 bg-linear-to-br from-green-500 to-emerald-600 rounded-2xl shadow-lg">
+              <Trash2 className="w-10 h-10 text-white" />
             </div>
-            <div className="flex items-center gap-3">
-              <div className="text-right">
-                <p className="text-sm text-gray-500">Welcome back</p>
-                <p className="text-lg font-semibold text-gray-900">
-                  {user?.firstName || user?.username || 'User'}
-                </p>
-              </div>
-              <UserButton afterSignOutUrl="/sign-in" />
+            <div>
+              <h1 className="text-3xl sm:text-4xl font-bold bg-linear-to-r from-green-600 to-emerald-600 bg-clip-text text-transparent">
+                Report Waste
+              </h1>
+              <p className="text-gray-600 mt-1">Submit waste collection reports</p>
             </div>
           </div>
         </div>

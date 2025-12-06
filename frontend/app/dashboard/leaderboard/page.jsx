@@ -188,32 +188,15 @@ const LeaderboardPage = () => {
         
         {/* Header */}
         <div className="bg-white rounded-2xl shadow-xl p-6 sm:p-8 border border-gray-100 mb-6">
-          <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-4">
-            <div className="flex items-center gap-4">
-              <Link 
-                href="/dashboard" 
-                className="p-3 hover:bg-gray-100 rounded-xl transition-colors"
-              >
-                <ArrowLeft className="w-6 h-6 text-gray-600" />
-              </Link>
-              <div className="p-4 bg-linear-to-br from-green-500 to-emerald-600 rounded-2xl shadow-lg">
-                <Trophy className="w-10 h-10 text-white" />
-              </div>
-              <div>
-                <h1 className="text-3xl sm:text-4xl font-bold bg-linear-to-r from-green-600 to-emerald-600 bg-clip-text text-transparent">
-                  Leaderboard
-                </h1>
-                <p className="text-gray-600 mt-1">Top Contributors & Rankings</p>
-              </div>
+          <div className="flex items-center gap-4">
+            <div className="p-4 bg-linear-to-br from-green-500 to-emerald-600 rounded-2xl shadow-lg">
+              <Trophy className="w-10 h-10 text-white" />
             </div>
-            <div className="flex items-center gap-3">
-              <div className="text-right">
-                <p className="text-sm text-gray-500">Welcome back</p>
-                <p className="text-lg font-semibold text-gray-900">
-                  {user?.firstName || user?.username || 'User'}
-                </p>
-              </div>
-              <UserButton afterSignOutUrl="/sign-in" />
+            <div>
+              <h1 className="text-3xl sm:text-4xl font-bold bg-linear-to-r from-green-600 to-emerald-600 bg-clip-text text-transparent">
+                Leaderboard
+              </h1>
+              <p className="text-gray-600 mt-1">Top Contributors & Rankings</p>
             </div>
           </div>
         </div>
@@ -283,8 +266,8 @@ const LeaderboardPage = () => {
             {leaderboardData.map((entry, index) => (
               <div
                 key={entry.rank}
-                className={`grid grid-cols-1 md:grid-cols-12 gap-4 p-4 sm:p-6 hover:bg-gradient-to-r hover:from-green-50 hover:to-emerald-50 transition-all duration-300 ${
-                  entry.rank <= 3 ? 'bg-gradient-to-r from-green-50 to-emerald-50' : ''
+                className={`grid grid-cols-1 md:grid-cols-12 gap-4 p-4 sm:p-6 hover:bg-linear-to-r hover:from-green-50 hover:to-emerald-50 transition-all duration-300 ${
+                  entry.rank <= 3 ? 'bg-linear-to-r from-green-50 to-emerald-50' : ''
                 }`}
                 style={{ 
                   animation: `fadeInUp 0.4s ease-out ${index * 50}ms both`
@@ -293,9 +276,9 @@ const LeaderboardPage = () => {
                 {/* Rank */}
                 <div className="md:col-span-1 flex md:justify-center items-center gap-3">
                   <div className={`flex items-center justify-center w-10 h-10 rounded-xl font-bold ${
-                    entry.rank === 1 ? 'bg-gradient-to-br from-green-400 to-green-600 text-white' :
-                    entry.rank === 2 ? 'bg-gradient-to-br from-gray-300 to-gray-500 text-white' :
-                    entry.rank === 3 ? 'bg-gradient-to-br from-amber-600 to-amber-800 text-white' :
+                    entry.rank === 1 ? 'bg-linear-to-br from-green-400 to-green-600 text-white' :
+                    entry.rank === 2 ? 'bg-linear-to-br from-gray-300 to-gray-500 text-white' :
+                    entry.rank === 3 ? 'bg-linear-to-br from-amber-600 to-amber-800 text-white' :
                     'bg-gray-100 text-gray-700'
                   }`}>
                     {entry.rank}
