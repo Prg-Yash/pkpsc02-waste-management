@@ -7,13 +7,83 @@ import { Trash2, MapPin, CheckCircle, Clock, Upload, Loader, Calendar, Weight, S
 
 // Mock data for demonstration
 const mockTasks = [
-  { id: 1, location: 'Park Avenue, Zone A', wasteType: 'Plastic Bottles', amount: '15 kg', status: 'pending', date: '2024-12-06', collectorId: null },
-  { id: 2, location: 'Main Street Market', wasteType: 'Organic Waste', amount: '25 kg', status: 'in_progress', date: '2024-12-06', collectorId: 1 },
-  { id: 3, location: 'Green Plaza', wasteType: 'Paper & Cardboard', amount: '12 kg', status: 'pending', date: '2024-12-06', collectorId: null },
-  { id: 4, location: 'River Road Residential', wasteType: 'Glass Containers', amount: '8 kg', status: 'verified', date: '2024-12-05', collectorId: 1 },
-  { id: 5, location: 'Tech Hub District', wasteType: 'E-Waste', amount: '5 kg', status: 'pending', date: '2024-12-06', collectorId: null },
-  { id: 6, location: 'Market Square', wasteType: 'Metal Cans', amount: '18 kg', status: 'in_progress', date: '2024-12-06', collectorId: 2 },
-  { id: 7, location: 'Central Park', wasteType: 'Mixed Recyclables', amount: '30 kg', status: 'pending', date: '2024-12-06', collectorId: null },
+  { 
+    id: 1, 
+    location: 'Park Avenue, Zone A', 
+    wasteType: 'Plastic Bottles', 
+    amount: '15 kg', 
+    status: 'pending', 
+    date: '2024-12-06', 
+    collectorId: null,
+    reportedImage: null,
+    reportedLocation: { latitude: 40.7128, longitude: -74.0060 }
+  },
+  { 
+    id: 2, 
+    location: 'Main Street Market', 
+    wasteType: 'Organic Waste', 
+    amount: '25 kg', 
+    status: 'in_progress', 
+    date: '2024-12-06', 
+    collectorId: 1,
+    reportedImage: null,
+    reportedLocation: { latitude: 40.7580, longitude: -73.9855 }
+  },
+  { 
+    id: 3, 
+    location: 'Green Plaza', 
+    wasteType: 'Paper & Cardboard', 
+    amount: '12 kg', 
+    status: 'pending', 
+    date: '2024-12-06', 
+    collectorId: null,
+    reportedImage: null,
+    reportedLocation: { latitude: 40.7489, longitude: -73.9680 }
+  },
+  { 
+    id: 4, 
+    location: 'River Road Residential', 
+    wasteType: 'Glass Containers', 
+    amount: '8 kg', 
+    status: 'verified', 
+    date: '2024-12-05', 
+    collectorId: 1,
+    reportedImage: null,
+    reportedLocation: { latitude: 40.7614, longitude: -73.9776 }
+  },
+  { 
+    id: 5, 
+    location: 'Tech Hub District', 
+    wasteType: 'E-Waste', 
+    amount: '5 kg', 
+    status: 'pending', 
+    date: '2024-12-06', 
+    collectorId: null,
+    reportedImage: null,
+    reportedLocation: { latitude: 40.7484, longitude: -73.9857 }
+  },
+  { 
+    id: 6, 
+    location: 'Market Square', 
+    wasteType: 'Metal Cans', 
+    amount: '18 kg', 
+    status: 'in_progress', 
+    date: '2024-12-06', 
+    collectorId: 2,
+    reportedImage: null,
+    reportedLocation: { latitude: 40.7589, longitude: -73.9851 }
+  },
+  { 
+    id: 7, 
+    location: 'Central Park', 
+    wasteType: 'Mixed Recyclables', 
+    amount: '30 kg', 
+    status: 'pending', 
+    date: '2024-12-06', 
+    collectorId: null,
+    reportedImage: null,
+    reportedLocation: { latitude: 40.7829, longitude: -73.9654 }
+  },
 ];
 
 const ITEMS_PER_PAGE = 5;
@@ -31,6 +101,9 @@ const CollectPage = () => {
   const [verificationResult, setVerificationResult] = useState(null);
   const [reward, setReward] = useState(null);
   const [isVisible, setIsVisible] = useState(false);
+  const [currentLocation, setCurrentLocation] = useState(null);
+  const [locationError, setLocationError] = useState('');
+  const [geminiAnalysis, setGeminiAnalysis] = useState(null);
 
   useEffect(() => {
     setIsVisible(true);
@@ -55,27 +128,98 @@ const CollectPage = () => {
     }
   };
 
+  const getCurrentLocation = () => {
+    setLocationError('');
+    if (!navigator.geolocation) {
+      setLocationError('Geolocation is not supported by your browser');
+      return;
+    }
+
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        setCurrentLocation({
+          latitude: position.coords.latitude,
+          longitude: position.coords.longitude,
+        });
+      },
+      (error) => {
+        setLocationError('Unable to retrieve your location');
+        console.error('Location error:', error);
+      }
+    );
+  };
+
   const handleVerify = async () => {
     if (!selectedTask || !verificationImage) return;
 
     setVerificationStatus('verifying');
+    setGeminiAnalysis(null);
     
-    setTimeout(() => {
-      const mockResult = {
-        wasteTypeMatch: true,
-        quantityMatch: true,
-        confidence: 0.92
-      };
+    try {
+      // Get current location
+      if (!currentLocation) {
+        await new Promise((resolve, reject) => {
+          navigator.geolocation.getCurrentPosition(
+            (position) => {
+              const location = {
+                latitude: position.coords.latitude,
+                longitude: position.coords.longitude,
+              };
+              setCurrentLocation(location);
+              resolve(location);
+            },
+            (error) => {
+              setLocationError('Location required for verification');
+              reject(error);
+            }
+          );
+        });
+      }
+
+      // Call Gemini API for verification
+      const response = await fetch('/api/verify-waste', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          collectedImage: verificationImage,
+          reportedImage: selectedTask.reportedImage,
+          location: currentLocation,
+          reportedLocation: selectedTask.reportedLocation,
+          wasteType: selectedTask.wasteType,
+          amount: selectedTask.amount,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Verification failed');
+      }
+
+      setGeminiAnalysis(data.analysis);
+      const result = data.parsedResult;
       
-      setVerificationResult(mockResult);
+      setVerificationResult(result);
       setVerificationStatus('success');
       
-      if (mockResult.wasteTypeMatch && mockResult.quantityMatch && mockResult.confidence > 0.7) {
+      if (result.overallMatch) {
         handleStatusChange(selectedTask.id, 'verified');
-        const earnedReward = Math.floor(Math.random() * 50) + 10;
+        // Calculate reward based on confidence and amount
+        const baseReward = parseInt(selectedTask.amount) * 2;
+        const earnedReward = Math.floor(baseReward * result.confidence);
         setReward(earnedReward);
+      } else {
+        setVerificationStatus('failure');
       }
-    }, 2000);
+    } catch (error) {
+      console.error('Verification error:', error);
+      setVerificationStatus('failure');
+      setVerificationResult({
+        error: error.message || 'Verification failed. Please try again.'
+      });
+    }
   };
 
   const filteredTasks = tasks.filter(task =>
@@ -292,13 +436,37 @@ const CollectPage = () => {
                   </button>
                 </div>
                 
-                <p className="mb-6 text-sm text-gray-600 bg-emerald-50 border border-emerald-200 rounded-lg p-4">
-                  Upload a photo of the collected waste to verify and earn your reward.
-                </p>
+                <div className="mb-6 bg-blue-50 border border-blue-200 rounded-lg p-4">
+                  <div className="flex items-start gap-3">
+                    <MapPin className="w-5 h-5 text-blue-600 mt-0.5" />
+                    <div className="flex-1">
+                      <p className="text-sm font-semibold text-blue-900 mb-2">Location Verification</p>
+                      <p className="text-xs text-blue-700 mb-3">
+                        Your current location will be compared with the reported location to ensure accuracy.
+                      </p>
+                      {currentLocation ? (
+                        <div className="text-xs text-blue-600 bg-white rounded p-2">
+                          <p><strong>Current:</strong> {currentLocation.latitude.toFixed(6)}, {currentLocation.longitude.toFixed(6)}</p>
+                          <p><strong>Reported:</strong> {selectedTask.reportedLocation.latitude.toFixed(6)}, {selectedTask.reportedLocation.longitude.toFixed(6)}</p>
+                        </div>
+                      ) : (
+                        <button
+                          onClick={getCurrentLocation}
+                          className="text-xs px-3 py-1.5 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors"
+                        >
+                          Get Current Location
+                        </button>
+                      )}
+                      {locationError && (
+                        <p className="text-xs text-red-600 mt-2">{locationError}</p>
+                      )}
+                    </div>
+                  </div>
+                </div>
 
                 <div className="mb-6">
                   <label className="block text-sm font-semibold text-gray-700 mb-3">
-                    Upload Image
+                    Upload Verification Image
                   </label>
                   <div className="border-2 border-dashed border-gray-300 rounded-xl p-8 text-center hover:border-emerald-500 transition-colors duration-300 bg-gray-50">
                     <Upload className="mx-auto h-12 w-12 text-gray-400 mb-3" />
@@ -339,45 +507,99 @@ const CollectPage = () => {
                 </button>
 
                 {verificationStatus === 'success' && verificationResult && (
-                  <div className="mt-6 p-6 bg-emerald-50 border border-emerald-200 rounded-xl">
-                    <div className="flex items-center gap-2 mb-4">
-                      <CheckCircle className="w-6 h-6 text-emerald-600" />
-                      <h4 className="font-bold text-emerald-800">Verification Results</h4>
-                    </div>
-                    <div className="grid gap-3 text-sm">
-                      <div className="flex justify-between items-center">
-                        <span className="text-gray-700 font-medium">Waste Type Match:</span>
-                        <span className={`font-bold ${verificationResult.wasteTypeMatch ? 'text-emerald-600' : 'text-red-600'}`}>
-                          {verificationResult.wasteTypeMatch ? 'Yes ✓' : 'No ✗'}
-                        </span>
+                  <div className="mt-6 space-y-4">
+                    <div className="p-6 bg-emerald-50 border border-emerald-200 rounded-xl">
+                      <div className="flex items-center gap-2 mb-4">
+                        <CheckCircle className="w-6 h-6 text-emerald-600" />
+                        <h4 className="font-bold text-emerald-800">AI Verification Results</h4>
                       </div>
-                      <div className="flex justify-between items-center">
-                        <span className="text-gray-700 font-medium">Quantity Match:</span>
-                        <span className={`font-bold ${verificationResult.quantityMatch ? 'text-emerald-600' : 'text-red-600'}`}>
-                          {verificationResult.quantityMatch ? 'Yes ✓' : 'No ✗'}
-                        </span>
-                      </div>
-                      <div className="flex justify-between items-center">
-                        <span className="text-gray-700 font-medium">Confidence:</span>
-                        <span className="font-bold text-emerald-600">{(verificationResult.confidence * 100).toFixed(2)}%</span>
-                      </div>
-                      {reward && (
-                        <div className="mt-4 p-4 bg-gradient-to-r from-emerald-500 to-teal-600 text-white rounded-lg flex items-center justify-between">
-                          <span className="font-semibold">Reward Earned:</span>
-                          <span className="text-2xl font-bold flex items-center gap-2">
-                            <Award className="w-6 h-6" />
-                            {reward} Tokens
+                      <div className="grid gap-3 text-sm">
+                        <div className="flex justify-between items-center">
+                          <span className="text-gray-700 font-medium">Contains Waste:</span>
+                          <span className={`font-bold ${verificationResult.containsWaste ? 'text-emerald-600' : 'text-red-600'}`}>
+                            {verificationResult.containsWaste ? 'Yes ✓' : 'No ✗'}
                           </span>
                         </div>
-                      )}
+                        <div className="flex justify-between items-center">
+                          <span className="text-gray-700 font-medium">Waste Type Match:</span>
+                          <span className={`font-bold ${verificationResult.wasteTypeMatch ? 'text-emerald-600' : 'text-red-600'}`}>
+                            {verificationResult.wasteTypeMatch ? 'Yes ✓' : 'No ✗'}
+                          </span>
+                        </div>
+                        <div className="flex justify-between items-center">
+                          <span className="text-gray-700 font-medium">Quantity Match:</span>
+                          <span className={`font-bold ${verificationResult.quantityMatch ? 'text-emerald-600' : 'text-red-600'}`}>
+                            {verificationResult.quantityMatch ? 'Yes ✓' : 'No ✗'}
+                          </span>
+                        </div>
+                        <div className="flex justify-between items-center">
+                          <span className="text-gray-700 font-medium">Location Match:</span>
+                          <span className={`font-bold ${verificationResult.locationMatch ? 'text-emerald-600' : 'text-red-600'}`}>
+                            {verificationResult.locationMatch ? `Yes ✓` : 'No ✗'}
+                            {verificationResult.locationDistance !== null && (
+                              <span className="text-xs ml-2">({(verificationResult.locationDistance * 1000).toFixed(0)}m away)</span>
+                            )}
+                          </span>
+                        </div>
+                        <div className="flex justify-between items-center">
+                          <span className="text-gray-700 font-medium">AI Confidence:</span>
+                          <span className="font-bold text-emerald-600">{(verificationResult.confidence * 100).toFixed(1)}%</span>
+                        </div>
+                        {verificationResult.imageSimilarity > 0 && (
+                          <div className="flex justify-between items-center">
+                            <span className="text-gray-700 font-medium">Image Similarity:</span>
+                            <span className="font-bold text-blue-600">{(verificationResult.imageSimilarity * 100).toFixed(1)}%</span>
+                          </div>
+                        )}
+                        {verificationResult.concerns && verificationResult.concerns.length > 0 && (
+                          <div className="mt-3 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
+                            <p className="text-xs font-semibold text-yellow-800 mb-1">AI Concerns:</p>
+                            <p className="text-xs text-yellow-700">{verificationResult.concerns[0]}</p>
+                          </div>
+                        )}
+                      </div>
                     </div>
+
+                    {geminiAnalysis && (
+                      <div className="p-4 bg-blue-50 border border-blue-200 rounded-xl">
+                        <h5 className="font-semibold text-blue-900 mb-2 text-sm">Detailed AI Analysis:</h5>
+                        <p className="text-xs text-blue-800 whitespace-pre-wrap">{geminiAnalysis}</p>
+                      </div>
+                    )}
+
+                    {reward && verificationResult.overallMatch && (
+                      <div className="p-4 bg-linear-to-r from-emerald-500 to-teal-600 text-white rounded-xl flex items-center justify-between shadow-lg">
+                        <span className="font-semibold">🎉 Reward Earned:</span>
+                        <span className="text-2xl font-bold flex items-center gap-2">
+                          <Award className="w-6 h-6" />
+                          {reward} Tokens
+                        </span>
+                      </div>
+                    )}
+
+                    {!verificationResult.overallMatch && (
+                      <div className="p-4 bg-red-50 border border-red-200 rounded-xl">
+                        <p className="text-sm font-semibold text-red-800">
+                          ⚠️ Verification incomplete. Please ensure:
+                        </p>
+                        <ul className="text-xs text-red-700 mt-2 ml-4 list-disc space-y-1">
+                          {!verificationResult.containsWaste && <li>Image clearly shows waste materials</li>}
+                          {!verificationResult.wasteTypeMatch && <li>Waste type matches the reported type</li>}
+                          {!verificationResult.quantityMatch && <li>Amount matches the reported quantity</li>}
+                          {!verificationResult.locationMatch && <li>You are at the correct location</li>}
+                        </ul>
+                      </div>
+                    )}
                   </div>
                 )}
 
                 {verificationStatus === 'failure' && (
-                  <p className="mt-4 text-red-600 text-center text-sm font-medium bg-red-50 border border-red-200 rounded-lg p-3">
-                    Verification failed. Please try again.
-                  </p>
+                  <div className="mt-4 p-4 text-red-600 bg-red-50 border border-red-200 rounded-lg">
+                    <p className="font-semibold text-sm mb-2">❌ Verification Failed</p>
+                    <p className="text-xs">
+                      {verificationResult?.error || 'Unable to verify the collection. Please ensure you have a clear image and proper location access, then try again.'}
+                    </p>
+                  </div>
                 )}
               </div>
             </div>
