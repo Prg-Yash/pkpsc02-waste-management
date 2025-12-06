@@ -172,54 +172,102 @@ export default function ReportWaste() {
 
   return (
     <div className="min-h-screen bg-linear-to-br from-slate-50 via-emerald-50 to-teal-50">
-      <div className="max-w-5xl mx-auto p-4 sm:p-6">
+      <div className="max-w-[1600px] mx-auto p-4 sm:p-6 lg:p-8">
         
         {/* Header */}
-        <div className="bg-white rounded-2xl shadow-lg p-4 sm:p-6 border border-gray-100 mb-4">
-          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
-            <div className="flex items-center gap-3">
+        <div className="bg-white rounded-2xl shadow-xl p-6 sm:p-8 border border-gray-100 mb-6">
+          <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-4">
+            <div className="flex items-center gap-4">
               <Link 
                 href="/dashboard"
-                className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+                className="p-3 hover:bg-gray-100 rounded-xl transition-colors"
               >
-                <ArrowLeft className="w-5 h-5 text-gray-600" />
+                <ArrowLeft className="w-6 h-6 text-gray-600" />
               </Link>
-              <div className="flex items-center gap-3">
-                <div className="p-3 bg-linear-to-br from-emerald-500 to-teal-600 rounded-xl shadow-md">
-                  <Trash2 className="w-6 h-6 text-white" />
-                </div>
-                <div>
-                  <h1 className="text-xl sm:text-2xl font-bold bg-linear-to-r from-emerald-600 to-teal-600 bg-clip-text text-transparent">
-                    Report Waste
-                  </h1>
-                  <p className="text-xs sm:text-sm text-gray-600">Help keep our community clean</p>
-                </div>
+              <div className="p-4 bg-linear-to-br from-green-500 to-emerald-600 rounded-2xl shadow-lg">
+                <Trash2 className="w-10 h-10 text-white" />
+              </div>
+              <div>
+                <h1 className="text-3xl sm:text-4xl font-bold bg-linear-to-r from-green-600 to-emerald-600 bg-clip-text text-transparent">
+                  Report Waste
+                </h1>
+                <p className="text-gray-600 mt-1">Submit waste collection reports</p>
               </div>
             </div>
-            <UserButton afterSignOutUrl="/sign-in" />
+            <div className="flex items-center gap-3">
+              <div className="text-right">
+                <p className="text-sm text-gray-500">Welcome back</p>
+                <p className="text-lg font-semibold text-gray-900">
+                  {user?.firstName || user?.username || 'User'}
+                </p>
+              </div>
+              <UserButton afterSignOutUrl="/sign-in" />
+            </div>
           </div>
         </div>
 
         {/* Stats Cards */}
-        <div className="grid grid-cols-3 gap-3 mb-4">
-          <div className="bg-linear-to-br from-blue-500 to-blue-600 rounded-xl p-4 text-white shadow-md">
-            <div className="flex flex-col">
-              <p className="text-xs opacity-90 font-medium">Reports</p>
-              <p className="text-2xl font-bold mt-1">{animatedStats.totalReports}</p>
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-6 mb-6">
+          <div className="bg-linear-to-br from-green-500 to-green-600 rounded-2xl p-6 text-white shadow-lg hover:shadow-xl transition-all duration-500 transform hover:scale-[1.02] border border-white/20">
+            <div className="grid gap-4">
+              <div className="flex items-start justify-between">
+                <div className="p-3 bg-white/20 backdrop-blur-sm rounded-xl">
+                  <TrendingUp className="w-6 h-6" />
+                </div>
+                <div className="text-right">
+                  <p className="text-3xl font-bold tracking-tight">
+                    {animatedStats.totalReports}
+                  </p>
+                  <p className="text-sm font-medium opacity-90 mt-1">Total Reports</p>
+                </div>
+              </div>
+              <div className="pt-3 border-t border-white/20">
+                <p className="text-xs font-medium opacity-80">
+                  +12 this week
+                </p>
+              </div>
             </div>
           </div>
 
-          <div className="bg-linear-to-br from-emerald-500 to-emerald-600 rounded-xl p-4 text-white shadow-md">
-            <div className="flex flex-col">
-              <p className="text-xs opacity-90 font-medium">Points</p>
-              <p className="text-2xl font-bold mt-1">{animatedStats.points}</p>
+          <div className="bg-linear-to-br from-emerald-500 to-emerald-600 rounded-2xl p-6 text-white shadow-lg hover:shadow-xl transition-all duration-500 transform hover:scale-[1.02] border border-white/20">
+            <div className="grid gap-4">
+              <div className="flex items-start justify-between">
+                <div className="p-3 bg-white/20 backdrop-blur-sm rounded-xl">
+                  <Award className="w-6 h-6" />
+                </div>
+                <div className="text-right">
+                  <p className="text-3xl font-bold tracking-tight">
+                    {animatedStats.points}
+                  </p>
+                  <p className="text-sm font-medium opacity-90 mt-1">Points Earned</p>
+                </div>
+              </div>
+              <div className="pt-3 border-t border-white/20">
+                <p className="text-xs font-medium opacity-80">
+                  +150 this week
+                </p>
+              </div>
             </div>
           </div>
 
-          <div className="bg-linear-to-br from-purple-500 to-purple-600 rounded-xl p-4 text-white shadow-md">
-            <div className="flex flex-col">
-              <p className="text-xs opacity-90 font-medium">Impact</p>
-              <p className="text-2xl font-bold mt-1">{animatedStats.impact}%</p>
+          <div className="bg-linear-to-br from-green-600 to-emerald-700 rounded-2xl p-6 text-white shadow-lg hover:shadow-xl transition-all duration-500 transform hover:scale-[1.02] border border-white/20">
+            <div className="grid gap-4">
+              <div className="flex items-start justify-between">
+                <div className="p-3 bg-white/20 backdrop-blur-sm rounded-xl">
+                  <Target className="w-6 h-6" />
+                </div>
+                <div className="text-right">
+                  <p className="text-3xl font-bold tracking-tight">
+                    {animatedStats.impact}%
+                  </p>
+                  <p className="text-sm font-medium opacity-90 mt-1">Impact Score</p>
+                </div>
+              </div>
+              <div className="pt-3 border-t border-white/20">
+                <p className="text-xs font-medium opacity-80">
+                  Above average
+                </p>
+              </div>
             </div>
           </div>
         </div>
@@ -431,7 +479,7 @@ export default function ReportWaste() {
                     placeholder="Enter weight"
                     min="0"
                     step="0.1"
-                    className="w-full px-4 py-2.5 pr-12 border-2 border-gray-200 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none transition-all"
+                    className="w-full px-4 py-2.5 pr-12 border-2 border-gray-200 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none transition-all text-gray-900 font-medium text-base"
                   />
                   <span className="absolute right-4 top-1/2 -translate-y-1/2 text-sm text-gray-500 font-medium">
                     kg
@@ -456,7 +504,7 @@ export default function ReportWaste() {
                   onChange={(e) => setDescription(e.target.value)}
                   placeholder="Describe the waste situation and any other details..."
                   rows={4}
-                  className="w-full px-4 py-2.5 border-2 border-gray-200 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none transition-all resize-none text-sm"
+                  className="w-full px-4 py-2.5 border-2 border-gray-200 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none transition-all resize-none text-sm text-gray-900 font-medium"
                 />
                 <p className="text-xs text-gray-500 mt-2">
                   {description.length}/500 characters
@@ -531,7 +579,7 @@ export default function ReportWaste() {
               </div>
 
               {/* Report Summary */}
-              <div className="bg-linear-to-br from-emerald-500 to-teal-600 rounded-xl shadow-lg p-4 text-white sticky top-4">
+              <div className="bg-linear-to-br from-green-500 to-emerald-600 rounded-xl shadow-lg p-4 text-white sticky top-4">
                 <h3 className="text-base font-bold mb-4 flex items-center gap-2">
                   <CheckCircle className="w-5 h-5" />
                   Report Summary
