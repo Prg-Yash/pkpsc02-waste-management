@@ -9,87 +9,154 @@ import { Trash2, Recycle, TrendingUp, MapPin, AlertCircle, CheckCircle, Clock, U
 const EcoFlowDashboard = () => {
   const { user } = useUser();
   const [userData, setUserData] = useState(null);
+  const [allWastes, setAllWastes] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [animatedStats, setAnimatedStats] = useState({
-    totalWaste: 0,
-    recycled: 0,
-    pending: 0,
-    efficiency: 0
-  });
+  const [collectionData, setCollectionData] = useState([]);
+  const [segregationData, setSegregationData] = useState([]);
+  const [efficiencyData, setEfficiencyData] = useState([]);
+  const [totalUsers, setTotalUsers] = useState(0);
 
-  // Fetch user data
+  // Fetch user data and user's waste reports only
   useEffect(() => {
-    const fetchUserData = async () => {
+    const fetchData = async () => {
       try {
-        const response = await fetch('/api/user/me');
-        if (response.ok) {
-          const data = await response.json();
-          setUserData(data.user);
+        // Fetch user profile with their waste reports
+        const userResponse = await fetch('/api/user/me');
+        if (userResponse.ok) {
+          const data = await userResponse.json();
+          const userProfile = data.user;
+          setUserData(userProfile);
           
-          // Animate stats with real data
-          setTimeout(() => {
-            setAnimatedStats({
-              totalWaste: (data.user.reportedWastes?.length || 0) + (data.user.collectedWastes?.length || 0),
-              recycled: data.user.collectedWastes?.length || 0,
-              pending: data.user.reportedWastes?.filter(w => w.status === 'PENDING').length || 0,
-              efficiency: data.user.collectedWastes?.length > 0 
-                ? ((data.user.collectedWastes.length / ((data.user.reportedWastes?.length || 0) + data.user.collectedWastes.length)) * 100).toFixed(1)
-                : 0
-            });
-          }, 300);
+          // Combine user's reported and collected wastes
+          const reportedWastes = userProfile.reportedWastes || [];
+          const collectedWastes = userProfile.collectedWastes || [];
+          
+          // Merge and deduplicate wastes
+          const userWastesMap = new Map();
+          reportedWastes.forEach(w => userWastesMap.set(w.id, w));
+          collectedWastes.forEach(w => {
+            if (!userWastesMap.has(w.id)) {
+              userWastesMap.set(w.id, w);
+            }
+          });
+          
+          const userWastes = Array.from(userWastesMap.values());
+          setAllWastes(userWastes);
+          
+          // Process data for charts using only user's waste
+          processCollectionData(userWastes);
+          processSegregationData(userWastes);
+          processEfficiencyData(userWastes);
+        }
+
+        // Fetch leaderboard to get total users count (for context)
+        const leaderboardResponse = await fetch('/api/leaderboard-proxy');
+        if (leaderboardResponse.ok) {
+          const leaderboardData = await leaderboardResponse.json();
+          setTotalUsers(leaderboardData.users?.length || 0);
         }
       } catch (error) {
-        console.error('Error fetching user data:', error);
+        console.error('Error fetching dashboard data:', error);
       } finally {
         setLoading(false);
       }
     };
 
     if (user?.id) {
-      fetchUserData();
+      fetchData();
     }
   }, [user]);
 
-  // Waste collection data over time
-  const collectionData = [
-    { day: 'Mon', collected: 1850, recycled: 1200, organic: 450, plastic: 200 },
-    { day: 'Tue', collected: 2100, recycled: 1450, organic: 500, plastic: 150 },
-    { day: 'Wed', collected: 1950, recycled: 1300, organic: 480, plastic: 170 },
-    { day: 'Thu', collected: 2250, recycled: 1600, organic: 520, plastic: 130 },
-    { day: 'Fri', collected: 2400, recycled: 1750, organic: 550, plastic: 100 },
-    { day: 'Sat', collected: 1800, recycled: 1100, organic: 500, plastic: 200 },
-    { day: 'Sun', collected: 1650, recycled: 950, organic: 480, plastic: 220 }
-  ];
+  // Process waste data for weekly collection trend
+  const processCollectionData = (wastes) => {
+    const last7Days = [];
+    const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+    
+    for (let i = 6; i >= 0; i--) {
+      const date = new Date();
+      date.setDate(date.getDate() - i);
+      const dayName = dayNames[date.getDay()];
+      const dateStr = date.toISOString().split('T')[0];
+      
+      const dayWastes = wastes.filter(w => {
+        const wasteDate = new Date(w.reportedAt || w.createdAt).toISOString().split('T')[0];
+        return wasteDate === dateStr;
+      });
+      
+      const collected = dayWastes.filter(w => w.status === 'COLLECTED');
+      const totalWeight = dayWastes.reduce((sum, w) => sum + (w.aiAnalysis?.estimatedWeightKg || 0), 0);
+      const collectedWeight = collected.reduce((sum, w) => sum + (w.aiAnalysis?.estimatedWeightKg || 0), 0);
+      
+      last7Days.push({
+        day: dayName,
+        collected: totalWeight,
+        recycled: collectedWeight
+      });
+    }
+    
+    setCollectionData(last7Days);
+  };
 
-  // Waste segregation distribution
-  const segregationData = [
-    { name: 'Organic', value: 3480, color: '#10b981' },
-    { name: 'Plastic', value: 1170, color: '#3b82f6' },
-    { name: 'Paper', value: 2340, color: '#f59e0b' },
-    { name: 'Metal', value: 980, color: '#8b5cf6' },
-    { name: 'Glass', value: 1230, color: '#06b6d4' },
-    { name: 'E-Waste', value: 450, color: '#ef4444' }
-  ];
+  // Process waste data for segregation pie chart
+  const processSegregationData = (wastes) => {
+    const typeCount = {};
+    const colors = {
+      'ORGANIC': '#10b981',
+      'PLASTIC': '#3b82f6',
+      'PAPER': '#f59e0b',
+      'METAL': '#8b5cf6',
+      'GLASS': '#06b6d4',
+      'E-WASTE': '#ef4444',
+      'MIXED': '#6b7280'
+    };
+    
+    wastes.forEach(w => {
+      const type = w.aiAnalysis?.wasteType || w.wasteType || 'MIXED';
+      const weight = w.aiAnalysis?.estimatedWeightKg || 1;
+      typeCount[type] = (typeCount[type] || 0) + weight;
+    });
+    
+    const chartData = Object.entries(typeCount).map(([name, value]) => ({
+      name,
+      value: Math.round(value * 10) / 10,
+      color: colors[name] || '#6b7280'
+    }));
+    
+    setSegregationData(chartData);
+  };
 
-  // Bin capacity monitoring
-  const binStatus = [
-    { id: 'BIN-001', location: 'Park Avenue', capacity: 85, status: 'critical' },
-    { id: 'BIN-002', location: 'Main Street', capacity: 45, status: 'normal' },
-    { id: 'BIN-003', location: 'River Road', capacity: 72, status: 'warning' },
-    { id: 'BIN-004', location: 'Green Plaza', capacity: 28, status: 'normal' },
-    { id: 'BIN-005', location: 'Tech Hub', capacity: 91, status: 'critical' },
-    { id: 'BIN-006', location: 'Market Square', capacity: 56, status: 'warning' }
-  ];
+  // Process efficiency trend for last 6 months
+  const processEfficiencyData = (wastes) => {
+    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    const last6Months = [];
+    
+    for (let i = 5; i >= 0; i--) {
+      const date = new Date();
+      date.setMonth(date.getMonth() - i);
+      const monthName = months[date.getMonth()];
+      const monthIndex = date.getMonth();
+      const year = date.getFullYear();
+      
+      const monthWastes = wastes.filter(w => {
+        const wasteDate = new Date(w.reportedAt || w.createdAt);
+        return wasteDate.getMonth() === monthIndex && wasteDate.getFullYear() === year;
+      });
+      
+      const collected = monthWastes.filter(w => w.status === 'COLLECTED').length;
+      const total = monthWastes.length;
+      const efficiency = total > 0 ? ((collected / total) * 100).toFixed(1) : 0;
+      
+      last6Months.push({
+        month: monthName,
+        efficiency: parseFloat(efficiency),
+        target: 85
+      });
+    }
+    
+    setEfficiencyData(last6Months);
+  };
 
-  // Recycling efficiency trend
-  const efficiencyData = [
-    { month: 'Jan', efficiency: 82.5, target: 85 },
-    { month: 'Feb', efficiency: 84.2, target: 85 },
-    { month: 'Mar', efficiency: 86.8, target: 85 },
-    { month: 'Apr', efficiency: 85.5, target: 85 },
-    { month: 'May', efficiency: 88.3, target: 85 },
-    { month: 'Jun', efficiency: 89.7, target: 85 }
-  ];
+
 
   const getStatusColor = (status) => {
     switch(status) {
@@ -128,8 +195,19 @@ const EcoFlowDashboard = () => {
     );
   };
 
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-linear-to-br from-slate-50 via-emerald-50 to-teal-50 flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-emerald-600 mx-auto mb-4"></div>
+          <p className="text-gray-600 font-medium">Loading dashboard data...</p>
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-emerald-50 to-teal-50">
+    <div className="min-h-screen bg-linear-to-br from-slate-50 via-emerald-50 to-teal-50">
       {/* Main Container with Grid */}
       <div className="grid grid-cols-12 gap-6 p-6 max-w-[1600px] mx-auto">
         
@@ -201,7 +279,7 @@ const EcoFlowDashboard = () => {
               <div className="p-2 bg-emerald-100 rounded-lg">
                 <BarChart className="w-5 h-5 text-emerald-600" />
               </div>
-              Weekly Collection Trend
+              Your Weekly Activity
             </h2>
             <ResponsiveContainer width="100%" height={320}>
               <AreaChart data={collectionData}>
@@ -236,7 +314,7 @@ const EcoFlowDashboard = () => {
               <div className="p-2 bg-emerald-100 rounded-lg">
                 <Package className="w-5 h-5 text-emerald-600" />
               </div>
-              Waste Distribution
+              Your Waste Distribution
             </h2>
             <ResponsiveContainer width="100%" height={320}>
               <PieChart>
@@ -272,7 +350,7 @@ const EcoFlowDashboard = () => {
               <div className="p-2 bg-emerald-100 rounded-lg">
                 <TrendingUp className="w-5 h-5 text-emerald-600" />
               </div>
-              Recycling Efficiency Trend
+              Your Collection Efficiency
             </h2>
             <ResponsiveContainer width="100%" height={280}>
               <LineChart data={efficiencyData}>
@@ -328,87 +406,101 @@ const EcoFlowDashboard = () => {
           </div>
         </div>
 
-        {/* Bin Status Monitoring - Full Width */}
+        {/* Recent Activity - Full Width */}
         <div className="col-span-12 bg-white rounded-2xl shadow-lg p-6 border border-gray-100 hover:shadow-xl transition-shadow duration-300">
           <div className="grid gap-6">
             <h2 className="text-xl font-bold text-gray-800 flex items-center gap-2">
               <div className="p-2 bg-emerald-100 rounded-lg">
-                <MapPin className="w-5 h-5 text-emerald-600" />
+                <Clock className="w-5 h-5 text-emerald-600" />
               </div>
-              Real-time Bin Capacity Monitoring
+              Your Recent Activity
             </h2>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {binStatus.map((bin, index) => (
+            <div className="grid gap-3">
+              {allWastes.slice(0, 6).map((waste, index) => (
                 <div 
-                  key={bin.id} 
-                  className="border-2 border-gray-100 rounded-xl p-5 hover:shadow-lg hover:border-emerald-200 transition-all duration-300 transform hover:-translate-y-1 bg-gradient-to-br from-white to-gray-50"
+                  key={waste.id} 
+                  className="border-2 border-gray-100 rounded-xl p-4 hover:shadow-lg hover:border-emerald-200 transition-all duration-300 bg-linear-to-br from-white to-gray-50"
                 >
-                  <div className="grid gap-3">
-                    <div className="grid grid-cols-[1fr_auto] gap-2 items-center">
-                      <span className="font-bold text-gray-800 text-lg">{bin.id}</span>
-                      <span className={`px-3 py-1 rounded-full text-xs font-bold text-white ${getStatusColor(bin.status)}`}>
-                        {bin.status.toUpperCase()}
+                  <div className="grid grid-cols-[auto_1fr_auto] gap-4 items-center">
+                    <div className={`p-3 rounded-lg ${
+                      waste.status === 'COLLECTED' ? 'bg-emerald-100' :
+                      waste.status === 'IN_PROGRESS' ? 'bg-yellow-100' :
+                      'bg-blue-100'
+                    }`}>
+                      <Trash2 className={`w-5 h-5 ${
+                        waste.status === 'COLLECTED' ? 'text-emerald-600' :
+                        waste.status === 'IN_PROGRESS' ? 'text-yellow-600' :
+                        'text-blue-600'
+                      }`} />
+                    </div>
+                    <div className="grid gap-1">
+                      <p className="font-bold text-gray-800">{waste.aiAnalysis?.wasteType || waste.wasteType || 'Mixed Waste'}</p>
+                      <p className="text-sm text-gray-600 flex items-center gap-1">
+                        <MapPin className="w-3 h-3" />
+                        {waste.city || waste.locationRaw || 'Unknown location'}
+                      </p>
+                      <p className="text-xs text-gray-500">
+                        {new Date(waste.reportedAt || waste.createdAt).toLocaleString('en-US', { 
+                          dateStyle: 'medium', 
+                          timeStyle: 'short' 
+                        })}
+                      </p>
+                    </div>
+                    <div className="text-right">
+                      <span className={`px-3 py-1 rounded-full text-xs font-bold ${
+                        waste.status === 'COLLECTED' ? 'bg-emerald-500 text-white' :
+                        waste.status === 'IN_PROGRESS' ? 'bg-yellow-500 text-white' :
+                        'bg-blue-500 text-white'
+                      }`}>
+                        {waste.status}
                       </span>
+                      {waste.aiAnalysis?.estimatedWeightKg && (
+                        <p className="text-sm text-gray-600 mt-2">
+                          {waste.aiAnalysis.estimatedWeightKg} kg
+                        </p>
+                      )}
                     </div>
-                    <p className="text-sm text-gray-600 flex items-center gap-1">
-                      <MapPin className="w-4 h-4 text-emerald-600" />
-                      {bin.location}
-                    </p>
-                    <div className="grid gap-2">
-                      <div className="grid grid-cols-2 gap-2 text-sm">
-                        <span className="text-gray-600">Capacity</span>
-                        <span className="font-bold text-gray-900 text-right">{bin.capacity}%</span>
-                      </div>
-                      <div className="w-full bg-gray-200 rounded-full h-3 overflow-hidden">
-                        <div 
-                          className={`h-3 rounded-full transition-all duration-1000 ${
-                            bin.capacity > 80 ? 'bg-gradient-to-r from-red-500 to-red-600' : 
-                            bin.capacity > 60 ? 'bg-gradient-to-r from-yellow-500 to-amber-600' : 
-                            'bg-gradient-to-r from-emerald-500 to-teal-600'
-                          }`}
-                          style={{ width: `${bin.capacity}%` }}
-                        ></div>
-                      </div>
-                    </div>
-                    {bin.capacity > 70 && (
-                      <div className="flex items-center text-xs text-orange-600 font-medium bg-orange-50 px-3 py-2 rounded-lg">
-                        <AlertCircle className="w-4 h-4 mr-1" />
-                        Collection needed soon
-                      </div>
-                    )}
                   </div>
                 </div>
               ))}
+              {allWastes.length === 0 && (
+                <p className="text-center text-gray-500 py-8">No waste reports yet</p>
+              )}
             </div>
           </div>
         </div>
 
         {/* Footer Stats - 3 Column Grid */}
         <div className="col-span-12 grid grid-cols-1 md:grid-cols-3 gap-6">
-          <div className="bg-gradient-to-br from-emerald-500 to-teal-600 rounded-2xl p-6 text-white shadow-lg transform transition-all duration-300 hover:scale-105 hover:shadow-2xl">
+          <div className="bg-linear-to-br from-emerald-500 to-teal-600 rounded-2xl p-6 text-white shadow-lg transform transition-all duration-300 hover:scale-105 hover:shadow-2xl">
             <div className="grid gap-3">
-              <Users className="w-10 h-10 opacity-80" />
+              <Trash2 className="w-10 h-10 opacity-80" />
               <div className="grid gap-1">
-                <p className="text-sm opacity-90 font-medium">Active Users</p>
-                <p className="text-4xl font-bold">2,847</p>
+                <p className="text-sm opacity-90 font-medium">Your Total Reports</p>
+                <p className="text-4xl font-bold">{allWastes.length.toLocaleString()}</p>
               </div>
             </div>
           </div>
-          <div className="bg-gradient-to-br from-blue-500 to-cyan-600 rounded-2xl p-6 text-white shadow-lg transform transition-all duration-300 hover:scale-105 hover:shadow-2xl">
+          <div className="bg-linear-to-br from-blue-500 to-cyan-600 rounded-2xl p-6 text-white shadow-lg transform transition-all duration-300 hover:scale-105 hover:shadow-2xl">
             <div className="grid gap-3">
               <CheckCircle className="w-10 h-10 opacity-80" />
               <div className="grid gap-1">
-                <p className="text-sm opacity-90 font-medium">Completed Collections</p>
-                <p className="text-4xl font-bold">1,234</p>
+                <p className="text-sm opacity-90 font-medium">Your Completed Collections</p>
+                <p className="text-4xl font-bold">{allWastes.filter(w => w.status === 'COLLECTED').length.toLocaleString()}</p>
               </div>
             </div>
           </div>
-          <div className="bg-gradient-to-br from-purple-500 to-pink-600 rounded-2xl p-6 text-white shadow-lg transform transition-all duration-300 hover:scale-105 hover:shadow-2xl">
+          <div className="bg-linear-to-br from-purple-500 to-pink-600 rounded-2xl p-6 text-white shadow-lg transform transition-all duration-300 hover:scale-105 hover:shadow-2xl">
             <div className="grid gap-3">
               <Leaf className="w-10 h-10 opacity-80" />
               <div className="grid gap-1">
-                <p className="text-sm opacity-90 font-medium">CO₂ Saved</p>
-                <p className="text-4xl font-bold">847 kg</p>
+                <p className="text-sm opacity-90 font-medium">Your Total Weight Collected</p>
+                <p className="text-4xl font-bold">
+                  {allWastes
+                    .filter(w => w.status === 'COLLECTED')
+                    .reduce((sum, w) => sum + (w.aiAnalysis?.estimatedWeightKg || 0), 0)
+                    .toFixed(1)} kg
+                </p>
               </div>
             </div>
           </div>

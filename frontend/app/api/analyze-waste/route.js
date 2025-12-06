@@ -28,19 +28,21 @@ Examine the image for:
 
 Provide your analysis in this EXACT JSON format with no additional text:
 {
-    "wasteType": "plastic|organic|metal|e-waste|hazardous|mixed",
+    "wasteType": "PLASTIC|ORGANIC|METAL|PAPER|GLASS|E-WASTE|HAZARDOUS|MIXED",
     "estimatedWeight": <number>,
     "description": "<string>"
 }
 
 Classification Guidelines:
-- wasteType: Select ONE primary category
-    * plastic: bottles, bags, packaging, containers
-    * organic: food scraps, yard waste, biodegradable materials
-    * metal: cans, foil, scrap metal
-    * e-waste: electronics, batteries, circuit boards
-    * hazardous: chemicals, paints, medical waste
-    * mixed: multiple waste types with no clear majority
+- wasteType: Select ONE primary category (MUST BE UPPERCASE)
+    * PLASTIC: bottles, bags, packaging, containers
+    * ORGANIC: food scraps, yard waste, biodegradable materials
+    * PAPER: newspapers, cardboard, office paper
+    * METAL: cans, foil, scrap metal
+    * GLASS: bottles, jars, broken glass
+    * E-WASTE: electronics, batteries, circuit boards
+    * HAZARDOUS: chemicals, paints, medical waste
+    * MIXED: multiple waste types with no clear majority
     
 - estimatedWeight (in kg):
     * Single small item (cup, wrapper): 0.1-0.3 kg
@@ -85,15 +87,18 @@ Return ONLY the JSON object. No explanations, no markdown, no extra text.`;
             
             // Return a default response if parsing fails
             return NextResponse.json({
-                wasteType: 'organic',
+                wasteType: 'ORGANIC',
                 estimatedWeight: 1.0,
                 description: 'Unable to analyze image automatically. Please provide details manually.'
             });
         }
 
         // Validate and return the analysis
+        // Ensure wasteType is uppercase
+        const wasteType = (analysisData.wasteType || 'ORGANIC').toUpperCase();
+        
         return NextResponse.json({
-            wasteType: analysisData.wasteType || 'organic',
+            wasteType: wasteType,
             estimatedWeight: analysisData.estimatedWeight || 1.0,
             description: analysisData.description || 'Waste detected in image'
         });

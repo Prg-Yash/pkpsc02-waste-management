@@ -11,6 +11,13 @@ export default function ProfilePage() {
   const [message, setMessage] = useState({ type: '', text: '' });
   const [notifications, setNotifications] = useState([]);
   const [loadingNotifications, setLoadingNotifications] = useState(false);
+  const [showOtpModal, setShowOtpModal] = useState(false);
+  const [otp, setOtp] = useState(['', '', '', '', '', '']);
+  const [sendingOtp, setSendingOtp] = useState(false);
+  const [verifyingOtp, setVerifyingOtp] = useState(false);
+  const [phoneVerified, setPhoneVerified] = useState(false);
+  const [selectedWasteDetail, setSelectedWasteDetail] = useState(null);
+  const [showWasteDetailModal, setShowWasteDetailModal] = useState(false);
   
   const [userData, setUserData] = useState({
     name: '',
@@ -236,6 +243,83 @@ export default function ProfilePage() {
     setUserData(prev => ({ ...prev, [field]: value }));
   };
 
+  const sendOtp = async () => {
+    if (!userData.phone || userData.phone.length < 10) {
+      setMessage({ type: 'error', text: 'Please enter a valid phone number' });
+      return;
+    }
+
+    try {
+      setSendingOtp(true);
+      // Simulate OTP sending - replace with actual API call
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      
+      setShowOtpModal(true);
+      setMessage({ type: 'success', text: 'OTP sent to your phone number' });
+      setTimeout(() => setMessage({ type: '', text: '' }), 3000);
+    } catch (error) {
+      setMessage({ type: 'error', text: 'Failed to send OTP' });
+    } finally {
+      setSendingOtp(false);
+    }
+  };
+
+  const verifyOtp = async () => {
+    const otpValue = otp.join('');
+    if (otpValue.length !== 6) {
+      setMessage({ type: 'error', text: 'Please enter complete OTP' });
+      return;
+    }
+
+    try {
+      setVerifyingOtp(true);
+      // Simulate OTP verification - replace with actual API call
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      
+      // For demo, accept any 6-digit OTP
+      setPhoneVerified(true);
+      setShowOtpModal(false);
+      setMessage({ type: 'success', text: 'Phone number verified successfully!' });
+      setTimeout(() => setMessage({ type: '', text: '' }), 3000);
+    } catch (error) {
+      setMessage({ type: 'error', text: 'Invalid OTP. Please try again.' });
+    } finally {
+      setVerifyingOtp(false);
+    }
+  };
+
+  const handleOtpChange = (index, value) => {
+    if (value.length > 1) return;
+    if (!/^[0-9]*$/.test(value)) return;
+
+    const newOtp = [...otp];
+    newOtp[index] = value;
+    setOtp(newOtp);
+
+    // Auto-focus next input
+    if (value && index < 5) {
+      const nextInput = document.getElementById(`otp-${index + 1}`);
+      if (nextInput) nextInput.focus();
+    }
+  };
+
+  const handleOtpKeyDown = (index, e) => {
+    if (e.key === 'Backspace' && !otp[index] && index > 0) {
+      const prevInput = document.getElementById(`otp-${index - 1}`);
+      if (prevInput) prevInput.focus();
+    }
+  };
+
+  const openWasteDetail = (waste) => {
+    setSelectedWasteDetail(waste);
+    setShowWasteDetailModal(true);
+  };
+
+  const closeWasteDetail = () => {
+    setSelectedWasteDetail(null);
+    setShowWasteDetailModal(false);
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-screen">
@@ -443,22 +527,30 @@ export default function ProfilePage() {
                             </p>
                           )}
                           {/* Additional Info */}
-                          <div className="flex items-center gap-3 text-xs text-gray-500">
-                            {waste.quantity && (
+                          <div className="flex items-center justify-between gap-3 text-xs text-gray-500">
+                            <div className="flex items-center gap-3">
+                              {waste.aiAnalysis?.estimatedWeightKg && (
+                                <span className="flex items-center gap-1">
+                                  <span className="font-semibold">Weight:</span> {waste.aiAnalysis.estimatedWeightKg} kg
+                                </span>
+                              )}
                               <span className="flex items-center gap-1">
-                                <span className="font-semibold">Qty:</span> {waste.quantity}
+                                <Calendar className="w-3 h-3" />
+                                {waste.reportedAt ? new Date(waste.reportedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : 'N/A'}
                               </span>
-                            )}
-                            <span className="flex items-center gap-1">
-                              <Calendar className="w-3 h-3" />
-                              {waste.reportedAt ? new Date(waste.reportedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : 'N/A'}
-                            </span>
-                            {waste.reporterPoints && (
-                              <span className="flex items-center gap-1 text-blue-600 font-semibold">
-                                <Award className="w-3 h-3" />
-                                +{waste.reporterPoints} pts
-                              </span>
-                            )}
+                              {waste.reporterPoints && (
+                                <span className="flex items-center gap-1 text-blue-600 font-semibold">
+                                  <Award className="w-3 h-3" />
+                                  +{waste.reporterPoints} pts
+                                </span>
+                              )}
+                            </div>
+                            <button
+                              onClick={() => openWasteDetail(waste)}
+                              className="px-3 py-1.5 bg-blue-500 hover:bg-blue-600 text-white text-xs font-semibold rounded-lg transition-all duration-200 whitespace-nowrap"
+                            >
+                              View Details
+                            </button>
                           </div>
                         </div>
                       </div>
@@ -528,9 +620,9 @@ export default function ProfilePage() {
                           )}
                           {/* Additional Info */}
                           <div className="flex items-center gap-3 text-xs text-gray-500">
-                            {waste.quantity && (
+                            {waste.aiAnalysis?.estimatedWeightKg && (
                               <span className="flex items-center gap-1">
-                                <span className="font-semibold">Qty:</span> {waste.quantity}
+                                <span className="font-semibold">Weight:</span> {waste.aiAnalysis.estimatedWeightKg} kg
                               </span>
                             )}
                             <span className="flex items-center gap-1">
@@ -553,6 +645,15 @@ export default function ProfilePage() {
                               </p>
                             </div>
                           )}
+                          {/* View Details Button */}
+                          <div className="mt-3 pt-3 border-t border-emerald-200">
+                            <button
+                              onClick={() => openWasteDetail(waste)}
+                              className="w-full px-3 py-2 bg-emerald-500 hover:bg-emerald-600 text-white text-xs font-semibold rounded-lg transition-all duration-200"
+                            >
+                              View Full Details
+                            </button>
+                          </div>
                         </div>
                       </div>
                     </div>
@@ -632,13 +733,44 @@ export default function ProfilePage() {
                 <label className="block text-sm font-semibold text-gray-700 mb-2">
                   Phone Number
                 </label>
-                <input
-                  type="tel"
-                  value={userData.phone}
-                  onChange={(e) => handleInputChange('phone', e.target.value)}
-                  className="w-full px-4 py-3 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition-all duration-300"
-                  placeholder="+91 98765 43210"
-                />
+                <div className="flex gap-2">
+                  <input
+                    type="tel"
+                    value={userData.phone}
+                    onChange={(e) => handleInputChange('phone', e.target.value)}
+                    className="flex-1 px-4 py-3 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition-all duration-300"
+                    placeholder="+91 98765 43210"
+                    disabled={phoneVerified}
+                  />
+                  {!phoneVerified ? (
+                    <button
+                      type="button"
+                      onClick={sendOtp}
+                      disabled={sendingOtp || !userData.phone}
+                      className="px-6 py-3 bg-linear-to-r from-blue-500 to-blue-600 text-white rounded-lg font-semibold hover:from-blue-600 hover:to-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-300 flex items-center gap-2 whitespace-nowrap"
+                    >
+                      {sendingOtp ? (
+                        <>
+                          <Loader className="w-4 h-4 animate-spin" />
+                          Sending...
+                        </>
+                      ) : (
+                        'Verify'
+                      )}
+                    </button>
+                  ) : (
+                    <div className="px-6 py-3 bg-emerald-100 text-emerald-700 rounded-lg font-semibold flex items-center gap-2 whitespace-nowrap">
+                      <CheckCircle className="w-4 h-4" />
+                      Verified
+                    </div>
+                  )}
+                </div>
+                {phoneVerified && (
+                  <p className="text-xs text-emerald-600 mt-1 flex items-center gap-1">
+                    <CheckCircle className="w-3 h-3" />
+                    Phone number has been verified
+                  </p>
+                )}
               </div>
               <div className="pt-4 border-t border-gray-100">
                 <p className="text-sm font-semibold text-gray-700 mb-3">Location Information</p>
@@ -693,85 +825,7 @@ export default function ProfilePage() {
         </div>
 
        
-        {/* Notifications */}
-        <div className="bg-white rounded-2xl shadow-lg border border-gray-200">
-          <div className="p-5 border-b border-gray-200 bg-linear-to-r from-amber-50 to-yellow-50">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <div className="w-11 h-11 bg-linear-to-br from-amber-500 to-yellow-600 rounded-xl flex items-center justify-center shadow-md">
-                  <Bell className="w-6 h-6 text-white" />
-                </div>
-                <div>
-                  <h2 className="text-lg font-bold text-gray-800">Notifications</h2>
-                  <p className="text-sm text-gray-600">{notifications.length} total</p>
-                </div>
-              </div>
-              {notifications.filter(n => !n.isRead).length > 0 && (
-                <span className="px-3 py-1 bg-red-500 text-white text-xs font-bold rounded-full">
-                  {notifications.filter(n => !n.isRead).length} new
-                </span>
-              )}
-            </div>
-          </div>
-          <div className="p-5">
-            {loadingNotifications ? (
-              <div className="flex items-center justify-center py-8">
-                <Loader className="w-6 h-6 animate-spin text-amber-600" />
-                <span className="ml-2 text-sm text-gray-600">Loading notifications...</span>
-              </div>
-            ) : notifications.length > 0 ? (
-              <div className="space-y-3 max-h-[400px] overflow-y-auto pr-2">
-                {notifications.map((notification) => (
-                  <div
-                    key={notification.id}
-                    onClick={() => !notification.isRead && markNotificationAsRead(notification.id)}
-                    className={`bg-linear-to-br ${getNotificationColor(notification.type)} rounded-xl border-2 p-4 transition-all cursor-pointer hover:shadow-md ${
-                      !notification.isRead ? 'border-l-4 border-l-amber-500' : ''
-                    }`}
-                  >
-                    <div className="flex items-start gap-3">
-                      <div className="shrink-0 mt-0.5">
-                        {getNotificationIcon(notification.type)}
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-start justify-between gap-2 mb-1">
-                          <h3 className="text-sm font-bold text-gray-800">{notification.title}</h3>
-                          {!notification.isRead && (
-                            <span className="w-2 h-2 bg-amber-500 rounded-full shrink-0 mt-1"></span>
-                          )}
-                        </div>
-                        <p className="text-xs text-gray-600 mb-2">{notification.message}</p>
-                        <div className="flex items-center justify-between">
-                          <span className="text-xs text-gray-500 flex items-center gap-1">
-                            <Calendar className="w-3 h-3" />
-                            {notification.createdAt ? new Date(notification.createdAt).toLocaleDateString('en-US', { 
-                              month: 'short', 
-                              day: 'numeric', 
-                              hour: '2-digit', 
-                              minute: '2-digit' 
-                            }) : 'N/A'}
-                          </span>
-                          {notification.isRead && (
-                            <span className="text-xs text-gray-500 flex items-center gap-1">
-                              <CheckCircle className="w-3 h-3" />
-                              Read
-                            </span>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <div className="text-center py-12">
-                <Bell className="w-16 h-16 text-gray-300 mx-auto mb-3" />
-                <p className="text-sm font-medium text-gray-500">No notifications yet</p>
-                <p className="text-xs text-gray-400 mt-1">You'll be notified about waste reports and collections</p>
-              </div>
-            )}
-          </div>
-        </div>
+        
 
         {/* Collector Mode */}
         <div className="bg-white rounded-2xl shadow-lg border border-gray-200">
@@ -851,6 +905,245 @@ export default function ProfilePage() {
             </div>
           </div>
         </div>
+
+        {/* Waste Detail Modal */}
+        {showWasteDetailModal && selectedWasteDetail && (
+          <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4 overflow-y-auto">
+            <div className="bg-white rounded-2xl shadow-2xl max-w-3xl w-full my-8 relative">
+              {/* Close Button */}
+              <button
+                onClick={closeWasteDetail}
+                className="absolute top-4 right-4 z-10 text-gray-400 hover:text-gray-600 bg-white rounded-full p-2 shadow-lg transition-colors"
+              >
+                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+
+              {/* Header */}
+              <div className="bg-linear-to-r from-blue-500 to-emerald-500 rounded-t-2xl p-6 text-white">
+                <h2 className="text-2xl font-bold mb-2">Waste Report Details</h2>
+                <div className="flex items-center gap-2">
+                  <span className={`px-3 py-1 rounded-full text-xs font-bold ${
+                    selectedWasteDetail.status === 'COLLECTED' ? 'bg-emerald-500' :
+                    selectedWasteDetail.status === 'IN_PROGRESS' ? 'bg-yellow-500' :
+                    'bg-blue-500'
+                  }`}>
+                    {selectedWasteDetail.status}
+                  </span>
+                  <span className="text-sm opacity-90">ID: {selectedWasteDetail.id?.substring(0, 8) || 'N/A'}</span>
+                </div>
+              </div>
+
+              {/* Content */}
+              <div className="p-6 max-h-[70vh] overflow-y-auto">
+                {/* Image Section */}
+                {selectedWasteDetail.imageUrl && (
+                  <div className="mb-6">
+                    <h3 className="text-sm font-bold text-gray-700 mb-2">Waste Image</h3>
+                    <div className="rounded-xl overflow-hidden border-2 border-gray-200">
+                      <img 
+                        src={selectedWasteDetail.imageUrl} 
+                        alt={selectedWasteDetail.wasteType}
+                        className="w-full h-64 object-cover"
+                      />
+                    </div>
+                  </div>
+                )}
+
+                {/* Information Grid */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+                  <div className="bg-gray-50 rounded-xl p-4">
+                    <p className="text-xs text-gray-500 mb-1">Waste Type</p>
+                    <p className="text-sm font-bold text-gray-800">{selectedWasteDetail.wasteType || 'Mixed Waste'}</p>
+                  </div>
+                  <div className="bg-gray-50 rounded-xl p-4">
+                    <p className="text-xs text-gray-500 mb-1">Estimated Weight</p>
+                    <p className="text-sm font-bold text-gray-800">
+                      {selectedWasteDetail.aiAnalysis?.estimatedWeightKg 
+                        ? `${selectedWasteDetail.aiAnalysis.estimatedWeightKg} kg` 
+                        : 'Not available'}
+                    </p>
+                  </div>
+                  <div className="bg-gray-50 rounded-xl p-4">
+                    <p className="text-xs text-gray-500 mb-1">Reported Date</p>
+                    <p className="text-sm font-bold text-gray-800">
+                      {selectedWasteDetail.reportedAt ? new Date(selectedWasteDetail.reportedAt).toLocaleString('en-US', { 
+                        dateStyle: 'medium', 
+                        timeStyle: 'short' 
+                      }) : 'N/A'}
+                    </p>
+                  </div>
+                  <div className="bg-gray-50 rounded-xl p-4">
+                    <p className="text-xs text-gray-500 mb-1">Points Earned</p>
+                    <p className="text-sm font-bold text-emerald-600 flex items-center gap-1">
+                      <Award className="w-4 h-4" />
+                      {selectedWasteDetail.status === 'COLLECTED' && selectedWasteDetail.collectorId === clerkUser?.id 
+                        ? '20 points (Collected)' 
+                        : '10 points (Reported)'}
+                    </p>
+                  </div>
+                </div>
+
+                {/* Location Information */}
+                <div className="bg-blue-50 rounded-xl p-4 mb-6">
+                  <h3 className="text-sm font-bold text-gray-700 mb-3 flex items-center gap-2">
+                    <MapPin className="w-4 h-4 text-blue-600" />
+                    Location Details
+                  </h3>
+                  <div className="space-y-2">
+                    {selectedWasteDetail.address && (
+                      <p className="text-sm text-gray-700">
+                        <span className="font-semibold">Address:</span> {selectedWasteDetail.address}
+                      </p>
+                    )}
+                    <p className="text-sm text-gray-700">
+                      <span className="font-semibold">City:</span> {selectedWasteDetail.city || 'N/A'}
+                    </p>
+                    <p className="text-sm text-gray-700">
+                      <span className="font-semibold">State:</span> {selectedWasteDetail.state || 'N/A'}
+                    </p>
+                    <p className="text-sm text-gray-700">
+                      <span className="font-semibold">Country:</span> {selectedWasteDetail.country || 'N/A'}
+                    </p>
+                    {selectedWasteDetail.latitude && selectedWasteDetail.longitude && (
+                      <p className="text-sm text-gray-700">
+                        <span className="font-semibold">Coordinates:</span> {selectedWasteDetail.latitude}, {selectedWasteDetail.longitude}
+                      </p>
+                    )}
+                  </div>
+                </div>
+
+                {/* Description */}
+                {selectedWasteDetail.description && (
+                  <div className="bg-gray-50 rounded-xl p-4 mb-6">
+                    <h3 className="text-sm font-bold text-gray-700 mb-2">Description</h3>
+                    <p className="text-sm text-gray-700 leading-relaxed">{selectedWasteDetail.description}</p>
+                  </div>
+                )}
+
+                {/* Collection Information */}
+                {selectedWasteDetail.collectedAt && (
+                  <div className="bg-emerald-50 rounded-xl p-4 mb-6">
+                    <h3 className="text-sm font-bold text-gray-700 mb-3 flex items-center gap-2">
+                      <CheckCircle className="w-4 h-4 text-emerald-600" />
+                      Collection Information
+                    </h3>
+                    <div className="space-y-2">
+                      <p className="text-sm text-gray-700">
+                        <span className="font-semibold">Collected On:</span> {new Date(selectedWasteDetail.collectedAt).toLocaleString('en-US', { 
+                          dateStyle: 'medium', 
+                          timeStyle: 'short' 
+                        })}
+                      </p>
+                      {selectedWasteDetail.verifiedAt && (
+                        <p className="text-sm text-gray-700">
+                          <span className="font-semibold">Verified On:</span> {new Date(selectedWasteDetail.verifiedAt).toLocaleString('en-US', { 
+                            dateStyle: 'medium', 
+                            timeStyle: 'short' 
+                          })}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {/* Additional Info */}
+                <div className="grid grid-cols-2 gap-4">
+                  {selectedWasteDetail.reporterId && (
+                    <div className="bg-gray-50 rounded-xl p-4">
+                      <p className="text-xs text-gray-500 mb-1">Reporter ID</p>
+                      <p className="text-sm font-mono text-gray-800">{selectedWasteDetail.reporterId.substring(0, 12)}...</p>
+                    </div>
+                  )}
+                  {selectedWasteDetail.collectorId && (
+                    <div className="bg-gray-50 rounded-xl p-4">
+                      <p className="text-xs text-gray-500 mb-1">Collector ID</p>
+                      <p className="text-sm font-mono text-gray-800">{selectedWasteDetail.collectorId.substring(0, 12)}...</p>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Footer */}
+              <div className="border-t border-gray-200 p-4 bg-gray-50 rounded-b-2xl">
+                <button
+                  onClick={closeWasteDetail}
+                  className="w-full py-3 bg-gray-800 hover:bg-gray-900 text-white rounded-xl font-semibold transition-all duration-200"
+                >
+                  Close
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* OTP Verification Modal */}
+        {showOtpModal && (
+          <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+            <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6 relative">
+              <button
+                onClick={() => setShowOtpModal(false)}
+                className="absolute top-4 right-4 text-gray-400 hover:text-gray-600 transition-colors"
+              >
+                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+
+              <div className="text-center mb-6">
+                <div className="w-16 h-16 bg-linear-to-br from-blue-500 to-blue-600 rounded-full flex items-center justify-center mx-auto mb-4">
+                  <Bell className="w-8 h-8 text-white" />
+                </div>
+                <h2 className="text-2xl font-bold text-gray-800 mb-2">Verify Phone Number</h2>
+                <p className="text-sm text-gray-600">
+                  Enter the 6-digit code sent to <span className="font-semibold">{userData.phone}</span>
+                </p>
+              </div>
+
+              <div className="flex justify-center gap-2 mb-6">
+                {otp.map((digit, index) => (
+                  <input
+                    key={index}
+                    id={`otp-${index}`}
+                    type="text"
+                    maxLength={1}
+                    value={digit}
+                    onChange={(e) => handleOtpChange(index, e.target.value)}
+                    onKeyDown={(e) => handleOtpKeyDown(index, e)}
+                    className="w-12 h-12 text-center text-xl font-bold border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:outline-none transition-all"
+                  />
+                ))}
+              </div>
+
+              <button
+                onClick={verifyOtp}
+                disabled={verifyingOtp || otp.join('').length !== 6}
+                className="w-full py-3 bg-linear-to-r from-blue-500 to-blue-600 text-white rounded-lg font-semibold hover:from-blue-600 hover:to-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-300 flex items-center justify-center gap-2 mb-4"
+              >
+                {verifyingOtp ? (
+                  <>
+                    <Loader className="w-5 h-5 animate-spin" />
+                    Verifying...
+                  </>
+                ) : (
+                  <>
+                    <CheckCircle className="w-5 h-5" />
+                    Verify OTP
+                  </>
+                )}
+              </button>
+
+              <button
+                onClick={sendOtp}
+                disabled={sendingOtp}
+                className="w-full text-sm text-blue-600 hover:text-blue-700 font-medium transition-colors"
+              >
+                {sendingOtp ? 'Sending...' : 'Resend OTP'}
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* Save Button */}
         <div className="sticky bottom-6">
