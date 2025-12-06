@@ -6,7 +6,6 @@ import {
   Text,
   Button,
   H2,
-  H4,
   Input,
   TextArea,
   Theme,
@@ -17,10 +16,12 @@ import { Alert, TouchableOpacity } from "react-native";
 import { useUser } from "@clerk/clerk-expo";
 import { router } from "expo-router";
 import * as ImagePicker from "expo-image-picker";
+import * as Location from "expo-location";
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import { createMarketplaceListing } from "../../services/marketplaceService";
+import { fetchUserProfile } from "../../services/userService";
 
-const GEMINI_API_KEY = "AIzaSyD_TJq1g_qx94pnDHkWMsL1CQJ84F1-qwQ";
+const GEMINI_API_KEY = process.env.EXPO_PUBLIC_GEMINI_API_KEY as string;
 
 export default function CreateListingScreen() {
   const { user } = useUser();
@@ -32,6 +33,70 @@ export default function CreateListingScreen() {
   const [description, setDescription] = React.useState("");
   const [analyzing, setAnalyzing] = React.useState(false);
   const [submitting, setSubmitting] = React.useState(false);
+  const [location, setLocation] = React.useState<{
+    latitude: number;
+    longitude: number;
+    city?: string;
+    state?: string;
+  } | null>(null);
+
+  // Get user location on mount
+  React.useEffect(() => {
+    getUserLocation();
+  }, [user]);
+
+  const getUserLocation = async () => {
+    if (!user) return;
+
+    try {
+      // First try to get from user profile
+      const profile = await fetchUserProfile(user.id);
+      if (profile.city && profile.state) {
+        // Use approximate coordinates for city (can be improved with geocoding)
+        setLocation({
+          latitude: 19.076, // Default Mumbai coordinates
+          longitude: 72.8777,
+          city: profile.city,
+          state: profile.state,
+        });
+        return;
+      }
+
+      // Fall back to device location
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      if (status !== "granted") {
+        Alert.alert(
+          "Location Required",
+          "Location is needed to create a listing"
+        );
+        return;
+      }
+
+      const currentLocation = await Location.getCurrentPositionAsync({});
+      const geocode = await Location.reverseGeocodeAsync({
+        latitude: currentLocation.coords.latitude,
+        longitude: currentLocation.coords.longitude,
+      });
+
+      setLocation({
+        latitude: currentLocation.coords.latitude,
+        longitude: currentLocation.coords.longitude,
+        city: geocode[0]?.city || undefined,
+        state: geocode[0]?.region || undefined,
+      });
+    } catch (error) {
+      console.error("Error getting location:", error);
+      Alert.alert(
+        "Location Error",
+        "Failed to get location. Using default location."
+      );
+      // Use default Mumbai coordinates
+      setLocation({
+        latitude: 19.076,
+        longitude: 72.8777,
+      });
+    }
+  };
 
   const pickImages = async () => {
     try {
@@ -85,7 +150,7 @@ export default function CreateListingScreen() {
     try {
       setAnalyzing(true);
       const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
-      const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+      const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
 
       // Convert first image to base64
       const response = await fetch(images[0]);
@@ -196,6 +261,14 @@ Description: [brief description]`;
   const handleSubmit = async () => {
     if (!validateForm() || !user) return;
 
+    if (!location) {
+      Alert.alert(
+        "Location Required",
+        "Please wait while we get your location"
+      );
+      return;
+    }
+
     try {
       setSubmitting(true);
 
@@ -205,7 +278,11 @@ Description: [brief description]`;
         basePrice: parseFloat(basePrice),
         auctionDuration: parseInt(auctionDuration),
         description: description.trim() || undefined,
-        images: images,
+        latitude: location.latitude,
+        longitude: location.longitude,
+        city: location.city,
+        state: location.state,
+        imageUris: images,
       };
 
       await createMarketplaceListing(user.id, listingData);
@@ -427,10 +504,26 @@ Description: [brief description]`;
             />
           </YStack>
 
+          {/* Location Info */}
+          {location && (
+            <YStack
+              backgroundColor="$blue2"
+              padding="$3"
+              borderRadius="$3"
+              borderWidth={1}
+              borderColor="$blue5"
+            >
+              <Text color="$blue11" fontSize="$2" fontWeight="600">
+                📍 Location: {location.city || "Unknown"},{" "}
+                {location.state || "Unknown"}
+              </Text>
+            </YStack>
+          )}
+
           {/* Submit Button */}
           <Button
             onPress={handleSubmit}
-            disabled={submitting}
+            disabled={submitting || !location}
             backgroundColor="$green9"
             color="white"
             fontWeight="700"
