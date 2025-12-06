@@ -32,6 +32,10 @@ model User {
   country         String?
   enableCollector Boolean @default(false)
 
+  city    String?
+  state   String?
+  country String?
+
   reporterPoints  Int @default(0)
   collectorPoints Int @default(0)
   globalPoints    Int @default(0)

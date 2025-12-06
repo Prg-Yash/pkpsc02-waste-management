@@ -273,15 +273,6 @@ export default function ReportWasteScreen() {
     return (
       <Theme name="light">
         <ScrollView flex={1} backgroundColor="$background">
-          <YStack backgroundColor="$green9" padding="$5" paddingTop="$10">
-            <H2 color="white" fontWeight="bold">
-              Report Waste
-            </H2>
-            <Paragraph color="white" opacity={0.9} marginTop="$1">
-              AI-powered waste detection
-            </Paragraph>
-          </YStack>
-
           <YStack padding="$4" gap="$4">
             {error ? (
               <Card backgroundColor="$red2" padding="$3" borderRadius="$3">

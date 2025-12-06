@@ -94,6 +94,9 @@ router.patch('/me', authenticateUser, async (req, res) => {
                 ...(state !== undefined && { state }),
                 ...(country !== undefined && { country }),
                 ...(enableCollector !== undefined && { enableCollector }),
+                ...(city !== undefined && { city: city || null }),
+                ...(state !== undefined && { state: state || null }),
+                ...(country !== undefined && { country: country || null }),
             },
             include: {
                 reportedWastes: {
