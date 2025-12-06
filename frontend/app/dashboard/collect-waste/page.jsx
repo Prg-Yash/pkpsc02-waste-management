@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { useUser } from '@clerk/nextjs';
-import { Trash2, MapPin, CheckCircle, Clock, Upload, Loader, Calendar, Weight, Search, X, Award, TrendingUp } from 'lucide-react';
+import { Trash2, MapPin, CheckCircle, Clock, Upload, Loader, Calendar, Weight, Search, X, Award, TrendingUp, AlertCircle } from 'lucide-react';
 import { API_CONFIG } from '@/lib/api-config';
 
 
@@ -138,6 +138,7 @@ const CollectPage = () => {
     if (file) {
       const reader = new FileReader();
       reader.onloadend = () => {
+        // Store the complete data URL for preview
         setVerificationImage(reader.result);
       };
       reader.readAsDataURL(file);
@@ -205,6 +206,7 @@ const CollectPage = () => {
           reportedLocation: selectedTask.reportedLocation,
           wasteType: selectedTask.wasteType,
           amount: selectedTask.amount,
+          aiAnalysis: selectedTask.aiAnalysis, // Pass AI analysis for category detection
         }),
       });
 
@@ -215,12 +217,14 @@ const CollectPage = () => {
         throw new Error(errorMsg);
       }
 
-      setGeminiAnalysis(data.analysis);
-      const result = data.parsedResult;
+      // Use the data directly (new API format doesn't have parsedResult wrapper)
+      const result = data.parsedResult || data;
       
       setVerificationResult(result);
+      setGeminiAnalysis(result.notes || data.analysis);
       
-      if (result.overallMatch) {
+      // Check if verification passed (both image and location)
+      if (result.overallMatch || result.success) {
         // Convert base64 to blob for API submission
         const base64Response = await fetch(verificationImage);
         const blob = await base64Response.blob();
@@ -243,7 +247,15 @@ const CollectPage = () => {
 
         if (!collectResponse.ok) {
           const errorData = await collectResponse.json();
-          throw new Error(errorData.error || 'Failed to submit collection');
+          
+          // Show verification results but indicate backend submission failed
+          setVerificationStatus('verified-failed');
+          setVerificationResult({
+            ...result,
+            backendError: errorData.error || 'Failed to submit collection',
+            showBackendError: true
+          });
+          return;
         }
 
         const collectData = await collectResponse.json();
@@ -253,7 +265,8 @@ const CollectPage = () => {
         
         // Calculate reward based on confidence and amount
         const baseReward = parseInt(selectedTask.amount) * 2;
-        const earnedReward = Math.floor(baseReward * result.confidence);
+        const confidence = result.confidence || (result.matchConfidence / 100) || 0.8;
+        const earnedReward = Math.floor(baseReward * confidence);
         setReward(earnedReward);
 
         // Refresh the tasks list
@@ -266,7 +279,8 @@ const CollectPage = () => {
           setVerificationResult(null);
         }, 3000);
       } else {
-        setVerificationStatus('failure');
+        // Verification failed but we have results to show
+        setVerificationStatus('verified-failed');
       }
     } catch (error) {
       console.error('Verification error:', error);
@@ -678,32 +692,60 @@ const CollectPage = () => {
                   ) : 'Verify Collection'}
                 </button>
 
-                {verificationStatus === 'success' && verificationResult && (
+                {(verificationStatus === 'success' || verificationStatus === 'verified-failed') && verificationResult && (
                   <div className="mt-6 space-y-4">
-                    <div className="p-6 bg-emerald-50 border border-emerald-200 rounded-xl">
+                    <div className={`p-6 rounded-xl border ${
+                      verificationStatus === 'success' 
+                        ? 'bg-emerald-50 border-emerald-200' 
+                        : 'bg-orange-50 border-orange-200'
+                    }`}>
                       <div className="flex items-center gap-2 mb-4">
-                        <CheckCircle className="w-6 h-6 text-emerald-600" />
-                        <h4 className="font-bold text-emerald-800">AI Verification Results</h4>
+                        <CheckCircle className={`w-6 h-6 ${
+                          verificationStatus === 'success' ? 'text-emerald-600' : 'text-orange-600'
+                        }`} />
+                        <h4 className={`font-bold ${
+                          verificationStatus === 'success' ? 'text-emerald-800' : 'text-orange-800'
+                        }`}>AI Verification Results</h4>
                       </div>
                       <div className="grid gap-3 text-sm">
                         <div className="flex justify-between items-center">
-                          <span className="text-gray-700 font-medium">Contains Waste:</span>
-                          <span className={`font-bold ${verificationResult.containsWaste ? 'text-emerald-600' : 'text-red-600'}`}>
-                            {verificationResult.containsWaste ? 'Yes ✓' : 'No ✗'}
+                          <span className="text-gray-700 font-medium">Same Waste:</span>
+                          <span className={`font-bold ${verificationResult.sameWaste ? 'text-emerald-600' : 'text-red-600'}`}>
+                            {verificationResult.sameWaste ? 'Yes ✓' : 'No ✗'}
                           </span>
                         </div>
                         <div className="flex justify-between items-center">
-                          <span className="text-gray-700 font-medium">Waste Type Match:</span>
-                          <span className={`font-bold ${verificationResult.wasteTypeMatch ? 'text-emerald-600' : 'text-red-600'}`}>
-                            {verificationResult.wasteTypeMatch ? 'Yes ✓' : 'No ✗'}
-                          </span>
+                          <span className="text-gray-700 font-medium">Match Confidence:</span>
+                          <span className="font-bold text-emerald-600">{verificationResult.matchConfidence}%</span>
                         </div>
                         <div className="flex justify-between items-center">
-                          <span className="text-gray-700 font-medium">Quantity Match:</span>
-                          <span className={`font-bold ${verificationResult.quantityMatch ? 'text-emerald-600' : 'text-red-600'}`}>
-                            {verificationResult.quantityMatch ? 'Yes ✓' : 'No ✗'}
-                          </span>
+                          <span className="text-gray-700 font-medium">Category:</span>
+                          <span className="font-semibold text-blue-600 capitalize">{verificationResult.wasteCategory}</span>
                         </div>
+                        {verificationResult.wasteCategory === 'small' && verificationResult.segregationMatch !== undefined && (
+                          <div className="flex justify-between items-center">
+                            <span className="text-gray-700 font-medium">Segregation Match:</span>
+                            <span className={`font-bold ${verificationResult.segregationMatch ? 'text-emerald-600' : 'text-orange-600'}`}>
+                              {verificationResult.segregationMatch ? 'Yes ✓' : 'No ✗'}
+                            </span>
+                          </div>
+                        )}
+                        {verificationResult.wasteCategory === 'large' && (
+                          <>
+                            <div className="flex justify-between items-center">
+                              <span className="text-gray-700 font-medium">Bin Shape Match:</span>
+                              <span className={`font-bold ${verificationResult.binShapeMatch ? 'text-emerald-600' : 'text-red-600'}`}>
+                                {verificationResult.binShapeMatch ? 'Yes ✓' : 'No ✗'}
+                              </span>
+                            </div>
+                            <div className="flex justify-between items-center">
+                              <span className="text-gray-700 font-medium">Overflow Match:</span>
+                              <span className={`font-bold ${verificationResult.overflowMatch ? 'text-emerald-600' : 'text-orange-600'}`}>
+                                {verificationResult.overflowMatch ? 'Yes ✓' : 'Changed'}
+                              </span>
+                            </div>
+                          </>
+                        )}
                         <div className="flex justify-between items-center">
                           <span className="text-gray-700 font-medium">Location Match:</span>
                           <span className={`font-bold ${verificationResult.locationMatch ? 'text-emerald-600' : 'text-red-600'}`}>
@@ -713,31 +755,36 @@ const CollectPage = () => {
                             )}
                           </span>
                         </div>
-                        <div className="flex justify-between items-center">
-                          <span className="text-gray-700 font-medium">AI Confidence:</span>
-                          <span className="font-bold text-emerald-600">{(verificationResult.confidence * 100).toFixed(1)}%</span>
-                        </div>
-                        {verificationResult.imageSimilarity > 0 && (
-                          <div className="flex justify-between items-center">
-                            <span className="text-gray-700 font-medium">Image Similarity:</span>
-                            <span className="font-bold text-blue-600">{(verificationResult.imageSimilarity * 100).toFixed(1)}%</span>
+                        {verificationResult.notes && (
+                          <div className="mt-3 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                            <p className="text-xs font-semibold text-blue-800 mb-1">AI Notes:</p>
+                            <p className="text-xs text-blue-700">{verificationResult.notes}</p>
                           </div>
                         )}
-                        {verificationResult.concerns && verificationResult.concerns.length > 0 && (
-                          <div className="mt-3 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
-                            <p className="text-xs font-semibold text-yellow-800 mb-1">AI Concerns:</p>
-                            <p className="text-xs text-yellow-700">{verificationResult.concerns[0]}</p>
+                        {verificationResult.validation && !verificationResult.validation.isValid && (
+                          <div className="mt-3 p-3 bg-red-50 border border-red-200 rounded-lg">
+                            <p className="text-xs font-semibold text-red-800 mb-1">❌ Verification Failed:</p>
+                            <p className="text-xs text-red-700 mb-2">{verificationResult.validation.reason}</p>
+                            
+                            {/* Show detailed checks */}
+                            {verificationResult.validation.imageCheck && (
+                              <div className="mt-2 text-xs">
+                                <span className={verificationResult.validation.imageCheck.isValid ? 'text-emerald-700' : 'text-red-700'}>
+                                  {verificationResult.validation.imageCheck.isValid ? '✓' : '✗'} Image: {verificationResult.validation.imageCheck.reason}
+                                </span>
+                              </div>
+                            )}
+                            {verificationResult.validation.locationCheck && (
+                              <div className="mt-1 text-xs">
+                                <span className={verificationResult.validation.locationCheck.isValid ? 'text-emerald-700' : 'text-red-700'}>
+                                  {verificationResult.validation.locationCheck.isValid ? '✓' : '✗'} Location: {verificationResult.validation.locationCheck.reason}
+                                </span>
+                              </div>
+                            )}
                           </div>
                         )}
                       </div>
                     </div>
-
-                    {geminiAnalysis && (
-                      <div className="p-4 bg-blue-50 border border-blue-200 rounded-xl">
-                        <h5 className="font-semibold text-blue-900 mb-2 text-sm">Detailed AI Analysis:</h5>
-                        <p className="text-xs text-blue-800 whitespace-pre-wrap">{geminiAnalysis}</p>
-                      </div>
-                    )}
 
                     {reward && verificationResult.overallMatch && (
                       <div className="p-4 bg-linear-to-r from-emerald-500 to-teal-600 text-white rounded-xl flex items-center justify-between shadow-lg">
@@ -749,16 +796,54 @@ const CollectPage = () => {
                       </div>
                     )}
 
-                    {!verificationResult.overallMatch && (
+                    {verificationResult.showBackendError && (
+                      <div className="p-4 bg-amber-50 border-2 border-amber-300 rounded-xl">
+                        <div className="flex items-start gap-3">
+                          <AlertCircle className="w-5 h-5 text-amber-600 mt-0.5 shrink-0" />
+                          <div>
+                            <p className="font-bold text-amber-800 mb-2">⚠️ Collection Not Submitted</p>
+                            <p className="text-sm text-amber-700 mb-3">
+                              Your waste verification was successful, but the collection could not be saved to the database:
+                            </p>
+                            <div className="bg-amber-100 border border-amber-200 rounded-lg p-3 mb-3">
+                              <p className="text-xs font-mono text-amber-900">{verificationResult.backendError}</p>
+                            </div>
+                            <p className="text-xs text-amber-700">
+                              <strong>What this means:</strong> The AI verified your collection images match, but you need collector mode enabled in your account to submit collections.
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    {!verificationResult.overallMatch && verificationStatus === 'verified-failed' && !verificationResult.showBackendError && (
                       <div className="p-4 bg-red-50 border border-red-200 rounded-xl">
-                        <p className="text-sm font-semibold text-red-800">
-                          ⚠️ Verification incomplete. Please ensure:
+                        <p className="text-sm font-semibold text-red-800 mb-3">
+                          ❌ Collection Cannot Be Verified
                         </p>
-                        <ul className="text-xs text-red-700 mt-2 ml-4 list-disc space-y-1">
-                          {!verificationResult.containsWaste && <li>Image clearly shows waste materials</li>}
-                          {!verificationResult.wasteTypeMatch && <li>Waste type matches the reported type</li>}
-                          {!verificationResult.quantityMatch && <li>Amount matches the reported quantity</li>}
-                          {!verificationResult.locationMatch && <li>You are at the correct location</li>}
+                        
+                        {/* Show main reason */}
+                        <div className="mb-3 p-3 bg-white rounded-lg border border-red-200">
+                          <p className="text-sm font-semibold text-red-700">
+                            {verificationResult.validation?.reason || 'Verification requirements not met'}
+                          </p>
+                        </div>
+
+                        {/* Show what needs to be fixed */}
+                        <p className="text-xs font-semibold text-red-800 mb-2">Required Actions:</p>
+                        <ul className="text-xs text-red-700 ml-4 list-disc space-y-1">
+                          {!verificationResult.sameWaste && (
+                            <li>Upload image of the exact same waste shown in the report</li>
+                          )}
+                          {verificationResult.sameWaste && verificationResult.matchConfidence < 60 && (
+                            <li>Take a clearer photo with better lighting (current confidence: {verificationResult.matchConfidence}%)</li>
+                          )}
+                          {!verificationResult.locationMatch && verificationResult.locationDistance && (
+                            <li>Go to the reported location (you are {(verificationResult.locationDistance * 1000).toFixed(0)}m away, maximum 10000m allowed)</li>
+                          )}
+                          {!verificationResult.locationMatch && !verificationResult.locationDistance && (
+                            <li>Enable location services and ensure GPS is accurate</li>
+                          )}
                         </ul>
                       </div>
                     )}

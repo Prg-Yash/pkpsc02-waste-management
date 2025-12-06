@@ -281,13 +281,6 @@ router.post(
       const { collectorLocation, isLocationLatLng, latitude, longitude } =
         req.body;
 
-      // Validate user has collector enabled
-      if (!req.user.enableCollector) {
-        return res.status(403).json({
-          error: "User must have collector mode enabled to collect waste",
-        });
-      }
-
       // Fetch waste report
       const waste = await prisma.wasteReport.findUnique({
         where: { id: wasteId },

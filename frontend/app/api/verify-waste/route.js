@@ -4,17 +4,50 @@ import { NextResponse } from 'next/server';
 // Initialize Gemini AI
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 
-// Helper function to validate and clean base64 image
-function cleanBase64Image(imageData) {
+/**
+ * Downloads an image from URL and converts to base64
+ */
+async function urlToBase64(url) {
+  try {
+    console.log('📥 Downloading image from URL:', url);
+    
+    const response = await fetch(url);
+    if (!response.ok) {
+      throw new Error(`Failed to fetch image: ${response.status}`);
+    }
+    
+    const arrayBuffer = await response.arrayBuffer();
+    const buffer = Buffer.from(arrayBuffer);
+    const base64 = buffer.toString('base64');
+    
+    // Detect mime type from response or default to jpeg
+    const contentType = response.headers.get('content-type') || 'image/jpeg';
+    
+    console.log('✅ Image downloaded and converted to base64');
+    return { data: base64, mimeType: contentType };
+  } catch (error) {
+    console.error('❌ Error downloading image:', error);
+    throw new Error(`Failed to download image from URL: ${error.message}`);
+  }
+}
+
+/**
+ * Helper function to validate and clean base64 image or download from URL
+ */
+async function prepareImage(imageData) {
   if (!imageData || typeof imageData !== 'string') {
     throw new Error('Invalid image data: must be a non-empty string');
   }
 
-  // Remove whitespace
   const trimmed = imageData.trim();
   
   if (trimmed === '' || trimmed === 'undefined' || trimmed === 'null') {
     throw new Error('Invalid image data: empty or undefined');
+  }
+
+  // Check if it's a URL (http/https)
+  if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) {
+    return await urlToBase64(trimmed);
   }
 
   // Extract base64 data and mime type
@@ -50,10 +83,154 @@ function cleanBase64Image(imageData) {
   return { data: base64Data, mimeType };
 }
 
+/**
+ * Determines waste category from AI analysis data
+ */
+function determineWasteCategory(aiAnalysis) {
+  if (!aiAnalysis || !aiAnalysis.category) {
+    return 'small'; // Default to small if no category
+  }
+  
+  // Large waste: bins, bulk items, overflow situations
+  const largeKeywords = ['large', 'bin', 'overflow', 'bulk', 'container'];
+  const category = aiAnalysis.category.toLowerCase();
+  
+  return largeKeywords.some(keyword => category.includes(keyword)) ? 'large' : 'small';
+}
+
+/**
+ * Compares two waste images to verify they show the same waste instance
+ */
+async function compareWasteImages(originalImageData, collectorImageData, wasteCategory) {
+  console.log('🔍 Starting Gemini similarity analysis...');
+  console.log('Category:', wasteCategory);
+
+  const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
+
+  let prompt;
+
+  if (wasteCategory === 'small') {
+    prompt = `You are an expert waste verification AI. Compare these two images to determine if they show THE SAME waste instance.
+
+IMAGE 1 (Original Report): The first image shows the waste that was originally reported.
+IMAGE 2 (Collector Verification): The second image was taken by a collector claiming to collect this waste.
+
+IMPORTANT RULES:
+1. Return "sameWaste: true" ONLY if you're highly confident these images show the EXACT SAME waste item(s) in the SAME location
+2. Consider: lighting differences, angles, time passed, slight movement is acceptable
+3. Red flags for "sameWaste: false": different items, different location background, completely different waste types, different quantities
+4. Match confidence should be 0-100 (percentage certainty)
+5. Check if segregation status matches between images (properly sorted vs mixed)
+
+Return ONLY a valid JSON object with this exact structure:
+{
+  "sameWaste": boolean,
+  "matchConfidence": number (0-100),
+  "segregationMatch": boolean,
+  "notes": "Brief explanation of your decision"
+}`;
+  } else {
+    // large waste
+    prompt = `You are an expert waste verification AI. Compare these two images to determine if they show THE SAME overflowing waste bin.
+
+IMAGE 1 (Original Report): The first image shows the overflowing bin that was originally reported.
+IMAGE 2 (Collector Verification): The second image was taken by a collector claiming to service this bin.
+
+IMPORTANT RULES:
+1. Return "sameWaste: true" ONLY if you're highly confident these images show the EXACT SAME bin at the SAME location
+2. Consider: lighting differences, angles, waste level may have changed slightly, but the bin structure and location should match
+3. Red flags for "sameWaste: false": different bin type/color, different location, completely different surrounding environment
+4. Match confidence should be 0-100 (percentage certainty)
+5. Check if bin shape/type matches between images
+6. Check if overflow characteristics are similar (accounting for possible changes over time)
+
+Return ONLY a valid JSON object with this exact structure:
+{
+  "sameWaste": boolean,
+  "matchConfidence": number (0-100),
+  "binShapeMatch": boolean,
+  "overflowMatch": boolean,
+  "notes": "Brief explanation of your decision"
+}`;
+  }
+
+  const result = await model.generateContent([
+    originalImageData,
+    collectorImageData,
+    { text: prompt }
+  ]);
+
+  const response = await result.response;
+  const text = response.text();
+
+  console.log('📊 Raw Gemini similarity response:', text);
+
+  // Clean and parse JSON
+  const jsonMatch = text.match(/\{[\s\S]*\}/);
+  if (!jsonMatch) {
+    throw new Error('No JSON found in Gemini response');
+  }
+
+  const analysis = JSON.parse(jsonMatch[0]);
+  console.log('✅ Parsed similarity analysis:', analysis);
+
+  // Validate the response structure
+  if (wasteCategory === 'small') {
+    if (
+      typeof analysis.sameWaste !== 'boolean' ||
+      typeof analysis.matchConfidence !== 'number' ||
+      typeof analysis.segregationMatch !== 'boolean' ||
+      typeof analysis.notes !== 'string'
+    ) {
+      throw new Error('Invalid similarity analysis structure for small waste');
+    }
+  } else {
+    if (
+      typeof analysis.sameWaste !== 'boolean' ||
+      typeof analysis.matchConfidence !== 'number' ||
+      typeof analysis.binShapeMatch !== 'boolean' ||
+      typeof analysis.overflowMatch !== 'boolean' ||
+      typeof analysis.notes !== 'string'
+    ) {
+      throw new Error('Invalid similarity analysis structure for large waste');
+    }
+  }
+
+  return analysis;
+}
+
+/**
+ * Validates if the similarity check passed based on business rules
+ */
+function validateSimilarity(result) {
+  // Rule 1: sameWaste must be true
+  if (!result.sameWaste) {
+    return {
+      isValid: false,
+      reason: 'AI determined these are not the same waste items'
+    };
+  }
+
+  // Rule 2: Confidence must be at least 60%
+  if (result.matchConfidence < 60) {
+    return {
+      isValid: false,
+      reason: `Match confidence too low: ${result.matchConfidence}%`
+    };
+  }
+
+  // All checks passed
+  return {
+    isValid: true,
+    reason: `Verified with ${result.matchConfidence}% confidence`
+  };
+}
+
 export async function POST(request) {
   try {
-    const { collectedImage, reportedImage, location, reportedLocation, wasteType, amount } = await request.json();
+    const { collectedImage, reportedImage, location, reportedLocation, wasteType, amount, aiAnalysis } = await request.json();
 
+    // Validate required fields
     if (!collectedImage) {
       return NextResponse.json(
         { error: 'Collected image is required' },
@@ -61,14 +238,22 @@ export async function POST(request) {
       );
     }
 
-    // Validate and clean collected image
-    let collectedImageData;
+    if (!reportedImage) {
+      return NextResponse.json(
+        { error: 'Reported image is required for comparison' },
+        { status: 400 }
+      );
+    }
+
+    // Validate and prepare both images (handles URLs and base64)
+    let collectedImageData, reportedImageData;
+    
     try {
-      const cleaned = cleanBase64Image(collectedImage);
+      const preparedCollector = await prepareImage(collectedImage);
       collectedImageData = {
         inlineData: {
-          data: cleaned.data,
-          mimeType: cleaned.mimeType
+          data: preparedCollector.data,
+          mimeType: preparedCollector.mimeType
         }
       };
     } catch (error) {
@@ -81,85 +266,112 @@ export async function POST(request) {
       );
     }
 
-    // Initialize Gemini Pro Vision model
-    const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
-
-    let prompt = `You are an expert waste management AI system. Analyze the uploaded image and provide a detailed verification report.
-
-Task Details:
-- Waste Type: ${wasteType}
-- Reported Amount: ${amount}
-- Reported Location: ${reportedLocation}
-- Current Location: ${location ? `Latitude: ${location.latitude}, Longitude: ${location.longitude}` : 'Not provided'}
-
-Please analyze the image and provide:
-1. Does the image contain waste materials? (Yes/No)
-2. Does the waste type match "${wasteType}"? (Yes/No with confidence percentage)
-3. Estimated amount of waste in the image (in kg)
-4. Does the estimated amount match the reported amount "${amount}"? (Yes/No with confidence percentage)
-5. Overall confidence score (0-100%)
-6. Any concerns or discrepancies
-
-`;
-
-    // If reported image is provided, add comparison
-    if (reportedImage) {
-      let reportedImageData;
-      try {
-        const cleaned = cleanBase64Image(reportedImage);
-        reportedImageData = {
-          inlineData: {
-            data: cleaned.data,
-            mimeType: cleaned.mimeType
-          }
-        };
-      } catch (error) {
-        console.warn('Invalid reported image, skipping comparison:', error.message);
-        // Continue without reported image comparison
-        const result = await model.generateContent([prompt, collectedImageData]);
-        const response = await result.response;
-        const analysisText = response.text();
-
-        return NextResponse.json({
-          success: true,
-          analysis: analysisText,
-          parsedResult: parseGeminiResponse(analysisText, location, reportedLocation)
-        });
-      }
-
-      prompt += `\nAdditionally, compare the uploaded image with the reported image and provide:
-7. Image similarity score (0-100%)
-8. Are these images of the same waste collection point? (Yes/No with confidence)
-9. Notable differences between the images`;
-
-      // Generate response with both images
-      const result = await model.generateContent([
-        prompt,
-        reportedImageData,
-        collectedImageData
-      ]);
-
-      const response = await result.response;
-      const analysisText = response.text();
-
-      return NextResponse.json({
-        success: true,
-        analysis: analysisText,
-        parsedResult: parseGeminiResponse(analysisText, location, reportedLocation)
-      });
-    } else {
-      // Generate response with only collected image
-      const result = await model.generateContent([prompt, collectedImageData]);
-
-      const response = await result.response;
-      const analysisText = response.text();
-
-      return NextResponse.json({
-        success: true,
-        analysis: analysisText,
-        parsedResult: parseGeminiResponse(analysisText, location, reportedLocation)
-      });
+    try {
+      const preparedReported = await prepareImage(reportedImage);
+      reportedImageData = {
+        inlineData: {
+          data: preparedReported.data,
+          mimeType: preparedReported.mimeType
+        }
+      };
+    } catch (error) {
+      return NextResponse.json(
+        { 
+          error: 'Invalid reported image format',
+          details: error.message 
+        },
+        { status: 400 }
+      );
     }
+
+    // Determine waste category from AI analysis
+    const wasteCategory = determineWasteCategory(aiAnalysis);
+    console.log('📦 Detected waste category:', wasteCategory);
+
+    // Compare images using Gemini similarity analysis
+    const similarityResult = await compareWasteImages(
+      reportedImageData,
+      collectedImageData,
+      wasteCategory
+    );
+
+    // Calculate location match if coordinates provided
+    let locationDistance = null;
+    let locationMatch = true;
+    let locationValidation = { isValid: true, reason: 'Location not verified (coordinates missing)' };
+
+    if (location && reportedLocation && location.latitude && reportedLocation.latitude) {
+      locationDistance = calculateDistance(
+        location.latitude,
+        location.longitude,
+        reportedLocation.latitude,
+        reportedLocation.longitude
+      );
+      
+      // Location must be within 10000 meters (10 km)
+      locationMatch = locationDistance < 10;
+      
+      if (locationMatch) {
+        locationValidation = {
+          isValid: true,
+          reason: `Location verified: ${(locationDistance * 1000).toFixed(0)}m away from reported location`
+        };
+      } else {
+        locationValidation = {
+          isValid: false,
+          reason: `Location too far: ${(locationDistance * 1000).toFixed(0)}m away (maximum 10000m allowed)`
+        };
+      }
+      
+      console.log('📍 Location check:', locationValidation);
+    } else {
+      console.warn('⚠️ Location verification skipped - coordinates missing');
+    }
+
+    // Validate similarity based on business rules
+    const imageValidation = validateSimilarity(similarityResult);
+
+    // Overall validation: both image AND location must pass
+    const overallValidation = {
+      isValid: imageValidation.isValid && locationValidation.isValid,
+      imageCheck: imageValidation,
+      locationCheck: locationValidation,
+      reason: !imageValidation.isValid 
+        ? imageValidation.reason 
+        : !locationValidation.isValid 
+        ? locationValidation.reason 
+        : 'All checks passed - collection verified'
+    };
+
+    // Build comprehensive result
+    const result = {
+      success: overallValidation.isValid,
+      sameWaste: similarityResult.sameWaste,
+      matchConfidence: similarityResult.matchConfidence,
+      validation: overallValidation,
+      locationDistance: locationDistance,
+      locationMatch: locationMatch,
+      wasteCategory: wasteCategory,
+      
+      // Category-specific fields
+      ...(wasteCategory === 'small' ? {
+        segregationMatch: similarityResult.segregationMatch
+      } : {
+        binShapeMatch: similarityResult.binShapeMatch,
+        overflowMatch: similarityResult.overflowMatch
+      }),
+      
+      notes: similarityResult.notes,
+      
+      // Legacy compatibility fields
+      containsWaste: similarityResult.sameWaste,
+      wasteTypeMatch: similarityResult.sameWaste,
+      quantityMatch: similarityResult.matchConfidence > 60,
+      confidence: similarityResult.matchConfidence / 100,
+      overallMatch: overallValidation.isValid
+    };
+
+    return NextResponse.json(result);
   } catch (error) {
     console.error('Gemini API Error:', error);
     
@@ -176,6 +388,9 @@ Please analyze the image and provide:
     } else if (error.message?.includes('image')) {
       errorMessage = 'Image processing failed';
       errorDetails = 'Unable to process the uploaded image. Please ensure it\'s a valid image file.';
+    } else if (error.message?.includes('similarity') || error.message?.includes('JSON')) {
+      errorMessage = 'AI analysis failed';
+      errorDetails = 'Unable to compare images. Please try again.';
     }
     
     return NextResponse.json(
@@ -187,86 +402,6 @@ Please analyze the image and provide:
       { status: 500 }
     );
   }
-}
-
-// Parse Gemini response to extract structured data
-function parseGeminiResponse(text, currentLocation, reportedLocation) {
-  const result = {
-    containsWaste: false,
-    wasteTypeMatch: false,
-    quantityMatch: false,
-    confidence: 0,
-    locationMatch: false,
-    locationDistance: null,
-    imageSimilarity: 0,
-    concerns: [],
-    estimatedAmount: null
-  };
-
-  try {
-    // Extract Yes/No answers and percentages using regex
-    const lowerText = text.toLowerCase();
-
-    // Check if contains waste
-    if (lowerText.includes('contains waste') || lowerText.includes('waste materials')) {
-      result.containsWaste = lowerText.includes('yes') || lowerText.includes('contain');
-    }
-
-    // Extract waste type match
-    const wasteTypeMatch = text.match(/waste type match[:\s]+(\w+)/i);
-    if (wasteTypeMatch) {
-      result.wasteTypeMatch = wasteTypeMatch[1].toLowerCase().includes('yes');
-    }
-
-    // Extract quantity match
-    const quantityMatch = text.match(/amount match[:\s]+(\w+)/i);
-    if (quantityMatch) {
-      result.quantityMatch = quantityMatch[1].toLowerCase().includes('yes');
-    }
-
-    // Extract confidence score
-    const confidenceMatch = text.match(/confidence[:\s]+(\d+)/i) || text.match(/(\d+)%/);
-    if (confidenceMatch) {
-      result.confidence = parseInt(confidenceMatch[1]) / 100;
-    }
-
-    // Extract image similarity if available
-    const similarityMatch = text.match(/similarity[:\s]+(\d+)/i);
-    if (similarityMatch) {
-      result.imageSimilarity = parseInt(similarityMatch[1]) / 100;
-    }
-
-    // Extract concerns
-    const concernsMatch = text.match(/concerns?[:\s]+(.+?)(?:\n\n|\n[0-9]|$)/is);
-    if (concernsMatch) {
-      result.concerns = [concernsMatch[1].trim()];
-    }
-
-    // Calculate location match if both locations provided
-    if (currentLocation && reportedLocation) {
-      const distance = calculateDistance(
-        currentLocation.latitude,
-        currentLocation.longitude,
-        reportedLocation.latitude,
-        reportedLocation.longitude
-      );
-      result.locationDistance = distance;
-      result.locationMatch = distance < 0.1; // Within 100 meters
-    }
-
-    // Overall match calculation
-    result.overallMatch = 
-      result.containsWaste &&
-      result.wasteTypeMatch &&
-      result.quantityMatch &&
-      result.confidence > 0.7 &&
-      (result.locationDistance === null || result.locationMatch);
-
-  } catch (error) {
-    console.error('Error parsing Gemini response:', error);
-  }
-
-  return result;
 }
 
 // Haversine formula to calculate distance between two coordinates
