@@ -9,10 +9,12 @@ const LeaderboardPage = () => {
   const { user } = useUser();
   const [activeTab, setActiveTab] = useState('global'); // global, collectors, reporters
   const [loading, setLoading] = useState(true);
+  const [tableLoading, setTableLoading] = useState(false);
   const [error, setError] = useState(null);
   const [leaderboardData, setLeaderboardData] = useState([]);
   const [myData, setMyData] = useState(null);
   const [pagination, setPagination] = useState(null);
+  const [currentPage, setCurrentPage] = useState(1);
 
   // Helper function to get initials from name
   const getInitials = (name) => {
@@ -25,28 +27,37 @@ const LeaderboardPage = () => {
   };
 
   // Fetch leaderboard data
-  const fetchLeaderboard = useCallback(async (type) => {
+  const fetchLeaderboard = useCallback(async (type, page = 1, onlyTable = false) => {
     if (!user?.id) {
       setError('User not authenticated');
       setLoading(false);
       return;
     }
 
-    setLoading(true);
+    // Set current page BEFORE loading starts so the loading message shows correct page
+    setCurrentPage(page);
+
+    // Set appropriate loading state
+    if (onlyTable) {
+      setTableLoading(true);
+    } else {
+      setLoading(true);
+    }
     setError(null);
 
     try {
       // Use proxy route to avoid ngrok CORS and browser warning issues (similar to collect-waste)
       const proxyUrl = '/api/leaderboard-proxy';
-      console.log("user.id", user.id, "type", type);
       const response = await fetch(proxyUrl, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          type: type,  // Use the type parameter passed to the function
-          userId: user.id
+          type: type,
+          userId: user.id,
+          page: page,
+          pageSize: 5
         }),
       });
 
@@ -65,7 +76,7 @@ const LeaderboardPage = () => {
       }
 
       const data = await response.json();
-      
+
       // Map API response to UI format
       const mappedLeaderboard = data.leaderboard.map((entry) => ({
         id: entry.id,
@@ -87,15 +98,23 @@ const LeaderboardPage = () => {
       setError(err.message || 'Failed to load leaderboard data');
     } finally {
       setLoading(false);
+      setTableLoading(false);
     }
   }, [user?.id]);
 
   // Fetch data when tab changes or user changes
   useEffect(() => {
     if (user?.id) {
-      fetchLeaderboard(activeTab);
+      setCurrentPage(1);
+      fetchLeaderboard(activeTab, 1);
     }
   }, [activeTab, fetchLeaderboard, user?.id]);
+
+  // Handle page change
+  const handlePageChange = (newPage) => {
+    if (newPage < 1 || newPage > pagination?.totalPages || tableLoading) return;
+    fetchLeaderboard(activeTab, newPage, true); // onlyTable = true for smooth loading
+  };
 
   // Old hardcoded data removed - now fetching from API
 
@@ -136,9 +155,9 @@ const LeaderboardPage = () => {
 
   const StatCard = ({ icon: Icon, title, value, subtitle, gradient, delay }) => {
     return (
-      <div 
+      <div
         className={`${gradient} rounded-2xl p-6 text-white shadow-lg hover:shadow-xl transition-all duration-500 transform hover:scale-[1.02] border border-white/20`}
-        style={{ 
+        style={{
           animation: `fadeInUp 0.6s ease-out ${delay}ms both`
         }}
       >
@@ -180,7 +199,7 @@ const LeaderboardPage = () => {
     <div className="min-h-screen bg-linear-to-br from-slate-50 via-emerald-50 to-teal-50">
       {/* Main Container */}
       <div className="max-w-[1600px] mx-auto p-4 sm:p-6 lg:p-8">
-        
+
         {/* Header */}
         <div className="bg-white rounded-2xl shadow-xl p-6 sm:p-8 border border-gray-100 mb-6">
           <div className="flex items-center gap-4">
@@ -202,11 +221,10 @@ const LeaderboardPage = () => {
             <button
               onClick={() => setActiveTab('global')}
               disabled={loading}
-              className={`flex-1 py-4 px-6 rounded-xl font-semibold transition-all duration-300 flex items-center justify-center gap-2 ${
-                activeTab === 'global'
+              className={`flex-1 py-4 px-6 rounded-xl font-semibold transition-all duration-300 flex items-center justify-center gap-2 ${activeTab === 'global'
                   ? 'bg-linear-to-r from-green-500 to-emerald-600 text-white shadow-lg'
                   : 'text-gray-600 hover:bg-gray-100'
-              } ${loading ? 'opacity-50 cursor-not-allowed' : ''}`}
+                } ${loading ? 'opacity-50 cursor-not-allowed' : ''}`}
             >
               <Trophy className="w-5 h-5" />
               <span>Global</span>
@@ -215,11 +233,10 @@ const LeaderboardPage = () => {
             <button
               onClick={() => setActiveTab('collectors')}
               disabled={loading}
-              className={`flex-1 py-4 px-6 rounded-xl font-semibold transition-all duration-300 flex items-center justify-center gap-2 ${
-                activeTab === 'collectors'
+              className={`flex-1 py-4 px-6 rounded-xl font-semibold transition-all duration-300 flex items-center justify-center gap-2 ${activeTab === 'collectors'
                   ? 'bg-linear-to-r from-green-500 to-emerald-600 text-white shadow-lg'
                   : 'text-gray-600 hover:bg-gray-100'
-              } ${loading ? 'opacity-50 cursor-not-allowed' : ''}`}
+                } ${loading ? 'opacity-50 cursor-not-allowed' : ''}`}
             >
               <Trash2 className="w-5 h-5" />
               <span>Collectors</span>
@@ -227,11 +244,10 @@ const LeaderboardPage = () => {
             <button
               onClick={() => setActiveTab('reporters')}
               disabled={loading}
-              className={`flex-1 py-4 px-6 rounded-xl font-semibold transition-all duration-300 flex items-center justify-center gap-2 ${
-                activeTab === 'reporters'
+              className={`flex-1 py-4 px-6 rounded-xl font-semibold transition-all duration-300 flex items-center justify-center gap-2 ${activeTab === 'reporters'
                   ? 'bg-linear-to-r from-green-500 to-emerald-600 text-white shadow-lg'
                   : 'text-gray-600 hover:bg-gray-100'
-              } ${loading ? 'opacity-50 cursor-not-allowed' : ''}`}
+                } ${loading ? 'opacity-50 cursor-not-allowed' : ''}`}
             >
               <FileText className="w-5 h-5" />
               <span>Reporters</span>
@@ -263,7 +279,7 @@ const LeaderboardPage = () => {
         {/* Stats Cards */}
         {!error && (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 mb-6">
-            <StatCard 
+            <StatCard
               icon={Users}
               title="Total Users"
               value={currentStats.totalUsers}
@@ -271,7 +287,7 @@ const LeaderboardPage = () => {
               gradient="bg-linear-to-br from-green-500 to-green-600"
               delay={100}
             />
-            <StatCard 
+            <StatCard
               icon={Target}
               title="Your Rank"
               value={currentStats.yourRank}
@@ -279,7 +295,7 @@ const LeaderboardPage = () => {
               gradient="bg-linear-to-br from-emerald-500 to-emerald-600"
               delay={200}
             />
-            <StatCard 
+            <StatCard
               icon={Star}
               title="Your Points"
               value={currentStats.yourPoints}
@@ -287,7 +303,7 @@ const LeaderboardPage = () => {
               gradient="bg-linear-to-br from-green-600 to-emerald-700"
               delay={300}
             />
-            <StatCard 
+            <StatCard
               icon={Trophy}
               title={activeTab === 'collectors' ? 'Top Collection Points' : activeTab === 'reporters' ? 'Top Report Points' : 'Top Score'}
               value={currentStats.topScore}
@@ -299,7 +315,7 @@ const LeaderboardPage = () => {
         )}
 
         {/* Leaderboard Table */}
-        <div className="bg-white rounded-2xl shadow-xl border border-gray-100 overflow-hidden">
+        <div className="bg-white rounded-2xl shadow-xl border border-gray-100 overflow-hidden relative">
           <div className="p-6 bg-linear-to-r from-green-500 to-emerald-600">
             <div className="flex items-center gap-3">
               <div className="p-2 bg-white/20 backdrop-blur-sm rounded-lg">
@@ -321,6 +337,16 @@ const LeaderboardPage = () => {
             <div className="p-12 flex flex-col items-center justify-center">
               <Loader2 className="w-12 h-12 text-emerald-600 animate-spin mb-4" />
               <p className="text-gray-600 font-medium">Loading leaderboard...</p>
+            </div>
+          )}
+
+          {/* Table Loading Overlay */}
+          {tableLoading && !loading && (
+            <div className="absolute inset-0 bg-white/80 backdrop-blur-sm flex items-center justify-center z-10">
+              <div className="flex flex-col items-center">
+                <Loader2 className="w-10 h-10 text-emerald-600 animate-spin mb-2" />
+                <p className="text-gray-600 font-medium">Loading page {currentPage}...</p>
+              </div>
             </div>
           )}
 
@@ -352,75 +378,161 @@ const LeaderboardPage = () => {
                 {leaderboardData.map((entry, index) => (
                   <div
                     key={entry.id || entry.rank}
-                className={`grid grid-cols-1 md:grid-cols-12 gap-4 p-4 sm:p-6 hover:bg-linear-to-r hover:from-green-50 hover:to-emerald-50 transition-all duration-300 ${
-                  entry.rank <= 3 ? 'bg-linear-to-r from-green-50 to-emerald-50' : ''
-                }`}
-                style={{ 
-                  animation: `fadeInUp 0.4s ease-out ${index * 50}ms both`
-                }}
-              >
-                {/* Rank */}
-                <div className="md:col-span-1 flex md:justify-center items-center gap-3">
-                  <div className={`flex items-center justify-center w-10 h-10 rounded-xl font-bold ${
-                    entry.rank === 1 ? 'bg-linear-to-br from-green-400 to-green-600 text-white' :
-                    entry.rank === 2 ? 'bg-linear-to-br from-gray-300 to-gray-500 text-white' :
-                    entry.rank === 3 ? 'bg-linear-to-br from-amber-600 to-amber-800 text-white' :
-                    'bg-gray-100 text-gray-700'
-                  }`}>
-                    {entry.rank}
-                  </div>
-                  {getRankBadge(entry.rank)}
-                  <span className="md:hidden font-semibold text-gray-900">{entry.name}</span>
-                </div>
-
-                {/* User Info */}
-                <div className="md:col-span-4 flex items-center gap-3 md:ml-0 ml-13">
-                  <div className={`w-12 h-12 rounded-full flex items-center justify-center font-bold text-white ${
-                    entry.rank === 1 ? 'bg-linear-to-br from-green-500 to-emerald-600' :
-                    entry.rank === 2 ? 'bg-linear-to-br from-emerald-500 to-green-600' :
-                    entry.rank === 3 ? 'bg-linear-to-br from-green-600 to-emerald-700' :
-                    'bg-linear-to-br from-gray-400 to-gray-500'
-                  }`}>
-                    {entry.initials}
-                  </div>
-                  <div>
-                    <p className="font-semibold text-gray-900 hidden md:block">{entry.name}</p>
-                    <p className="text-sm text-gray-500">{entry.email || 'No email'}</p>
-                  </div>
-                </div>
-
-                {/* Points */}
-                <div className="md:col-span-3 flex md:justify-center items-center">
-                  <div className="flex items-center gap-2">
-                    <Zap className="w-4 h-4 text-yellow-500" />
-                    <span className="font-bold text-gray-900 text-lg">
-                      {activeTab === 'collectors' 
-                        ? (entry.collectionPoints !== null && entry.collectionPoints !== undefined ? entry.collectionPoints.toLocaleString() : 'N/A')
-                        : activeTab === 'reporters' 
-                        ? (entry.reportPoints?.toLocaleString() || '0')
-                        : (entry.points?.toLocaleString() || '0')}
-                    </span>
-                  </div>
-                </div>
-
-                {/* Global tab shows both reporter and collector points */}
-                {activeTab === 'global' && (
-                  <>
-                    <div className="md:col-span-2 flex md:justify-center items-center">
-                      <span className="font-semibold text-gray-700">{entry.reportPoints?.toLocaleString() || '0'}</span>
+                    className={`grid grid-cols-1 md:grid-cols-12 gap-4 p-4 sm:p-6 hover:bg-linear-to-r hover:from-green-50 hover:to-emerald-50 transition-all duration-300 ${entry.rank <= 3 ? 'bg-linear-to-r from-green-50 to-emerald-50' : ''
+                      }`}
+                    style={{
+                      animation: `fadeInUp 0.4s ease-out ${index * 50}ms both`
+                    }}
+                  >
+                    {/* Rank */}
+                    <div className="md:col-span-1 flex md:justify-center items-center gap-3">
+                      <div className={`flex items-center justify-center w-10 h-10 rounded-xl font-bold ${entry.rank === 1 ? 'bg-linear-to-br from-green-400 to-green-600 text-white' :
+                          entry.rank === 2 ? 'bg-linear-to-br from-gray-300 to-gray-500 text-white' :
+                            entry.rank === 3 ? 'bg-linear-to-br from-amber-600 to-amber-800 text-white' :
+                              'bg-gray-100 text-gray-700'
+                        }`}>
+                        {entry.rank}
+                      </div>
+                      {getRankBadge(entry.rank)}
+                      <span className="md:hidden font-semibold text-gray-900">{entry.name}</span>
                     </div>
-                    <div className="md:col-span-2 flex md:justify-center items-center">
-                      <span className="font-semibold text-gray-700">
-                        {entry.collectionPoints !== null && entry.collectionPoints !== undefined 
-                          ? entry.collectionPoints.toLocaleString() 
-                          : 'N/A'}
-                      </span>
+
+                    {/* User Info */}
+                    <div className="md:col-span-4 flex items-center gap-3 md:ml-0 ml-13">
+                      <div className={`w-12 h-12 rounded-full flex items-center justify-center font-bold text-white ${entry.rank === 1 ? 'bg-linear-to-br from-green-500 to-emerald-600' :
+                          entry.rank === 2 ? 'bg-linear-to-br from-emerald-500 to-green-600' :
+                            entry.rank === 3 ? 'bg-linear-to-br from-green-600 to-emerald-700' :
+                              'bg-linear-to-br from-gray-400 to-gray-500'
+                        }`}>
+                        {entry.initials}
+                      </div>
+                      <div>
+                        <p className="font-semibold text-gray-900 hidden md:block">{entry.name}</p>
+                        <p className="text-sm text-gray-500">{entry.email || 'No email'}</p>
+                      </div>
                     </div>
-                  </>
-                )}
+
+                    {/* Points */}
+                    <div className="md:col-span-3 flex md:justify-center items-center">
+                      <div className="flex items-center gap-2">
+                        <Zap className="w-4 h-4 text-yellow-500" />
+                        <span className="font-bold text-gray-900 text-lg">
+                          {activeTab === 'collectors'
+                            ? (entry.collectionPoints !== null && entry.collectionPoints !== undefined ? entry.collectionPoints.toLocaleString() : 'N/A')
+                            : activeTab === 'reporters'
+                              ? (entry.reportPoints?.toLocaleString() || '0')
+                              : (entry.points?.toLocaleString() || '0')}
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Global tab shows both reporter and collector points */}
+                    {activeTab === 'global' && (
+                      <>
+                        <div className="md:col-span-2 flex md:justify-center items-center">
+                          <span className="font-semibold text-gray-700">{entry.reportPoints?.toLocaleString() || '0'}</span>
+                        </div>
+                        <div className="md:col-span-2 flex md:justify-center items-center">
+                          <span className="font-semibold text-gray-700">
+                            {entry.collectionPoints !== null && entry.collectionPoints !== undefined
+                              ? entry.collectionPoints.toLocaleString()
+                              : 'N/A'}
+                          </span>
+                        </div>
+                      </>
+                    )}
+                  </div>
+                ))}
               </div>
-            ))}
-              </div>
+
+              {/* Pagination */}
+              {pagination && pagination.totalPages > 1 && (
+                <div className="px-6 py-4 bg-white border-t border-gray-200">
+                  <div className="flex items-center justify-between">
+                    <div className="text-sm text-gray-600">
+                      Showing page <span className="font-semibold text-gray-900">{currentPage}</span> of{' '}
+                      <span className="font-semibold text-gray-900">{pagination.totalPages}</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => handlePageChange(1)}
+                        disabled={currentPage === 1 || tableLoading}
+                        className={`px-3 py-2 rounded-lg font-medium transition-all ${currentPage === 1 || tableLoading
+                            ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                            : 'bg-gray-100 text-gray-700 hover:bg-emerald-100 hover:text-emerald-700'
+                          }`}
+                      >
+                        First
+                      </button>
+                      <button
+                        onClick={() => handlePageChange(currentPage - 1)}
+                        disabled={currentPage === 1 || tableLoading}
+                        className={`px-3 py-2 rounded-lg font-medium transition-all flex items-center gap-1 ${currentPage === 1 || tableLoading
+                            ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                            : 'bg-gray-100 text-gray-700 hover:bg-emerald-100 hover:text-emerald-700'
+                          }`}
+                      >
+                        <ChevronDown className="w-4 h-4 rotate-90" />
+                        Prev
+                      </button>
+
+                      {/* Page Numbers */}
+                      <div className="flex items-center gap-1">
+                        {[...Array(Math.min(5, pagination.totalPages))].map((_, idx) => {
+                          let pageNum;
+                          if (pagination.totalPages <= 5) {
+                            pageNum = idx + 1;
+                          } else if (currentPage <= 3) {
+                            pageNum = idx + 1;
+                          } else if (currentPage >= pagination.totalPages - 2) {
+                            pageNum = pagination.totalPages - 4 + idx;
+                          } else {
+                            pageNum = currentPage - 2 + idx;
+                          }
+
+                          return (
+                            <button
+                              key={pageNum}
+                              onClick={() => handlePageChange(pageNum)}
+                              disabled={tableLoading}
+                              className={`w-10 h-10 rounded-lg font-semibold transition-all ${currentPage === pageNum
+                                  ? 'bg-gradient-to-r from-green-500 to-emerald-600 text-white shadow-lg'
+                                  : tableLoading
+                                    ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                                    : 'bg-gray-100 text-gray-700 hover:bg-emerald-100 hover:text-emerald-700'
+                                }`}
+                            >
+                              {pageNum}
+                            </button>
+                          );
+                        })}
+                      </div>
+
+                      <button
+                        onClick={() => handlePageChange(currentPage + 1)}
+                        disabled={currentPage === pagination.totalPages || tableLoading}
+                        className={`px-3 py-2 rounded-lg font-medium transition-all flex items-center gap-1 ${currentPage === pagination.totalPages || tableLoading
+                            ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                            : 'bg-gray-100 text-gray-700 hover:bg-emerald-100 hover:text-emerald-700'
+                          }`}
+                      >
+                        Next
+                        <ChevronUp className="w-4 h-4 rotate-90" />
+                      </button>
+                      <button
+                        onClick={() => handlePageChange(pagination.totalPages)}
+                        disabled={currentPage === pagination.totalPages || tableLoading}
+                        className={`px-3 py-2 rounded-lg font-medium transition-all ${currentPage === pagination.totalPages || tableLoading
+                            ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                            : 'bg-gray-100 text-gray-700 hover:bg-emerald-100 hover:text-emerald-700'
+                          }`}
+                      >
+                        Last
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
             </>
           )}
 
