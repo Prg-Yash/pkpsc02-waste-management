@@ -68,7 +68,7 @@ function Header() {
           Pricing
         </Link>
         <Link
-          href="/get-started"
+          href="/dashboard"
           className="px-4 py-2 text-sm font-medium text-white bg-[#1a3a2f] rounded-full hover:bg-[#2a4a3f] transition-all duration-300 hover:scale-105 hover:shadow-lg"
         >
           Get Started

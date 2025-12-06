@@ -124,9 +124,9 @@ router.get('/reporters', async (req, res) => {
             return res.status(validation.status).json({ error: validation.error });
         }
 
-        // Parse pagination
-        const page = Math.max(1, parseInt(req.body.page) || 1);
-        const pageSize = Math.min(50, Math.max(1, parseInt(req.body.pageSize) || 20));
+        // Parse pagination from query params
+        const page = Math.max(1, parseInt(req.query.page) || 1);
+        const pageSize = Math.min(50, Math.max(1, parseInt(req.query.pageSize) || 20));
         const skip = (page - 1) * pageSize;
 
         // Get total count
@@ -195,7 +195,7 @@ router.get('/reporters', async (req, res) => {
         });
     } catch (error) {
         console.error('Error fetching reporters leaderboard:', error);
-        res.status(500).json({ 
+        res.status(500).json({
             error: 'Internal server error',
             message: error.message,
             stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
@@ -218,9 +218,9 @@ router.get('/collectors', async (req, res) => {
             return res.status(validation.status).json({ error: validation.error });
         }
 
-        // Parse pagination
-        const page = Math.max(1, parseInt(req.body.page) || 1);
-        const pageSize = Math.min(50, Math.max(1, parseInt(req.body.pageSize) || 20));
+        // Parse pagination from query params
+        const page = Math.max(1, parseInt(req.query.page) || 1);
+        const pageSize = Math.min(50, Math.max(1, parseInt(req.query.pageSize) || 20));
         const skip = (page - 1) * pageSize;
 
         // Get total count
@@ -300,7 +300,7 @@ router.get('/collectors', async (req, res) => {
         });
     } catch (error) {
         console.error('Error fetching collectors leaderboard:', error);
-        res.status(500).json({ 
+        res.status(500).json({
             error: 'Internal server error',
             message: error.message,
             stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
@@ -322,9 +322,9 @@ router.get('/global', async (req, res) => {
             return res.status(validation.status).json({ error: validation.error });
         }
 
-        // Parse pagination
-        const page = Math.max(1, parseInt(req.body.page) || 1);
-        const pageSize = Math.min(50, Math.max(1, parseInt(req.body.pageSize) || 20));
+        // Parse pagination from query params
+        const page = Math.max(1, parseInt(req.query.page) || 1);
+        const pageSize = Math.min(50, Math.max(1, parseInt(req.query.pageSize) || 20));
         const skip = (page - 1) * pageSize;
 
         // Get total count
@@ -412,7 +412,7 @@ router.get('/global', async (req, res) => {
         });
     } catch (error) {
         console.error('Error fetching global leaderboard:', error);
-        res.status(500).json({ 
+        res.status(500).json({
             error: 'Internal server error',
             message: error.message,
             stack: process.env.NODE_ENV === 'development' ? error.stack : undefined

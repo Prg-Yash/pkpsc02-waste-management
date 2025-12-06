@@ -6,14 +6,14 @@ export async function POST(request) {
   try {
     const body = await request.json();
     const { type, userId } = body;
-    
+
     if (!userId) {
       return NextResponse.json(
         { error: 'userId is required' },
         { status: 400 }
       );
     }
-    
+
     // Determine endpoint based on type
     let endpoint;
     switch (type) {
@@ -26,11 +26,11 @@ export async function POST(request) {
       default:
         endpoint = '/api/leaderboard/global';
     }
-    
+
     const apiUrl = `${API_BASE_URL}${endpoint}?userId=${userId}`;
-    
+
     console.log('Proxy: Calling backend API', { apiUrl, userId, type });
-    
+
     let response;
     try {
       console.log("apiurl", apiUrl);
@@ -42,12 +42,11 @@ export async function POST(request) {
           'ngrok-skip-browser-warning': 'true',
         },
       });
-      console.log('Proxy: Response:', await response.text());
     } catch (fetchError) {
       console.error('Proxy: Fetch error (network/connection issue):', fetchError);
       return NextResponse.json(
-        { 
-          error: 'Failed to connect to backend API', 
+        {
+          error: 'Failed to connect to backend API',
           details: fetchError.message,
           url: apiUrl,
           hint: 'Make sure the API server is running and accessible'
@@ -58,6 +57,7 @@ export async function POST(request) {
 
     // Get response text first to check what we're dealing with
     const responseText = await response.text();
+    console.log('Proxy: Response:', responseText.substring(0, 200));
     const contentType = response.headers.get('content-type') || '';
 
     if (!response.ok) {
@@ -68,7 +68,7 @@ export async function POST(request) {
         url: apiUrl,
         responseText: responseText.substring(0, 500)
       });
-      
+
       // Try to parse as JSON if possible
       let errorDetails = responseText;
       try {
@@ -78,7 +78,7 @@ export async function POST(request) {
       } catch (e) {
         // Keep as text
       }
-      
+
       return NextResponse.json(
         { error: 'Failed to fetch leaderboard', details: errorDetails },
         { status: response.status }
@@ -107,9 +107,9 @@ export async function POST(request) {
         { status: 500 }
       );
     }
-    
+
     return NextResponse.json(data);
-    
+
   } catch (error) {
     console.error('Proxy Error:', error);
     return NextResponse.json(
