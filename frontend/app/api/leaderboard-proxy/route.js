@@ -29,11 +29,8 @@ export async function POST(request) {
 
     const apiUrl = `${API_BASE_URL}${endpoint}?userId=${userId}`;
 
-    console.log('Proxy: Calling backend API', { apiUrl, userId, type });
-
     let response;
     try {
-      console.log("apiurl", apiUrl);
       response = await fetch(apiUrl, {
         method: 'GET',
         headers: {
