@@ -1,20 +1,25 @@
 import { useUser } from "@clerk/clerk-expo";
-import {
-  StyleSheet,
-  ScrollView,
-  View,
-  Text,
-  TouchableOpacity,
-} from "react-native";
 import { SignOutButton } from "@/app/components/SignOutButton";
+import {
+  ScrollView,
+  YStack,
+  XStack,
+  Text,
+  Button,
+  H2,
+  H4,
+  Paragraph,
+  Theme,
+  Circle,
+} from "tamagui";
 
 export default function HomeScreen() {
   const { user } = useUser();
 
   const stats = [
-    { label: "Total Reports", value: "156", color: "#22c55e" },
-    { label: "Collected", value: "124", color: "#3b82f6" },
-    { label: "Your Points", value: "450", color: "#f59e0b" },
+    { label: "Total Reports", value: "156", color: "$green10" },
+    { label: "Collected", value: "124", color: "$blue10" },
+    { label: "Your Points", value: "450", color: "$yellow10" },
   ];
 
   const recentActivity = [
@@ -34,185 +39,115 @@ export default function HomeScreen() {
   ];
 
   return (
-    <ScrollView style={styles.container}>
-      <View style={styles.header}>
-        <View>
-          <Text style={styles.greeting}>Welcome back,</Text>
-          <Text style={styles.userName}>
-            {user?.firstName || user?.emailAddresses[0].emailAddress}
-          </Text>
-        </View>
-        <SignOutButton />
-      </View>
-
-      <View style={styles.statsContainer}>
-        {stats.map((stat, index) => (
-          <View
-            key={index}
-            style={[styles.statCard, { borderLeftColor: stat.color }]}
-          >
-            <Text style={styles.statValue}>{stat.value}</Text>
-            <Text style={styles.statLabel}>{stat.label}</Text>
-          </View>
-        ))}
-      </View>
-
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Quick Actions</Text>
-        <View style={styles.actionContainer}>
-          <TouchableOpacity
-            style={[styles.actionButton, { backgroundColor: "#22c55e" }]}
-          >
-            <Text style={styles.actionIcon}>📍</Text>
-            <Text style={styles.actionText}>Report Waste</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.actionButton, { backgroundColor: "#3b82f6" }]}
-          >
-            <Text style={styles.actionIcon}>🚛</Text>
-            <Text style={styles.actionText}>Collect Waste</Text>
-          </TouchableOpacity>
-        </View>
-      </View>
-
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Recent Activity</Text>
-        {recentActivity.map((activity) => (
-          <View key={activity.id} style={styles.activityCard}>
-            <View style={styles.activityDot} />
-            <View style={styles.activityContent}>
-              <Text style={styles.activityAction}>{activity.action}</Text>
-              <Text style={styles.activityDetail}>
-                {activity.location || activity.amount}
+    <Theme name="light">
+      <ScrollView flex={1} backgroundColor="$background">
+        <YStack
+          backgroundColor="$green9"
+          padding="$4"
+          paddingTop="$8"
+          paddingBottom="$6"
+        >
+          <XStack justifyContent="space-between" alignItems="center">
+            <YStack>
+              <Text color="white" opacity={0.9} fontSize="$3">
+                Welcome back,
               </Text>
-            </View>
-            <Text style={styles.activityTime}>{activity.time}</Text>
-          </View>
-        ))}
-      </View>
-    </ScrollView>
+              <H2 color="white" fontWeight="bold" marginTop="$1">
+                {user?.firstName || user?.emailAddresses[0].emailAddress}
+              </H2>
+            </YStack>
+            <SignOutButton />
+          </XStack>
+        </YStack>
+
+        <XStack padding="$4" gap="$3">
+          {stats.map((stat, index) => (
+            <YStack
+              key={index}
+              flex={1}
+              backgroundColor="white"
+              padding="$3"
+              borderRadius="$4"
+              borderLeftWidth={4}
+              borderLeftColor={stat.color}
+              elevation="$2"
+            >
+              <H2 color="$gray12" fontWeight="bold">
+                {stat.value}
+              </H2>
+              <Paragraph color="$gray10" fontSize="$2" marginTop="$1">
+                {stat.label}
+              </Paragraph>
+            </YStack>
+          ))}
+        </XStack>
+
+        <YStack padding="$4" gap="$4">
+          <H4 color="$gray12" fontWeight="bold">
+            Quick Actions
+          </H4>
+          <XStack gap="$3">
+            <Button
+              flex={1}
+              backgroundColor="$green9"
+              height="$10"
+              borderRadius="$4"
+              pressStyle={{ opacity: 0.8 }}
+            >
+              <YStack alignItems="center" gap="$2">
+                <Text fontSize="$6">📍</Text>
+                <Text color="white" fontWeight="bold">
+                  Report Waste
+                </Text>
+              </YStack>
+            </Button>
+            <Button
+              flex={1}
+              backgroundColor="$blue9"
+              height="$10"
+              borderRadius="$4"
+              pressStyle={{ opacity: 0.8 }}
+            >
+              <YStack alignItems="center" gap="$2">
+                <Text fontSize="$6">🚛</Text>
+                <Text color="white" fontWeight="bold">
+                  Collect Waste
+                </Text>
+              </YStack>
+            </Button>
+          </XStack>
+        </YStack>
+
+        <YStack padding="$4" gap="$4">
+          <H4 color="$gray12" fontWeight="bold">
+            Recent Activity
+          </H4>
+          {recentActivity.map((activity) => (
+            <XStack
+              key={activity.id}
+              backgroundColor="white"
+              padding="$4"
+              borderRadius="$4"
+              alignItems="center"
+              gap="$3"
+              elevation="$1"
+            >
+              <Circle size={10} backgroundColor="$green9" />
+              <YStack flex={1}>
+                <Text color="$gray12" fontWeight="bold">
+                  {activity.action}
+                </Text>
+                <Text color="$gray10" fontSize="$3">
+                  {activity.location || activity.amount}
+                </Text>
+              </YStack>
+              <Text color="$gray9" fontSize="$2">
+                {activity.time}
+              </Text>
+            </XStack>
+          ))}
+        </YStack>
+      </ScrollView>
+    </Theme>
   );
 }
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: "#f5f5f5",
-  },
-  header: {
-    backgroundColor: "#22c55e",
-    padding: 20,
-    paddingTop: 60,
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-  },
-  greeting: {
-    fontSize: 16,
-    color: "white",
-    opacity: 0.9,
-  },
-  userName: {
-    fontSize: 24,
-    fontWeight: "bold",
-    color: "white",
-    marginTop: 4,
-  },
-  statsContainer: {
-    flexDirection: "row",
-    padding: 20,
-    gap: 12,
-  },
-  statCard: {
-    flex: 1,
-    backgroundColor: "white",
-    padding: 16,
-    borderRadius: 12,
-    borderLeftWidth: 4,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
-  },
-  statValue: {
-    fontSize: 28,
-    fontWeight: "bold",
-    color: "#333",
-  },
-  statLabel: {
-    fontSize: 12,
-    color: "#666",
-    marginTop: 4,
-  },
-  section: {
-    padding: 20,
-  },
-  sectionTitle: {
-    fontSize: 20,
-    fontWeight: "bold",
-    color: "#333",
-    marginBottom: 16,
-  },
-  actionContainer: {
-    flexDirection: "row",
-    gap: 12,
-  },
-  actionButton: {
-    flex: 1,
-    padding: 20,
-    borderRadius: 12,
-    alignItems: "center",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
-  },
-  actionIcon: {
-    fontSize: 32,
-    marginBottom: 8,
-  },
-  actionText: {
-    color: "white",
-    fontWeight: "600",
-    fontSize: 14,
-  },
-  activityCard: {
-    flexDirection: "row",
-    backgroundColor: "white",
-    padding: 16,
-    borderRadius: 12,
-    marginBottom: 12,
-    alignItems: "center",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.1,
-    shadowRadius: 3,
-    elevation: 2,
-  },
-  activityDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: "#22c55e",
-    marginRight: 12,
-  },
-  activityContent: {
-    flex: 1,
-  },
-  activityAction: {
-    fontSize: 16,
-    fontWeight: "600",
-    color: "#333",
-  },
-  activityDetail: {
-    fontSize: 14,
-    color: "#666",
-    marginTop: 2,
-  },
-  activityTime: {
-    fontSize: 12,
-    color: "#999",
-  },
-});
