@@ -10,26 +10,53 @@ import webhookRoutes from "./routes/webhooks.js";
 
 const app = express();
 
-// CORS middleware (enable for frontend)
-// app.use((req, res, next) => {
-//     res.header('Access-Control-Allow-Origin', '*');
-//     res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, x-user-id');
-//     res.header('Access-Control-Allow-Methods', 'GET, POST, PATCH, DELETE, OPTIONS');
-
-//     if (req.method === 'OPTIONS') {
-//         return res.sendStatus(200);
-//     }
-//     next();
-// });
+// Enhanced CORS configuration
 app.use(
   cors({
     origin: "*", // allow all origins
     methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-    allowedHeaders: ["Content-Type", "Accept", "x-user-id", "Authorization"],
+    allowedHeaders: [
+      "Content-Type",
+      "Accept",
+      "x-user-id",
+      "Authorization",
+      "Origin",
+      "X-Requested-With",
+    ],
     exposedHeaders: ["Content-Type"],
     credentials: false,
+    preflightContinue: false,
+    optionsSuccessStatus: 204,
   })
 );
+
+// Additional CORS headers for all requests
+app.use((req, res, next) => {
+  res.header("Access-Control-Allow-Origin", "*");
+  res.header(
+    "Access-Control-Allow-Methods",
+    "GET, POST, PUT, PATCH, DELETE, OPTIONS"
+  );
+  res.header(
+    "Access-Control-Allow-Headers",
+    "Content-Type, Accept, x-user-id, Authorization, Origin, X-Requested-With"
+  );
+
+  // Handle preflight requests
+  if (req.method === "OPTIONS") {
+    return res.status(204).end();
+  }
+
+  next();
+});
+
+// Log all incoming requests for debugging
+app.use((req, res, next) => {
+  console.log(
+    `📨 ${req.method} ${req.path} from ${req.headers.origin || "unknown"}`
+  );
+  next();
+});
 
 // Webhook route needs raw body for signature verification
 // Must come BEFORE json parser

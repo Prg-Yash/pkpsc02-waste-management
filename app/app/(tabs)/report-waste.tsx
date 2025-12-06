@@ -29,6 +29,11 @@ import {
 } from "@/services/geminiService";
 import { submitWasteReport } from "@/services/s3Service";
 import { saveWasteReport } from "@/services/storageService";
+import {
+  reverseGeocode,
+  formatLocation,
+  type LocationData,
+} from "@/services/locationService";
 
 type ScreenState = "picker" | "analyzing" | "result" | "submitting" | "success";
 
@@ -49,12 +54,12 @@ export default function ReportWasteScreen() {
     Array<{ label: string; count: number }>
   >([]);
 
-  // Location
-  const [location, setLocation] = React.useState<{
-    latitude?: number;
-    longitude?: number;
-    address?: string;
-  }>({});
+  // Location with full details
+  const [location, setLocation] = React.useState<LocationData>({
+    latitude: 0,
+    longitude: 0,
+  });
+  const [loadingLocation, setLoadingLocation] = React.useState(false);
 
   // Request permissions on mount
   React.useEffect(() => {
@@ -117,15 +122,40 @@ export default function ReportWasteScreen() {
     setImageUri(uri);
     setError("");
 
-    // Get current location
+    // Get current location with reverse geocoding
+    setLoadingLocation(true);
     try {
       const loc = await Location.getCurrentPositionAsync({});
+      const { latitude, longitude } = loc.coords;
+
+      // Get address details from coordinates
+      const geocoded = await reverseGeocode(latitude, longitude);
+
       setLocation({
-        latitude: loc.coords.latitude,
-        longitude: loc.coords.longitude,
+        latitude,
+        longitude,
+        address: geocoded.address,
+        city: geocoded.city,
+        state: geocoded.state,
+        country: geocoded.country,
+      });
+
+      console.log("📍 Location:", {
+        city: geocoded.city,
+        state: geocoded.state,
+        address: geocoded.address,
       });
     } catch (err) {
-      console.log("Location not available");
+      console.log("Location not available", err);
+      setLocation({
+        latitude: 0,
+        longitude: 0,
+        city: "Unknown",
+        state: "Unknown",
+        country: "India",
+      });
+    } finally {
+      setLoadingLocation(false);
     }
   };
 
@@ -207,7 +237,11 @@ export default function ReportWasteScreen() {
     setAnalysis(null);
     setEditedWasteType("");
     setEditedSegregation([]);
-    setLocation({});
+    setLocation({
+      latitude: 0,
+      longitude: 0,
+    });
+    setLoadingLocation(false);
     setError("");
     setState("picker");
   };
@@ -307,6 +341,49 @@ export default function ReportWasteScreen() {
 
             {imageUri && (
               <>
+                {/* Location Display */}
+                {loadingLocation ? (
+                  <Card backgroundColor="$gray2" padding="$3" borderRadius="$3">
+                    <XStack gap="$2" alignItems="center">
+                      <Spinner size="small" color="$gray10" />
+                      <Text color="$gray10">Getting location...</Text>
+                    </XStack>
+                  </Card>
+                ) : location.city && location.city !== "Unknown" ? (
+                  <Card
+                    backgroundColor="$green2"
+                    padding="$3"
+                    borderRadius="$3"
+                    borderWidth={1}
+                    borderColor="$green7"
+                  >
+                    <XStack gap="$2" alignItems="center">
+                      <Text fontSize="$4">📍</Text>
+                      <YStack flex={1}>
+                        <Text color="$green11" fontWeight="600">
+                          {location.city}, {location.state}
+                        </Text>
+                        <Text color="$green10" fontSize="$2" numberOfLines={1}>
+                          {location.address}
+                        </Text>
+                      </YStack>
+                    </XStack>
+                  </Card>
+                ) : (
+                  <Card
+                    backgroundColor="$yellow2"
+                    padding="$3"
+                    borderRadius="$3"
+                  >
+                    <XStack gap="$2" alignItems="center">
+                      <Text fontSize="$4">⚠️</Text>
+                      <Text color="$yellow11" fontSize="$3">
+                        Location unavailable
+                      </Text>
+                    </XStack>
+                  </Card>
+                )}
+
                 <Button
                   backgroundColor="$green9"
                   size="$5"
@@ -398,6 +475,29 @@ export default function ReportWasteScreen() {
                 resizeMode="cover"
               />
             </Card>
+
+            {/* Location Info */}
+            {location.city && location.city !== "Unknown" && (
+              <Card
+                backgroundColor="$blue2"
+                padding="$4"
+                borderRadius="$4"
+                borderLeftWidth={4}
+                borderLeftColor="$blue9"
+              >
+                <XStack gap="$2" alignItems="flex-start">
+                  <Text fontSize="$5">📍</Text>
+                  <YStack flex={1}>
+                    <Text color="$blue11" fontWeight="600" fontSize="$4">
+                      {location.city}, {location.state}
+                    </Text>
+                    <Text color="$blue10" fontSize="$2" marginTop="$1">
+                      {location.address}
+                    </Text>
+                  </YStack>
+                </XStack>
+              </Card>
+            )}
 
             {/* Confidence */}
             <Card backgroundColor="white" padding="$4" borderRadius="$4">

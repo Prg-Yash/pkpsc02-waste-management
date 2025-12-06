@@ -376,4 +376,253 @@ router.post(
   }
 );
 
+/**
+ * GET /api/waste/pending
+ * Fetch all pending waste reports, optionally excluding a specific user's reports
+ * Query params:
+ *   - excludeUserId: User ID to exclude from results (to hide user's own reports)
+ */
+router.get("/pending", async (req, res) => {
+  try {
+    const { excludeUserId } = req.query;
+
+    console.log("📡 Fetching pending waste reports...");
+    console.log("Exclude User ID:", excludeUserId);
+
+    // Build query filter
+    const where = {
+      status: "PENDING",
+    };
+
+    // Exclude specific user's reports if provided
+    if (excludeUserId) {
+      where.reporterId = {
+        not: excludeUserId,
+      };
+    }
+
+    // Fetch pending waste reports
+    const reports = await prisma.wasteReport.findMany({
+      where,
+      include: {
+        reporter: {
+          select: {
+            id: true,
+            name: true,
+          },
+        },
+      },
+      orderBy: [
+        { createdAt: "desc" }, // Most recent first
+      ],
+    });
+
+    console.log(`✅ Found ${reports.length} pending reports`);
+    res.json(reports);
+  } catch (error) {
+    console.error("❌ Error fetching pending reports:", error);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+/**
+ * PUT /api/waste/:id/collect
+ * Submit collection verification with AI similarity check
+ * Accepts multipart/form-data with 'collectorImage' file field
+ * Body fields:
+ *   - collectorId: ID of the collector
+ *   - collectorLatitude: Collector's latitude
+ *   - collectorLongitude: Collector's longitude
+ *   - verificationData: JSON string with AI verification results
+ */
+router.put(
+  "/:id/collect",
+  upload.single("collectorImage"),
+  async (req, res) => {
+    try {
+      const wasteId = req.params.id;
+      const {
+        collectorId,
+        collectorLatitude,
+        collectorLongitude,
+        verificationData,
+      } = req.body;
+
+      console.log("📡 Collection verification request:", {
+        wasteId,
+        collectorId,
+        hasImage: !!req.file,
+        hasVerification: !!verificationData,
+      });
+
+      // Validate required fields
+      if (!collectorId) {
+        return res.status(400).json({ error: "collectorId is required" });
+      }
+
+      if (!req.file) {
+        return res.status(400).json({ error: "collectorImage is required" });
+      }
+
+      if (!verificationData) {
+        return res.status(400).json({ error: "verificationData is required" });
+      }
+
+      // Parse verification data
+      let parsedVerification;
+      try {
+        parsedVerification =
+          typeof verificationData === "string"
+            ? JSON.parse(verificationData)
+            : verificationData;
+        console.log("✅ Parsed verification data:", parsedVerification);
+      } catch (e) {
+        console.error("Failed to parse verificationData:", e);
+        return res.status(400).json({
+          error: "Invalid verificationData format",
+          details: e.message,
+        });
+      }
+
+      // Validate collector exists
+      const collector = await prisma.user.findUnique({
+        where: { id: collectorId },
+      });
+
+      if (!collector) {
+        return res.status(404).json({ error: "Collector not found" });
+      }
+
+      // Fetch waste report
+      const waste = await prisma.wasteReport.findUnique({
+        where: { id: wasteId },
+        include: {
+          reporter: true,
+        },
+      });
+
+      if (!waste) {
+        return res.status(404).json({ error: "Waste report not found" });
+      }
+
+      // Validate waste is still pending
+      if (waste.status !== "PENDING") {
+        return res.status(400).json({
+          error: `Waste report is already ${waste.status.toLowerCase()}`,
+        });
+      }
+
+      // Upload collector image to S3
+      const s3Key = generateWasteCollectionKey(wasteId, req.file.originalname);
+      const collectorImageUrl = await uploadToS3(
+        req.file.buffer,
+        s3Key,
+        req.file.mimetype
+      );
+
+      console.log("✅ Uploaded collector image to S3:", collectorImageUrl);
+
+      // Update waste report to COLLECTED
+      const updatedWaste = await prisma.wasteReport.update({
+        where: { id: wasteId },
+        data: {
+          status: "COLLECTED",
+          collectorId: collectorId,
+          collectorImageUrl: collectorImageUrl,
+          collectedAt: new Date(),
+        },
+        include: {
+          reporter: true,
+          collector: true,
+        },
+      });
+
+      // Notify reporter
+      const wasteTypeFromAI = waste.aiAnalysis?.wasteType || "unknown";
+      await createNotification({
+        userId: waste.reporterId,
+        type: "WASTE_COLLECTED",
+        title: "Waste Collected",
+        body: `Your ${wasteTypeFromAI.toUpperCase()} waste report has been collected by ${
+          collector.name || "a collector"
+        }.`,
+        data: {
+          wasteReportId: wasteId,
+          collectorId: collectorId,
+          collectorName: collector.name,
+          verificationConfidence: parsedVerification.matchConfidence,
+        },
+      });
+
+      // Notify collector
+      await createNotification({
+        userId: collectorId,
+        type: "WASTE_COLLECTED",
+        title: "Collection Verified ✅",
+        body: `Successfully verified and collected ${wasteTypeFromAI.toUpperCase()} waste with ${
+          parsedVerification.matchConfidence
+        }% confidence.`,
+        data: {
+          wasteReportId: wasteId,
+          reporterId: waste.reporterId,
+          reporterName: waste.reporter.name,
+        },
+      });
+
+      console.log("✅ Collection verified successfully");
+      res.json({ waste: updatedWaste });
+    } catch (error) {
+      console.error("❌ Error processing collection verification:", error);
+      res.status(500).json({ error: "Internal server error" });
+    }
+  }
+);
+
+/**
+ * PATCH /api/waste/:id/status
+ * Update waste report status (e.g., to IN_PROGRESS)
+ * Body: { status: "PENDING" | "IN_PROGRESS" | "COLLECTED" }
+ */
+router.patch("/:id/status", async (req, res) => {
+  try {
+    const wasteId = req.params.id;
+    const { status } = req.body;
+
+    console.log(`📡 Updating waste ${wasteId} status to ${status}`);
+
+    // Validate status
+    const validStatuses = ["PENDING", "IN_PROGRESS", "COLLECTED"];
+    if (!validStatuses.includes(status)) {
+      return res.status(400).json({
+        error: `Invalid status. Must be one of: ${validStatuses.join(", ")}`,
+      });
+    }
+
+    // Fetch waste report
+    const waste = await prisma.wasteReport.findUnique({
+      where: { id: wasteId },
+    });
+
+    if (!waste) {
+      return res.status(404).json({ error: "Waste report not found" });
+    }
+
+    // Update status
+    const updatedWaste = await prisma.wasteReport.update({
+      where: { id: wasteId },
+      data: { status },
+      include: {
+        reporter: true,
+        collector: true,
+      },
+    });
+
+    console.log(`✅ Status updated to ${status}`);
+    res.json({ waste: updatedWaste });
+  } catch (error) {
+    console.error("❌ Error updating status:", error);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
 export default router;
