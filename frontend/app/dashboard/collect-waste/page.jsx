@@ -1841,17 +1841,34 @@ const CollectPage = () => {
                       <div className="p-4 bg-amber-50 border-2 border-amber-300 rounded-xl">
                         <div className="flex items-start gap-3">
                           <AlertCircle className="w-5 h-5 text-amber-600 mt-0.5 shrink-0" />
-                          <div>
+                          <div className="w-full">
                             <p className="font-bold text-amber-800 mb-2">⚠️ Collection Not Submitted</p>
                             <p className="text-sm text-amber-700 mb-3">
-                              Your waste verification was successful, but the collection could not be saved to the database:
+                              Your waste verification was successful, but the collection could not be saved:
                             </p>
                             <div className="bg-amber-100 border border-amber-200 rounded-lg p-3 mb-3">
                               <p className="text-xs font-mono text-amber-900">{verificationResult.backendError}</p>
                             </div>
-                            <p className="text-xs text-amber-700">
-                              <strong>What this means:</strong> The AI verified your collection images match, but you need collector mode enabled in your account to submit collections.
-                            </p>
+                            {verificationResult.backendError?.includes("Collector mode") ? (
+                              <div className="space-y-3">
+                                <p className="text-sm font-semibold text-amber-800">
+                                  🎯 Action Required: Enable Collector Mode
+                                </p>
+                                <p className="text-xs text-amber-700">
+                                  To collect waste and earn rewards, you need to activate Collector Mode in your account settings.
+                                </p>
+                                <a
+                                  href="/dashboard/settings"
+                                  className="inline-flex items-center gap-2 px-4 py-2 bg-emerald-500 text-white rounded-lg font-bold hover:bg-emerald-600 transition-all"
+                                >
+                                  Go to Settings & Enable Collector Mode
+                                </a>
+                              </div>
+                            ) : (
+                              <p className="text-xs text-amber-700">
+                                <strong>What this means:</strong> The AI verified your images, but there was an error saving to the database.
+                              </p>
+                            )}
                           </div>
                         </div>
                       </div>

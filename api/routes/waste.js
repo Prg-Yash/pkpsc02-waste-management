@@ -382,7 +382,7 @@ router.post(
       // Validate user has collector enabled
       if (!req.user.enableCollector) {
         return res.status(403).json({
-          error: "User must have collector mode enabled to collect waste",
+          error: "Collector mode is not enabled. Please go to Settings and enable Collector Mode to start collecting waste.",
         });
       }
 
@@ -407,7 +407,14 @@ router.post(
         return res.status(404).json({ error: "Waste report not found" });
       }
 
-      // Validate waste status - must be IN_PROGRESS to collect
+      // Validate user is not trying to collect their own waste
+      if (waste.reporterId === req.user.id) {
+        return res.status(403).json({
+          error: "You cannot collect your own waste report. Please let another collector handle it.",
+        });
+      }
+
+      // Validate waste status - must be PENDING or IN_PROGRESS to collect
       if (waste.status === "COLLECTED") {
         return res.status(400).json({
           error: "Waste report has already been collected",
@@ -416,7 +423,7 @@ router.post(
 
       if (waste.status !== "IN_PROGRESS" && waste.status !== "PENDING") {
         return res.status(400).json({
-          error: `Cannot collect waste with status: ${waste.status}. Waste must be IN_PROGRESS (added to route first).`,
+          error: `Cannot collect waste with status: ${waste.status}. Only PENDING or IN_PROGRESS waste can be collected.`,
         });
       }
 
@@ -449,6 +456,35 @@ router.post(
 
       console.log("✅ After image uploaded to S3:", collectorImageUrl);
 
+      console.log("💾 Updating database - waste report and collector points...");
+      console.log("📋 Transaction data:", {
+        wasteId,
+        userId: req.user.id,
+        collectorImageUrl,
+        currentStatus: waste.status,
+      });
+
+      // Validate the waste report exists one more time before transaction
+      const wasteCheck = await prisma.wasteReport.findUnique({
+        where: { id: wasteId },
+      });
+
+      if (!wasteCheck) {
+        console.error("❌ Waste not found in pre-transaction check:", wasteId);
+        return res.status(404).json({
+          error: "Waste report not found",
+        });
+      }
+
+      if (wasteCheck.status === "COLLECTED") {
+        console.error("❌ Waste already collected:", wasteId);
+        return res.status(400).json({
+          error: "This waste has already been collected",
+        });
+      }
+
+      console.log("✅ Pre-transaction validation passed. Starting database transaction...");
+
       // Update waste report to collected AND award collector points
       const [updatedWaste, updatedCollector] = await prisma.$transaction([
         prisma.wasteReport.update({
@@ -475,37 +511,7 @@ router.post(
         }),
       ]);
 
-      // Notify reporter that their waste was collected
-      const wasteTypeFromAI = waste.aiAnalysis?.wasteType || "unknown";
-      await createNotification({
-        userId: waste.reporterId,
-        type: "WASTE_COLLECTED",
-        title: "Waste Collected",
-        body: `Your ${wasteTypeFromAI.toUpperCase()} waste report has been collected by ${
-          req.user.name || "a collector"
-        }.`,
-        data: {
-          wasteReportId: wasteId,
-          collectorId: req.user.id,
-          collectorName: req.user.name,
-        },
-      });
-
-      // Notify collector about successful collection
-      await createNotification({
-        userId: req.user.id,
-        type: "WASTE_COLLECTED",
-        title: "Collection Confirmed",
-        body: `You have successfully collected ${wasteTypeFromAI.toUpperCase()} waste reported by ${
-          waste.reporter.name || "a user"
-        }. You earned ${COLLECT_POINTS} points!`,
-        data: {
-          wasteReportId: wasteId,
-          reporterId: waste.reporterId,
-          pointsEarned: COLLECT_POINTS,
-        },
-      });
-
+      console.log("✅ Database transaction completed successfully!");
       console.log(
         `✅ Waste ${wasteId} collected successfully by ${req.user.id}`
       );
@@ -514,16 +520,77 @@ router.post(
           req.user.name || req.user.id
         }`
       );
+      console.log("📊 Updated waste status:", updatedWaste.status);
+      console.log("📊 Collector new points:", updatedCollector.collectorPoints);
+
+      // Send notifications (don't let notification failures break the collection)
+      const wasteTypeFromAI = waste.aiAnalysis?.wasteType || "unknown";
+      
+      try {
+        // Notify reporter that their waste was collected
+        await createNotification({
+          userId: waste.reporterId,
+          type: "WASTE_COLLECTED",
+          title: "Waste Collected",
+          body: `Your ${wasteTypeFromAI.toUpperCase()} waste report has been collected by ${
+            req.user.name || "a collector"
+          }.`,
+          data: {
+            wasteReportId: wasteId,
+            collectorId: req.user.id,
+            collectorName: req.user.name,
+          },
+        });
+
+        // Notify collector about successful collection
+        await createNotification({
+          userId: req.user.id,
+          type: "WASTE_COLLECTED",
+          title: "Collection Confirmed",
+          body: `You have successfully collected ${wasteTypeFromAI.toUpperCase()} waste reported by ${
+            waste.reporter.name || "a user"
+          }. You earned ${COLLECT_POINTS} points!`,
+          data: {
+            wasteReportId: wasteId,
+            reporterId: waste.reporterId,
+            pointsEarned: COLLECT_POINTS,
+          },
+        });
+      } catch (notificationError) {
+        console.warn("⚠️ Failed to send notifications:", notificationError.message);
+        // Continue anyway - collection was successful
+      }
 
       res.json({
         waste: updatedWaste,
         pointsEarned: COLLECT_POINTS,
       });
     } catch (error) {
-      console.error("Error collecting waste:", error);
+      console.error("❌ Error collecting waste:", error);
+      console.error("Error stack:", error.stack);
+      console.error("Error details:", {
+        message: error.message,
+        code: error.code,
+        meta: error.meta,
+      });
+
+      // Handle specific Prisma errors
+      if (error.code === "P2025") {
+        return res.status(404).json({
+          error: "Waste report not found or already processed",
+        });
+      }
+
+      if (error.code === "P2002") {
+        return res.status(409).json({
+          error: "This waste has already been collected",
+        });
+      }
+
+      // Generic error with more details for debugging
       res.status(500).json({
-        error: "Failed to collect waste",
-        details: error.message,
+        error: "Failed to collect waste. Please try again or contact support.",
+        details: process.env.NODE_ENV === "development" ? error.message : undefined,
       });
     }
   }
