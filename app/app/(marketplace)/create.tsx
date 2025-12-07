@@ -1,113 +1,225 @@
-import React from "react";
-import {
-  ScrollView,
-  YStack,
-  XStack,
-  Text,
-  Button,
-  H2,
-  Input,
-  TextArea,
-  Theme,
-  Spinner,
-  Image,
-} from "tamagui";
-import { Alert, TouchableOpacity } from "react-native";
-import { useUser } from "@clerk/clerk-expo";
-import { router } from "expo-router";
-import * as ImagePicker from "expo-image-picker";
-import * as Location from "expo-location";
-import { GoogleGenerativeAI } from "@google/generative-ai";
-import { createMarketplaceListing } from "../services/marketplaceService";
-import { fetchUserProfile } from "../services/userService";
+"use client"
 
-const GEMINI_API_KEY = process.env.EXPO_PUBLIC_GEMINI_API_KEY as string;
+import { useUser } from "@clerk/clerk-expo"
+import { GoogleGenerativeAI } from "@google/generative-ai"
+import * as ImagePicker from "expo-image-picker"
+import { LinearGradient } from "expo-linear-gradient"
+import * as Location from "expo-location"
+import { router } from "expo-router"
+import React from "react"
+import { Alert, Animated, Dimensions, TouchableOpacity } from "react-native"
+import { Image, Input, ScrollView, Spinner, Text, TextArea, XStack, YStack } from "tamagui"
+import { createMarketplaceListing } from "../services/marketplaceService"
+import { fetchUserProfile } from "../services/userService"
+
+const GEMINI_API_KEY = process.env.EXPO_PUBLIC_GEMINI_API_KEY as string
+const { width } = Dimensions.get("window")
+
+// Floating particle component
+const FloatingParticle = ({ delay, startX, emoji }: { delay: number; startX: number; emoji: string }) => {
+  const translateY = React.useRef(new Animated.Value(0)).current
+  const translateX = React.useRef(new Animated.Value(0)).current
+  const opacity = React.useRef(new Animated.Value(0)).current
+  const rotate = React.useRef(new Animated.Value(0)).current
+
+  React.useEffect(() => {
+    const animate = () => {
+      translateY.setValue(600)
+      translateX.setValue(0)
+      opacity.setValue(0)
+      rotate.setValue(0)
+
+      Animated.sequence([
+        Animated.delay(delay),
+        Animated.parallel([
+          Animated.timing(translateY, {
+            toValue: -100,
+            duration: 8000,
+            useNativeDriver: true,
+          }),
+          Animated.timing(opacity, {
+            toValue: 0.6,
+            duration: 1000,
+            useNativeDriver: true,
+          }),
+          Animated.timing(rotate, {
+            toValue: 1,
+            duration: 8000,
+            useNativeDriver: true,
+          }),
+          Animated.sequence([
+            Animated.timing(translateX, {
+              toValue: 30,
+              duration: 2000,
+              useNativeDriver: true,
+            }),
+            Animated.timing(translateX, {
+              toValue: -30,
+              duration: 2000,
+              useNativeDriver: true,
+            }),
+            Animated.timing(translateX, {
+              toValue: 0,
+              duration: 2000,
+              useNativeDriver: true,
+            }),
+          ]),
+        ]),
+      ]).start(() => animate())
+    }
+    animate()
+  }, [])
+
+  const spin = rotate.interpolate({
+    inputRange: [0, 1],
+    outputRange: ["0deg", "360deg"],
+  })
+
+  return (
+    <Animated.View
+      style={{
+        position: "absolute",
+        left: startX,
+        opacity,
+        transform: [{ translateY }, { translateX }, { rotate: spin }],
+      }}
+    >
+      <Text style={{ fontSize: 24 }}>{emoji}</Text>
+    </Animated.View>
+  )
+}
 
 export default function CreateListingScreen() {
-  const { user } = useUser();
-  const [images, setImages] = React.useState<string[]>([]);
-  const [wasteType, setWasteType] = React.useState("");
-  const [weightKg, setWeightKg] = React.useState("");
-  const [basePrice, setBasePrice] = React.useState("");
-  const [auctionDuration, setAuctionDuration] = React.useState("24");
-  const [description, setDescription] = React.useState("");
-  const [analyzing, setAnalyzing] = React.useState(false);
-  const [submitting, setSubmitting] = React.useState(false);
+  const { user } = useUser()
+  const [images, setImages] = React.useState<string[]>([])
+  const [wasteType, setWasteType] = React.useState("")
+  const [weightKg, setWeightKg] = React.useState("")
+  const [basePrice, setBasePrice] = React.useState("")
+  const [auctionDuration, setAuctionDuration] = React.useState("24")
+  const [description, setDescription] = React.useState("")
+  const [analyzing, setAnalyzing] = React.useState(false)
+  const [submitting, setSubmitting] = React.useState(false)
   const [location, setLocation] = React.useState<{
-    latitude: number;
-    longitude: number;
-    city?: string;
-    state?: string;
-  } | null>(null);
+    latitude: number
+    longitude: number
+    city?: string
+    state?: string
+  } | null>(null)
 
-  // Get user location on mount
+  // Animations
+  const headerAnim = React.useRef(new Animated.Value(-100)).current
+  const contentAnim = React.useRef(new Animated.Value(50)).current
+  const contentOpacity = React.useRef(new Animated.Value(0)).current
+  const logoRotate = React.useRef(new Animated.Value(0)).current
+  const logoScale = React.useRef(new Animated.Value(0.5)).current
+
   React.useEffect(() => {
-    getUserLocation();
-  }, [user]);
+    // Animate header sliding down
+    Animated.spring(headerAnim, {
+      toValue: 0,
+      friction: 8,
+      tension: 40,
+      useNativeDriver: true,
+    }).start()
+
+    // Animate content sliding up
+    Animated.parallel([
+      Animated.spring(contentAnim, {
+        toValue: 0,
+        friction: 8,
+        tension: 40,
+        delay: 200,
+        useNativeDriver: true,
+      }),
+      Animated.timing(contentOpacity, {
+        toValue: 1,
+        duration: 500,
+        delay: 200,
+        useNativeDriver: true,
+      }),
+    ]).start()
+
+    // Logo animation
+    Animated.parallel([
+      Animated.spring(logoScale, {
+        toValue: 1,
+        friction: 4,
+        tension: 40,
+        useNativeDriver: true,
+      }),
+      Animated.loop(
+        Animated.sequence([
+          Animated.timing(logoRotate, {
+            toValue: 1,
+            duration: 3000,
+            useNativeDriver: true,
+          }),
+          Animated.timing(logoRotate, {
+            toValue: 0,
+            duration: 3000,
+            useNativeDriver: true,
+          }),
+        ]),
+      ),
+    ]).start()
+
+    getUserLocation()
+  }, [user])
+
+  const logoSpin = logoRotate.interpolate({
+    inputRange: [0, 1],
+    outputRange: ["-10deg", "10deg"],
+  })
 
   const getUserLocation = async () => {
-    if (!user) return;
+    if (!user) return
 
     try {
-      // First try to get from user profile
-      const profile = await fetchUserProfile(user.id);
+      const profile = await fetchUserProfile(user.id)
       if (profile.city && profile.state) {
-        // Use approximate coordinates for city (can be improved with geocoding)
         setLocation({
-          latitude: 19.076, // Default Mumbai coordinates
+          latitude: 19.076,
           longitude: 72.8777,
           city: profile.city,
           state: profile.state,
-        });
-        return;
+        })
+        return
       }
 
-      // Fall back to device location
-      const { status } = await Location.requestForegroundPermissionsAsync();
+      const { status } = await Location.requestForegroundPermissionsAsync()
       if (status !== "granted") {
-        Alert.alert(
-          "Location Required",
-          "Location is needed to create a listing"
-        );
-        return;
+        Alert.alert("Location Required", "Location is needed to create a listing")
+        return
       }
 
-      const currentLocation = await Location.getCurrentPositionAsync({});
+      const currentLocation = await Location.getCurrentPositionAsync({})
       const geocode = await Location.reverseGeocodeAsync({
         latitude: currentLocation.coords.latitude,
         longitude: currentLocation.coords.longitude,
-      });
+      })
 
       setLocation({
         latitude: currentLocation.coords.latitude,
         longitude: currentLocation.coords.longitude,
         city: geocode[0]?.city || undefined,
         state: geocode[0]?.region || undefined,
-      });
+      })
     } catch (error) {
-      console.error("Error getting location:", error);
-      Alert.alert(
-        "Location Error",
-        "Failed to get location. Using default location."
-      );
-      // Use default Mumbai coordinates
+      console.error("Error getting location:", error)
+      Alert.alert("Location Error", "Failed to get location. Using default location.")
       setLocation({
         latitude: 19.076,
         longitude: 72.8777,
-      });
+      })
     }
-  };
+  }
 
   const pickImages = async () => {
     try {
-      const { status } =
-        await ImagePicker.requestMediaLibraryPermissionsAsync();
+      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync()
       if (status !== "granted") {
-        Alert.alert(
-          "Permission Required",
-          "Please grant photo library access to upload images"
-        );
-        return;
+        Alert.alert("Permission Required", "Please grant photo library access to upload images")
+        return
       }
 
       const result = await ImagePicker.launchImageLibraryAsync({
@@ -115,51 +227,50 @@ export default function CreateListingScreen() {
         allowsMultipleSelection: true,
         quality: 0.8,
         selectionLimit: 5,
-      });
+      })
 
       if (!result.canceled && result.assets) {
-        const selectedUris = result.assets.map((asset) => asset.uri);
-        const totalImages = images.length + selectedUris.length;
+        const selectedUris = result.assets.map((asset) => asset.uri)
+        const totalImages = images.length + selectedUris.length
 
         if (totalImages > 5) {
           Alert.alert(
             "Too Many Images",
-            `You can upload a maximum of 5 images. You have ${images.length} already selected.`
-          );
-          return;
+            `You can upload a maximum of 5 images. You have ${images.length} already selected.`,
+          )
+          return
         }
 
-        setImages([...images, ...selectedUris]);
+        setImages([...images, ...selectedUris])
       }
     } catch (error) {
-      console.error("Error picking images:", error);
-      Alert.alert("Error", "Failed to pick images");
+      console.error("Error picking images:", error)
+      Alert.alert("Error", "Failed to pick images")
     }
-  };
+  }
 
   const removeImage = (index: number) => {
-    setImages(images.filter((_, i) => i !== index));
-  };
+    setImages(images.filter((_, i) => i !== index))
+  }
 
   const analyzeWithAI = async () => {
     if (images.length === 0) {
-      Alert.alert("No Images", "Please select at least one image to analyze");
-      return;
+      Alert.alert("No Images", "Please select at least one image to analyze")
+      return
     }
 
     try {
-      setAnalyzing(true);
-      const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
-      const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
+      setAnalyzing(true)
+      const genAI = new GoogleGenerativeAI(GEMINI_API_KEY)
+      const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" })
 
-      // Convert first image to base64
-      const response = await fetch(images[0]);
-      const blob = await response.blob();
-      const reader = new FileReader();
+      const response = await fetch(images[0])
+      const blob = await response.blob()
+      const reader = new FileReader()
 
       reader.onloadend = async () => {
-        const base64data = reader.result as string;
-        const base64Image = base64data.split(",")[1];
+        const base64data = reader.result as string
+        const base64Image = base64data.split(",")[1]
 
         const prompt = `Analyze this image of recyclable waste and provide:
 1. Waste type (choose from: Plastic, Organic, Metal, Glass, Electronic, Paper, Mixed)
@@ -169,7 +280,7 @@ export default function CreateListingScreen() {
 Format your response as:
 Type: [waste type]
 Weight: [number] kg
-Description: [brief description]`;
+Description: [brief description]`
 
         const result = await model.generateContent([
           prompt,
@@ -179,177 +290,220 @@ Description: [brief description]`;
               mimeType: "image/jpeg",
             },
           },
-        ]);
+        ])
 
-        const text = result.response.text();
-        console.log("AI Analysis:", text);
+        const text = result.response.text()
+        console.log("AI Analysis:", text)
 
-        // Parse the response
-        const typeMatch = text.match(/Type:\s*([^\n]+)/i);
-        const weightMatch = text.match(/Weight:\s*(\d+(?:\.\d+)?)/i);
-        const descMatch = text.match(/Description:\s*([^\n]+)/i);
+        const typeMatch = text.match(/Type:\s*([^\n]+)/i)
+        const weightMatch = text.match(/Weight:\s*(\d+(?:\.\d+)?)/i)
+        const descMatch = text.match(/Description:\s*([^\n]+)/i)
 
         if (typeMatch && typeMatch[1]) {
-          const detectedType = typeMatch[1].trim();
-          // Validate against allowed types
-          const validTypes = [
-            "Plastic",
-            "Organic",
-            "Metal",
-            "Glass",
-            "Electronic",
-            "Paper",
-            "Mixed",
-          ];
-          const matchedType = validTypes.find(
-            (type) => type.toLowerCase() === detectedType.toLowerCase()
-          );
+          const detectedType = typeMatch[1].trim()
+          const validTypes = ["Plastic", "Organic", "Metal", "Glass", "Electronic", "Paper", "Mixed"]
+          const matchedType = validTypes.find((type) => type.toLowerCase() === detectedType.toLowerCase())
           if (matchedType) {
-            setWasteType(matchedType);
+            setWasteType(matchedType)
           }
         }
 
         if (weightMatch && weightMatch[1]) {
-          setWeightKg(weightMatch[1]);
+          setWeightKg(weightMatch[1])
         }
 
         if (descMatch && descMatch[1]) {
-          setDescription(descMatch[1].trim());
+          setDescription(descMatch[1].trim())
         }
 
-        Alert.alert(
-          "Analysis Complete",
-          "Waste details have been auto-filled. Please review and adjust if needed."
-        );
-      };
+        Alert.alert("Analysis Complete", "Waste details have been auto-filled. Please review and adjust if needed.")
+      }
 
-      reader.readAsDataURL(blob);
+      reader.readAsDataURL(blob)
     } catch (error) {
-      console.error("Error analyzing image:", error);
-      Alert.alert("Analysis Failed", "Failed to analyze image with AI");
+      console.error("Error analyzing image:", error)
+      Alert.alert("Analysis Failed", "Failed to analyze image with AI")
     } finally {
-      setAnalyzing(false);
+      setAnalyzing(false)
     }
-  };
+  }
 
   const validateForm = () => {
     if (images.length === 0) {
-      Alert.alert("Validation Error", "Please upload at least one image");
-      return false;
+      Alert.alert("Validation Error", "Please upload at least one image")
+      return false
     }
 
     if (!wasteType.trim()) {
-      Alert.alert("Validation Error", "Please enter waste type");
-      return false;
+      Alert.alert("Validation Error", "Please enter waste type")
+      return false
     }
 
-    const weight = parseFloat(weightKg);
+    const weight = Number.parseFloat(weightKg)
     if (isNaN(weight) || weight <= 0) {
-      Alert.alert("Validation Error", "Please enter a valid weight");
-      return false;
+      Alert.alert("Validation Error", "Please enter a valid weight")
+      return false
     }
 
-    const price = parseFloat(basePrice);
+    const price = Number.parseFloat(basePrice)
     if (isNaN(price) || price < 10) {
-      Alert.alert("Validation Error", "Minimum base price is ₹10");
-      return false;
+      Alert.alert("Validation Error", "Minimum base price is Rs.10")
+      return false
     }
 
-    return true;
-  };
+    return true
+  }
 
   const handleSubmit = async () => {
-    if (!validateForm() || !user) return;
+    if (!validateForm() || !user) return
 
     if (!location) {
-      Alert.alert(
-        "Location Required",
-        "Please wait while we get your location"
-      );
-      return;
+      Alert.alert("Location Required", "Please wait while we get your location")
+      return
     }
 
     try {
-      setSubmitting(true);
+      setSubmitting(true)
 
       const listingData = {
         wasteType,
-        weightKg: parseFloat(weightKg),
-        basePrice: parseFloat(basePrice),
-        auctionDuration: parseFloat(auctionDuration) * 60, // Convert hours to minutes
+        weightKg: Number.parseFloat(weightKg),
+        basePrice: Number.parseFloat(basePrice),
+        auctionDuration: Number.parseFloat(auctionDuration) * 60,
         description: description.trim() || undefined,
         latitude: location.latitude,
         longitude: location.longitude,
         city: location.city,
         state: location.state,
         imageUris: images,
-      };
+      }
 
-      await createMarketplaceListing(user.id, listingData);
+      await createMarketplaceListing(user.id, listingData)
 
       Alert.alert("Success", "Your listing has been created successfully!", [
         {
           text: "OK",
           onPress: () => router.back(),
         },
-      ]);
+      ])
     } catch (error) {
-      console.error("Error creating listing:", error);
-      Alert.alert(
-        "Error",
-        error instanceof Error ? error.message : "Failed to create listing"
-      );
+      console.error("Error creating listing:", error)
+      Alert.alert("Error", error instanceof Error ? error.message : "Failed to create listing")
     } finally {
-      setSubmitting(false);
+      setSubmitting(false)
     }
-  };
+  }
+
+  const particles = [
+    { emoji: "📦", x: width * 0.1 },
+    { emoji: "♻️", x: width * 0.3 },
+    { emoji: "🏷️", x: width * 0.5 },
+    { emoji: "💰", x: width * 0.7 },
+    { emoji: "🌱", x: width * 0.9 },
+  ]
 
   return (
-    <Theme name="light">
-      <ScrollView flex={1} backgroundColor="$background">
-        {/* Header */}
-        <YStack
-          backgroundColor="$green9"
-          padding="$5"
-          paddingTop="$10"
-          paddingBottom="$4"
-        >
-          <XStack alignItems="center" gap="$3">
-            <Button
-              onPress={() => router.back()}
-              size="$3"
-              circular
-              backgroundColor="rgba(255,255,255,0.2)"
-              color="white"
-              fontWeight="600"
-            >
-              ←
-            </Button>
-            <H2 color="white" fontWeight="bold">
-              ➕ Create Listing
-            </H2>
-          </XStack>
-          <Text color="white" opacity={0.9} marginTop="$1" fontSize="$3">
-            List your recyclable waste for auction
-          </Text>
-        </YStack>
+    <LinearGradient colors={["#f0fdf4", "#dcfce7", "#bbf7d0"]} style={{ flex: 1 }}>
+      {/* Floating Particles */}
+      {particles.map((p, i) => (
+        <FloatingParticle key={i} delay={i * 1500} startX={p.x} emoji={p.emoji} />
+      ))}
 
-        {/* Form */}
-        <YStack padding="$4" gap="$4">
-          {/* Image Upload */}
-          <YStack gap="$2">
-            <Text fontWeight="600" color="$gray12" fontSize="$4">
+      <ScrollView flex={1} showsVerticalScrollIndicator={false}>
+        {/* Header */}
+        <Animated.View style={{ transform: [{ translateY: headerAnim }] }}>
+          <YStack paddingHorizontal="$5" paddingTop="$12" paddingBottom="$6" alignItems="center">
+            {/* Animated Logo */}
+            <Animated.View
+              style={{
+                transform: [{ scale: logoScale }, { rotate: logoSpin }],
+                marginBottom: 16,
+              }}
+            >
+              <YStack
+                width={80}
+                height={80}
+                borderRadius={40}
+                backgroundColor="white"
+                justifyContent="center"
+                alignItems="center"
+                style={{
+                  shadowColor: "#22c55e",
+                  shadowOffset: { width: 0, height: 4 },
+                  shadowOpacity: 0.3,
+                  shadowRadius: 12,
+                  elevation: 8,
+                }}
+              >
+                <Text fontSize={40}>📦</Text>
+              </YStack>
+            </Animated.View>
+
+            {/* Back Button and Title */}
+            <XStack alignItems="center" gap="$3" width="100%">
+              <TouchableOpacity onPress={() => router.back()}>
+                <YStack
+                  width={44}
+                  height={44}
+                  borderRadius={22}
+                  backgroundColor="white"
+                  justifyContent="center"
+                  alignItems="center"
+                  style={{
+                    shadowColor: "#22c55e",
+                    shadowOffset: { width: 0, height: 2 },
+                    shadowOpacity: 0.2,
+                    shadowRadius: 8,
+                    elevation: 4,
+                  }}
+                >
+                  <Text fontSize={20} color="#166534">
+                    ←
+                  </Text>
+                </YStack>
+              </TouchableOpacity>
+              <YStack flex={1}>
+                <Text fontSize={28} fontWeight="800" color="#166534">
+                  Create Listing
+                </Text>
+                <Text fontSize={14} color="#15803d" opacity={0.8}>
+                  List your recyclable waste for auction
+                </Text>
+              </YStack>
+            </XStack>
+          </YStack>
+        </Animated.View>
+
+        {/* Form Content */}
+        <Animated.View
+          style={{
+            transform: [{ translateY: contentAnim }],
+            opacity: contentOpacity,
+            paddingHorizontal: 16,
+            paddingBottom: 32,
+          }}
+        >
+          {/* Image Upload Card */}
+          <YStack
+            backgroundColor="white"
+            borderRadius={24}
+            padding="$5"
+            marginBottom="$4"
+            style={{
+              shadowColor: "#22c55e",
+              shadowOffset: { width: 0, height: 4 },
+              shadowOpacity: 0.15,
+              shadowRadius: 12,
+              elevation: 6,
+            }}
+          >
+            <Text fontWeight="700" color="#166534" fontSize={18} marginBottom="$3">
               Photos (Max 5) *
             </Text>
             <XStack gap="$2" flexWrap="wrap">
               {images.map((uri, index) => (
                 <YStack key={index} position="relative">
-                  <Image
-                    source={{ uri }}
-                    width={100}
-                    height={100}
-                    borderRadius="$3"
-                  />
+                  <Image source={{ uri }} width={90} height={90} borderRadius={16} />
                   <TouchableOpacity
                     onPress={() => removeImage(index)}
                     style={{
@@ -357,15 +511,15 @@ Description: [brief description]`;
                       top: -8,
                       right: -8,
                       backgroundColor: "#ef4444",
-                      borderRadius: 12,
-                      width: 24,
-                      height: 24,
+                      borderRadius: 14,
+                      width: 28,
+                      height: 28,
                       justifyContent: "center",
                       alignItems: "center",
                     }}
                   >
-                    <Text color="white" fontWeight="bold" fontSize={14}>
-                      ×
+                    <Text color="white" fontWeight="bold" fontSize={16}>
+                      x
                     </Text>
                   </TouchableOpacity>
                 </YStack>
@@ -373,94 +527,142 @@ Description: [brief description]`;
               {images.length < 5 && (
                 <TouchableOpacity onPress={pickImages}>
                   <YStack
-                    width={100}
-                    height={100}
-                    borderRadius="$3"
+                    width={90}
+                    height={90}
+                    borderRadius={16}
                     borderWidth={2}
-                    borderColor="$gray8"
+                    borderColor="#22c55e"
                     borderStyle="dashed"
                     justifyContent="center"
                     alignItems="center"
-                    backgroundColor="$gray3"
+                    backgroundColor="#f0fdf4"
                   >
-                    <Text fontSize={32}>📷</Text>
-                    <Text color="$gray10" fontSize="$2">
+                    <Text fontSize={28}>📷</Text>
+                    <Text color="#22c55e" fontSize={12} fontWeight="600">
                       Add Photo
                     </Text>
                   </YStack>
                 </TouchableOpacity>
               )}
             </XStack>
-            <Button
+            <TouchableOpacity
               onPress={analyzeWithAI}
               disabled={images.length === 0 || analyzing}
-              backgroundColor="$purple9"
-              color="white"
-              fontWeight="600"
-              size="$4"
-              marginTop="$2"
-              icon={analyzing ? <Spinner color="white" /> : <Text>🤖</Text>}
+              style={{
+                backgroundColor: images.length === 0 || analyzing ? "#d1d5db" : "#22c55e",
+                borderRadius: 16,
+                padding: 14,
+                marginTop: 16,
+                flexDirection: "row",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: 8,
+              }}
             >
-              {analyzing ? "Analyzing..." : "Analyze with AI"}
-            </Button>
+              {analyzing ? <Spinner color="white" size="small" /> : <Text fontSize={20}>🤖</Text>}
+              <Text color="white" fontWeight="700" fontSize={16}>
+                {analyzing ? "Analyzing..." : "Analyze with AI"}
+              </Text>
+            </TouchableOpacity>
           </YStack>
 
-          {/* Waste Type */}
-          <YStack gap="$2">
-            <Text fontWeight="600" color="$gray12" fontSize="$4">
-              Waste Type *
+          {/* Waste Details Card */}
+          <YStack
+            backgroundColor="white"
+            borderRadius={24}
+            padding="$5"
+            marginBottom="$4"
+            gap="$4"
+            style={{
+              shadowColor: "#22c55e",
+              shadowOffset: { width: 0, height: 4 },
+              shadowOpacity: 0.15,
+              shadowRadius: 12,
+              elevation: 6,
+            }}
+          >
+            <Text fontWeight="700" color="#166534" fontSize={18}>
+              Waste Details
             </Text>
-            <Input
-              value={wasteType}
-              onChangeText={setWasteType}
-              placeholder="e.g., Plastic, Metal, Glass"
-              size="$4"
-              backgroundColor="white"
-              borderWidth={1}
-              borderColor="$gray8"
-            />
+
+            {/* Waste Type */}
+            <YStack gap="$2">
+              <Text fontWeight="600" color="#374151" fontSize={14}>
+                Waste Type *
+              </Text>
+              <Input
+                value={wasteType}
+                onChangeText={setWasteType}
+                placeholder="e.g., Plastic, Metal, Glass"
+                size="$4"
+                backgroundColor="#f0fdf4"
+                borderWidth={2}
+                borderColor="#22c55e"
+                borderRadius={16}
+                color="#166534"
+                placeholderTextColor="#9ca3af"
+              />
+            </YStack>
+
+            {/* Weight */}
+            <YStack gap="$2">
+              <Text fontWeight="600" color="#374151" fontSize={14}>
+                Weight (kg) *
+              </Text>
+              <Input
+                value={weightKg}
+                onChangeText={setWeightKg}
+                placeholder="Enter weight in kilograms"
+                keyboardType="decimal-pad"
+                size="$4"
+                backgroundColor="#f0fdf4"
+                borderWidth={2}
+                borderColor="#22c55e"
+                borderRadius={16}
+                color="#166534"
+                placeholderTextColor="#9ca3af"
+              />
+            </YStack>
+
+            {/* Base Price */}
+            <YStack gap="$2">
+              <Text fontWeight="600" color="#374151" fontSize={14}>
+                Starting Price (Rs.) *
+              </Text>
+              <Input
+                value={basePrice}
+                onChangeText={setBasePrice}
+                placeholder="Minimum Rs.10"
+                keyboardType="decimal-pad"
+                size="$4"
+                backgroundColor="#f0fdf4"
+                borderWidth={2}
+                borderColor="#22c55e"
+                borderRadius={16}
+                color="#166534"
+                placeholderTextColor="#9ca3af"
+              />
+              <Text color="#6b7280" fontSize={12}>
+                Buyers will bid from this price upwards
+              </Text>
+            </YStack>
           </YStack>
 
-          {/* Weight */}
-          <YStack gap="$2">
-            <Text fontWeight="600" color="$gray12" fontSize="$4">
-              Weight (kg) *
-            </Text>
-            <Input
-              value={weightKg}
-              onChangeText={setWeightKg}
-              placeholder="Enter weight in kilograms"
-              keyboardType="decimal-pad"
-              size="$4"
-              backgroundColor="white"
-              borderWidth={1}
-              borderColor="$gray8"
-            />
-          </YStack>
-
-          {/* Base Price */}
-          <YStack gap="$2">
-            <Text fontWeight="600" color="$gray12" fontSize="$4">
-              Starting Price (₹) *
-            </Text>
-            <Input
-              value={basePrice}
-              onChangeText={setBasePrice}
-              placeholder="Minimum ₹10"
-              keyboardType="decimal-pad"
-              size="$4"
-              backgroundColor="white"
-              borderWidth={1}
-              borderColor="$gray8"
-            />
-            <Text color="$gray10" fontSize="$2">
-              Buyers will bid from this price upwards
-            </Text>
-          </YStack>
-
-          {/* Auction Duration */}
-          <YStack gap="$2">
-            <Text fontWeight="600" color="$gray12" fontSize="$4">
+          {/* Auction Duration Card */}
+          <YStack
+            backgroundColor="white"
+            borderRadius={24}
+            padding="$5"
+            marginBottom="$4"
+            style={{
+              shadowColor: "#22c55e",
+              shadowOffset: { width: 0, height: 4 },
+              shadowOpacity: 0.15,
+              shadowRadius: 12,
+              elevation: 6,
+            }}
+          >
+            <Text fontWeight="700" color="#166534" fontSize={18} marginBottom="$3">
               Auction Duration *
             </Text>
             <XStack gap="$2" flexWrap="wrap">
@@ -471,25 +673,39 @@ Description: [brief description]`;
                 { label: "24 hours", value: "24" },
                 { label: "3 days", value: "72" },
               ].map((option) => (
-                <Button
-                  key={option.value}
-                  onPress={() => setAuctionDuration(option.value)}
-                  backgroundColor={
-                    auctionDuration === option.value ? "$blue9" : "$gray5"
-                  }
-                  color={auctionDuration === option.value ? "white" : "$gray11"}
-                  fontWeight="600"
-                  size="$3"
-                >
-                  {option.label}
-                </Button>
+                <TouchableOpacity key={option.value} onPress={() => setAuctionDuration(option.value)}>
+                  <YStack
+                    paddingHorizontal="$4"
+                    paddingVertical="$3"
+                    borderRadius={16}
+                    backgroundColor={auctionDuration === option.value ? "#22c55e" : "#f0fdf4"}
+                    borderWidth={2}
+                    borderColor="#22c55e"
+                  >
+                    <Text color={auctionDuration === option.value ? "white" : "#22c55e"} fontWeight="700" fontSize={14}>
+                      {option.label}
+                    </Text>
+                  </YStack>
+                </TouchableOpacity>
               ))}
             </XStack>
           </YStack>
 
-          {/* Description */}
-          <YStack gap="$2">
-            <Text fontWeight="600" color="$gray12" fontSize="$4">
+          {/* Description Card */}
+          <YStack
+            backgroundColor="white"
+            borderRadius={24}
+            padding="$5"
+            marginBottom="$4"
+            style={{
+              shadowColor: "#22c55e",
+              shadowOffset: { width: 0, height: 4 },
+              shadowOpacity: 0.15,
+              shadowRadius: 12,
+              elevation: 6,
+            }}
+          >
+            <Text fontWeight="700" color="#166534" fontSize={18} marginBottom="$3">
               Description (Optional)
             </Text>
             <TextArea
@@ -497,59 +713,93 @@ Description: [brief description]`;
               onChangeText={setDescription}
               placeholder="Add any additional details about the waste..."
               size="$4"
-              backgroundColor="white"
-              borderWidth={1}
-              borderColor="$gray8"
+              backgroundColor="#f0fdf4"
+              borderWidth={2}
+              borderColor="#22c55e"
+              borderRadius={16}
               minHeight={100}
+              color="#166534"
+              placeholderTextColor="#9ca3af"
             />
           </YStack>
 
           {/* Location Info */}
           {location && (
             <YStack
-              backgroundColor="$blue2"
-              padding="$3"
-              borderRadius="$3"
-              borderWidth={1}
-              borderColor="$blue5"
+              backgroundColor="white"
+              borderRadius={24}
+              padding="$4"
+              marginBottom="$4"
+              borderWidth={2}
+              borderColor="#22c55e"
+              style={{
+                shadowColor: "#22c55e",
+                shadowOffset: { width: 0, height: 4 },
+                shadowOpacity: 0.15,
+                shadowRadius: 12,
+                elevation: 6,
+              }}
             >
-              <Text color="$blue11" fontSize="$2" fontWeight="600">
-                📍 Location: {location.city || "Unknown"},{" "}
-                {location.state || "Unknown"}
-              </Text>
+              <XStack alignItems="center" gap="$2">
+                <Text fontSize={20}>📍</Text>
+                <Text color="#166534" fontSize={14} fontWeight="600">
+                  Location: {location.city || "Unknown"}, {location.state || "Unknown"}
+                </Text>
+              </XStack>
             </YStack>
           )}
 
           {/* Submit Button */}
-          <Button
+          <TouchableOpacity
             onPress={handleSubmit}
             disabled={submitting || !location}
-            backgroundColor="$green9"
-            color="white"
-            fontWeight="700"
-            size="$5"
-            marginTop="$2"
-            icon={submitting ? <Spinner color="white" /> : undefined}
+            style={{
+              backgroundColor: submitting || !location ? "#d1d5db" : "#22c55e",
+              borderRadius: 24,
+              padding: 18,
+              flexDirection: "row",
+              alignItems: "center",
+              justifyContent: "center",
+              gap: 8,
+              shadowColor: "#22c55e",
+              shadowOffset: { width: 0, height: 4 },
+              shadowOpacity: 0.3,
+              shadowRadius: 12,
+              elevation: 8,
+            }}
           >
-            {submitting ? "Creating Listing..." : "Create Listing"}
-          </Button>
-
-          {/* Info Box */}
-          <YStack
-            backgroundColor="$blue2"
-            padding="$3"
-            borderRadius="$3"
-            borderWidth={1}
-            borderColor="$blue5"
-          >
-            <Text color="$blue11" fontSize="$2" lineHeight={20}>
-              💡 <Text fontWeight="600">Tip:</Text> Clear photos and accurate
-              details help attract more bidders. You'll earn 30 points when the
-              transaction completes!
+            {submitting && <Spinner color="white" size="small" />}
+            <Text color="white" fontWeight="800" fontSize={18}>
+              {submitting ? "Creating Listing..." : "Create Listing"}
             </Text>
+          </TouchableOpacity>
+
+          {/* Tip Card */}
+          <YStack
+            backgroundColor="white"
+            borderRadius={24}
+            padding="$4"
+            marginTop="$4"
+            borderLeftWidth={4}
+            borderLeftColor="#22c55e"
+            style={{
+              shadowColor: "#22c55e",
+              shadowOffset: { width: 0, height: 4 },
+              shadowOpacity: 0.15,
+              shadowRadius: 12,
+              elevation: 6,
+            }}
+          >
+            <XStack alignItems="flex-start" gap="$2">
+              <Text fontSize={20}>💡</Text>
+              <Text color="#374151" fontSize={14} lineHeight={22} flex={1}>
+                <Text fontWeight="700">Tip:</Text> Clear photos and accurate details help attract more bidders. You'll
+                earn 30 points when the transaction completes!
+              </Text>
+            </XStack>
           </YStack>
-        </YStack>
+        </Animated.View>
       </ScrollView>
-    </Theme>
-  );
+    </LinearGradient>
+  )
 }

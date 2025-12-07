@@ -439,47 +439,6 @@ export default function ProfileScreen() {
                 </Button>
               )}
             </XStack>
-          {/* Marketplace Quick Actions */}
-          <YStack gap="$2" marginTop="$3">
-            <XStack gap="$3">
-              <Button
-                flex={1}
-                onPress={() => router.push("/(marketplace)/create" as any)}
-                backgroundColor="$green9"
-                color="white"
-                fontWeight="600"
-                icon={<Text fontSize={18}>➕</Text>}
-              >
-                Create Listing
-              </Button>
-              <Button
-                flex={1}
-                onPress={() => router.push("/(tabs)/marketplace" as any)}
-                backgroundColor="$blue9"
-                color="white"
-                fontWeight="600"
-                icon={<Text fontSize={18}>🛒</Text>}
-              >
-                Browse Market
-              </Button>
-            </XStack>
-            <Button
-              onPress={() => router.push("/(marketplace)/my-listings" as any)}
-              backgroundColor="$purple9"
-              color="white"
-              fontWeight="600"
-              icon={<Text fontSize={18}>📋</Text>}
-            >
-              My Listings
-            </Button>
-          </YStack>
-
-          {/* Edit Profile Section */}
-          {isEditing ? (
-            <YStack gap="$3">
-              <Text color="$gray11" fontWeight="600" fontSize="$3">
-                Edit Profile Information
-              </Text>
 
             {isEditing ? (
               <YStack gap="$3">
@@ -694,6 +653,51 @@ export default function ProfileScreen() {
                     </Text>
                   </View>
                 </View>
+
+                {/* Marketplace Quick Actions section */}
+                <YStack gap="$3" marginTop="$4">
+                  <Text style={styles.sectionTitle}>Marketplace Quick Actions</Text>
+                  <XStack gap="$3">
+                    <Button
+                      flex={1}
+                      onPress={() => router.push("/(marketplace)/create" as any)}
+                      backgroundColor="#22c55e"
+                      color="white"
+                      fontWeight="600"
+                      borderRadius={20}
+                      size="$4"
+                      pressStyle={{ scale: 0.95, backgroundColor: "#16a34a" }}
+                      icon={<Text fontSize={16}>+</Text>}
+                    >
+                      Create Listing
+                    </Button>
+                    <Button
+                      flex={1}
+                      onPress={() => router.push("/(tabs)/marketplace" as any)}
+                      backgroundColor="#166534"
+                      color="white"
+                      fontWeight="600"
+                      borderRadius={20}
+                      size="$4"
+                      pressStyle={{ scale: 0.95, backgroundColor: "#14532d" }}
+                      icon={<Text fontSize={16}>S</Text>}
+                    >
+                      Browse Market
+                    </Button>
+                  </XStack>
+                  <Button
+                    onPress={() => router.push("/(marketplace)/my-listings" as any)}
+                    backgroundColor="#dcfce7"
+                    color="#166534"
+                    fontWeight="600"
+                    borderRadius={20}
+                    size="$4"
+                    pressStyle={{ scale: 0.95, backgroundColor: "#bbf7d0" }}
+                    icon={<Text fontSize={16}>L</Text>}
+                  >
+                    My Listings
+                  </Button>
+                </YStack>
               </YStack>
             )}
           </Animated.View>
@@ -1050,10 +1054,10 @@ const styles = StyleSheet.create({
     fontWeight: "bold",
   },
   sectionTitle: {
-    fontSize: 18,
+    fontSize: 16,
     fontWeight: "bold",
     color: "#166534",
-    marginBottom: 12,
+    marginBottom: 4,
   },
   statCard: {
     backgroundColor: "white",

@@ -1,26 +1,26 @@
 "use client"
 
-import React from "react"
-import { YStack, XStack, Text, Button, Avatar, Circle } from "tamagui"
-import { useUser } from "@clerk/clerk-expo"
-import { router, usePathname } from "expo-router"
-import * as Location from "expo-location"
-import { useSafeAreaInsets } from "react-native-safe-area-context"
-import { MapPin, Bell } from "@tamagui/lucide-icons"
-import { getUnreadCount } from "../services/notificationService"
 import { Colors } from "@/constants/theme"
 import { useColorScheme } from "@/hooks/use-color-scheme"
+import { useUser } from "@clerk/clerk-expo"
+import { Bell, MapPin } from "@tamagui/lucide-icons"
 import { LinearGradient } from "expo-linear-gradient"
+import * as Location from "expo-location"
+import { router, usePathname } from "expo-router"
+import React from "react"
 import Animated, {
-  useSharedValue,
-  useAnimatedStyle,
-  withSpring,
-  withRepeat,
-  withSequence,
-  withTiming,
   FadeIn,
   SlideInDown,
+  useAnimatedStyle,
+  useSharedValue,
+  withRepeat,
+  withSequence,
+  withSpring,
+  withTiming,
 } from "react-native-reanimated"
+import { useSafeAreaInsets } from "react-native-safe-area-context"
+import { Avatar, Button, Circle, Text, XStack, YStack } from "tamagui"
+import { getUnreadCount } from "../services/notificationService"
 
 interface AppHeaderProps {
   onNotificationPress: () => void
@@ -151,8 +151,6 @@ export default function AppHeader({ onNotificationPress }: AppHeaderProps) {
         paddingTop: insets.top + 10,
         paddingBottom: 16,
         paddingHorizontal: 16,
-        borderBottomLeftRadius: 24,
-        borderBottomRightRadius: 24,
         shadowColor: "#22c55e",
         shadowOffset: { width: 0, height: 4 },
         shadowOpacity: 0.2,
