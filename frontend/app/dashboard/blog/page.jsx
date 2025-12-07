@@ -23,7 +23,18 @@ export default function BlogPage() {
   const fetchPosts = async () => {
     try {
       setLoading(true);
-      const response = await fetch(`${API_URL}/api/blog?published=true&limit=50&sortBy=createdAt&order=desc`);
+      const response = await fetch(`${API_URL}/api/blog?published=true&limit=50&sortBy=createdAt&order=desc`, {
+        headers: {
+          'ngrok-skip-browser-warning': 'true'
+        }
+      });
+
+      // Check if the response is JSON
+      const contentType = response.headers.get('content-type');
+      if (!contentType || !contentType.includes('application/json')) {
+        throw new Error(`API server not responding correctly. Make sure the backend is running on ${API_URL}`);
+      }
+
       const data = await response.json();
 
       if (data.success) {
@@ -42,7 +53,19 @@ export default function BlogPage() {
 
   const fetchCategories = async () => {
     try {
-      const response = await fetch(`${API_URL}/api/blog/categories`);
+      const response = await fetch(`${API_URL}/api/blog/categories`, {
+        headers: {
+          'ngrok-skip-browser-warning': 'true'
+        }
+      });
+
+      // Check if the response is JSON
+      const contentType = response.headers.get('content-type');
+      if (!contentType || !contentType.includes('application/json')) {
+        console.warn('Categories endpoint not available');
+        return;
+      }
+
       const data = await response.json();
 
       if (data.success && data.categories.length > 0) {
@@ -132,8 +155,8 @@ export default function BlogPage() {
                 key={category}
                 onClick={() => setSelectedCategory(category)}
                 className={`px-4 py-2 rounded-full text-sm font-medium transition-all duration-200 ${selectedCategory === category
-                    ? 'bg-gradient-to-r from-emerald-500 to-green-600 text-white shadow-md'
-                    : 'bg-white text-gray-700 border border-gray-300 hover:border-emerald-400 hover:bg-emerald-50'
+                  ? 'bg-gradient-to-r from-emerald-500 to-green-600 text-white shadow-md'
+                  : 'bg-white text-gray-700 border border-gray-300 hover:border-emerald-400 hover:bg-emerald-50'
                   }`}
               >
                 {category}

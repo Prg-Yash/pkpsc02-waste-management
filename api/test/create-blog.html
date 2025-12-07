@@ -274,10 +274,32 @@
                 </div>
 
                 <div class="form-group">
-                    <label for="content">Content *</label>
-                    <textarea id="content" name="content" required
-                        placeholder="Write your full blog post content here..."></textarea>
-                    <div class="hint">Full article content. Read time will be calculated automatically.</div>
+                    <label for="content">Content * (Markdown Supported)</label>
+                    <textarea id="content" name="content" required rows="15" placeholder="Write your blog post content in Markdown format...
+
+# Main Heading
+## Sub Heading
+### Section
+
+**Bold text** and *italic text*
+
+- Bullet point 1
+- Bullet point 2
+
+1. Numbered item
+2. Another item
+
+[Link text](https://example.com)
+
+`inline code`
+
+```
+code block
+```
+
+> Blockquote"></textarea>
+                    <div class="hint">Supports Markdown formatting. Use # for headings, ** for bold, * for italic, - for
+                        lists, etc. Read time will be calculated automatically.</div>
                 </div>
 
                 <div class="form-group">
@@ -335,7 +357,7 @@
     </div>
 
     <script>
-        const API_URL = 'http://localhost:3000'; // Change to your API URL
+        const API_URL = 'https://jeanene-unexposed-ingrid.ngrok-free.dev'; // Change to your API URL
         const tags = [];
 
         // Image preview

@@ -7,6 +7,72 @@ import { useState, useEffect } from 'react';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000';
 
+/**
+ * Convert markdown to HTML with proper styling
+ */
+function parseMarkdown(markdown) {
+  if (!markdown) return '';
+
+  let html = markdown;
+
+  // Convert headers
+  html = html.replace(/^### (.*$)/gim, '<h3 class="text-2xl font-bold text-gray-900 mt-8 mb-4">$1</h3>');
+  html = html.replace(/^## (.*$)/gim, '<h2 class="text-3xl font-bold text-gray-900 mt-10 mb-5">$1</h2>');
+  html = html.replace(/^# (.*$)/gim, '<h1 class="text-4xl font-bold text-gray-900 mt-12 mb-6">$1</h1>');
+
+  // Convert bold text
+  html = html.replace(/\*\*(.*?)\*\*/g, '<strong class="font-bold text-gray-900">$1</strong>');
+
+  // Convert italic text
+  html = html.replace(/\*(.*?)\*/g, '<em class="italic text-gray-700">$1</em>');
+
+  // Convert inline code
+  html = html.replace(/`([^`]+)`/g, '<code class="bg-gray-100 text-emerald-600 px-2 py-1 rounded font-mono text-sm">$1</code>');
+
+  // Convert links
+  html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" class="text-emerald-600 hover:text-emerald-700 underline font-medium" target="_blank" rel="noopener noreferrer">$1</a>');
+
+  // Convert unordered lists
+  html = html.replace(/^\* (.*$)/gim, '<li class="ml-6 mb-2 text-gray-700">$1</li>');
+  html = html.replace(/^- (.*$)/gim, '<li class="ml-6 mb-2 text-gray-700">$1</li>');
+
+  // Wrap consecutive <li> tags in <ul>
+  html = html.replace(/(<li[^>]*>.*?<\/li>\s*)+/gs, '<ul class="list-disc ml-6 my-4 space-y-2">$&</ul>');
+
+  // Convert ordered lists
+  html = html.replace(/^\d+\. (.*$)/gim, '<li class="ml-6 mb-2 text-gray-700">$1</li>');
+  html = html.replace(/(<li[^>]*>.*?<\/li>\s*){2,}/g, '<ol class="list-decimal ml-6 my-4 space-y-2">$&</ol>');
+
+  // Convert blockquotes
+  html = html.replace(/^&gt; (.*$)/gim, '<blockquote class="border-l-4 border-emerald-500 pl-4 py-2 my-4 italic text-gray-600 bg-emerald-50">$1</blockquote>');
+  html = html.replace(/^> (.*$)/gim, '<blockquote class="border-l-4 border-emerald-500 pl-4 py-2 my-4 italic text-gray-600 bg-emerald-50">$1</blockquote>');
+
+  // Convert code blocks
+  html = html.replace(/```([a-z]*)\n([\s\S]*?)```/gim, '<pre class="bg-gray-900 text-gray-100 p-4 rounded-lg overflow-x-auto my-4"><code class="font-mono text-sm">$2</code></pre>');
+
+  // Convert horizontal rules
+  html = html.replace(/^---$/gim, '<hr class="my-8 border-t-2 border-gray-200" />');
+  html = html.replace(/^\*\*\*$/gim, '<hr class="my-8 border-t-2 border-gray-200" />');
+
+  // Convert paragraphs (lines not already converted)
+  const lines = html.split('\n');
+  const processedLines = lines.map(line => {
+    const trimmedLine = line.trim();
+    // Skip if it's already an HTML tag or empty
+    if (!trimmedLine || trimmedLine.startsWith('<')) {
+      return line;
+    }
+    return `<p class="text-gray-700 leading-relaxed mb-4 text-lg">${line}</p>`;
+  });
+
+  html = processedLines.join('\n');
+
+  // Convert line breaks
+  html = html.replace(/\n\n/g, '<br/><br/>');
+
+  return html;
+}
+
 export default function BlogPostPage() {
   const params = useParams();
   const router = useRouter();
@@ -26,7 +92,11 @@ export default function BlogPostPage() {
   const fetchBlogPost = async () => {
     try {
       setLoading(true);
-      const response = await fetch(`${API_URL}/api/blog/${params.slug}`);
+      const response = await fetch(`${API_URL}/api/blog/${params.slug}`, {
+        headers: {
+          'ngrok-skip-browser-warning': 'true'
+        }
+      });
       const data = await response.json();
 
       if (data.success) {
@@ -47,7 +117,11 @@ export default function BlogPostPage() {
 
   const fetchRelatedPosts = async (currentPost) => {
     try {
-      const response = await fetch(`${API_URL}/api/blog?category=${currentPost.category}&limit=4`);
+      const response = await fetch(`${API_URL}/api/blog?category=${currentPost.category}&limit=4`, {
+        headers: {
+          'ngrok-skip-browser-warning': 'true'
+        }
+      });
       const data = await response.json();
 
       if (data.success) {
@@ -234,28 +308,67 @@ export default function BlogPostPage() {
       {/* Content */}
       <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 pb-16">
         <div className="bg-white rounded-2xl shadow-lg p-8 sm:p-12">
-          <article className="prose prose-lg max-w-none">
+          <article className="markdown-content">
             <div
-              className="blog-content"
+              className="prose prose-lg max-w-none"
               dangerouslySetInnerHTML={{
-                __html: post.content.split('\n').map(line => {
-                  if (line.startsWith('# ')) return `<h1 class="text-3xl font-bold text-gray-900 mt-8 mb-4">${line.substring(2)}</h1>`;
-                  if (line.startsWith('## ')) return `<h2 class="text-2xl font-bold text-gray-900 mt-6 mb-3">${line.substring(3)}</h2>`;
-                  if (line.startsWith('### ')) return `<h3 class="text-xl font-bold text-gray-900 mt-4 mb-2">${line.substring(4)}</h3>`;
-                  if (line.startsWith('- **')) {
-                    const match = line.match(/- \*\*(.*?)\*\*:?(.*)/);
-                    if (match) return `<li class="ml-6 mb-2"><strong class="text-gray-900">${match[1]}</strong>${match[2] ? `: ${match[2]}` : ''}</li>`;
-                  }
-                  if (line.startsWith('- ')) return `<li class="ml-6 mb-2">${line.substring(2)}</li>`;
-                  if (line.startsWith('✅ ')) return `<li class="flex items-start gap-2 mb-2"><span class="text-green-600 text-xl">✅</span><span>${line.substring(2)}</span></li>`;
-                  if (line.startsWith('❌ ')) return `<li class="flex items-start gap-2 mb-2"><span class="text-red-600 text-xl">❌</span><span>${line.substring(2)}</span></li>`;
-                  if (line.startsWith('**') && line.endsWith('**')) return `<p class="font-bold text-gray-900 mt-4">${line.slice(2, -2)}</p>`;
-                  if (line.trim() === '') return '<br/>';
-                  return `<p class="text-gray-700 leading-relaxed mb-4">${line}</p>`;
-                }).join('')
+                __html: parseMarkdown(post.content)
               }}
             />
           </article>
+
+          <style jsx>{`
+            .markdown-content {
+              color: #374151;
+              line-height: 1.8;
+            }
+            
+            .markdown-content h1,
+            .markdown-content h2,
+            .markdown-content h3 {
+              scroll-margin-top: 100px;
+            }
+            
+            .markdown-content img {
+              border-radius: 12px;
+              box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+              margin: 2rem auto;
+              max-width: 100%;
+              height: auto;
+            }
+            
+            .markdown-content table {
+              width: 100%;
+              border-collapse: collapse;
+              margin: 2rem 0;
+            }
+            
+            .markdown-content table th,
+            .markdown-content table td {
+              padding: 12px;
+              text-align: left;
+              border-bottom: 1px solid #e5e7eb;
+            }
+            
+            .markdown-content table th {
+              background-color: #f9fafb;
+              font-weight: 600;
+              color: #111827;
+            }
+            
+            .markdown-content pre {
+              position: relative;
+            }
+            
+            .markdown-content pre code {
+              display: block;
+              overflow-x: auto;
+            }
+            
+            .markdown-content :not(pre) > code {
+              word-break: break-word;
+            }
+          `}</style>
         </div>
       </div>
 

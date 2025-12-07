@@ -243,11 +243,17 @@ router.post("/", upload.single("image"), async (req, res) => {
         let parsedTags = [];
         if (tags) {
             try {
-                parsedTags = typeof tags === "string" ? (tags.includes(",") ? tags.split(",").map(t => t.trim()) : JSON.parse(tags)) : tags;
+                // First try to parse as JSON
+                const parsed = JSON.parse(tags);
+                // If it's an array, use it directly
+                parsedTags = Array.isArray(parsed) ? parsed : [parsed];
             } catch (e) {
-                parsedTags = [tags];
+                // If JSON parse fails, treat as comma-separated string
+                parsedTags = typeof tags === "string" ? tags.split(",").map(t => t.trim()) : [tags];
             }
         }
+
+        console.log('Parsed tags:', parsedTags);
 
         // Generate slug
         const slug = generateSlug(title);
@@ -255,13 +261,25 @@ router.post("/", upload.single("image"), async (req, res) => {
         // Calculate read time
         const readTime = calculateReadTime(content);
 
+        // Generate S3 key for blog image
+        const timestamp = Date.now();
+        const sanitizedFileName = req.file.originalname
+            .replace(/^.*[\\\/]/, '')
+            .replace(/[^a-zA-Z0-9._-]/g, '-')
+            .replace(/-+/g, '-')
+            .toLowerCase();
+        const s3Key = `blog-images/${slug}/${timestamp}-${sanitizedFileName}`;
+
+        console.log('Uploading image to S3:', s3Key);
+
         // Upload image to S3
-        const s3Result = await uploadToS3(
+        const imageUrl = await uploadToS3(
             req.file.buffer,
-            req.file.originalname,
-            req.file.mimetype,
-            `blog-posts/${slug}`
+            s3Key,
+            req.file.mimetype
         );
+
+        console.log('Image uploaded successfully:', imageUrl);
 
         // Create blog post in database
         const blogPost = await prisma.blogPost.create({
@@ -270,7 +288,7 @@ router.post("/", upload.single("image"), async (req, res) => {
                 title,
                 excerpt,
                 content,
-                imageUrl: s3Result.url,
+                imageUrl,
                 category,
                 tags: parsedTags,
                 readTime,
@@ -279,6 +297,8 @@ router.post("/", upload.single("image"), async (req, res) => {
                 authorRole: "Content Writer",
             },
         });
+
+        console.log('Blog post created successfully:', blogPost.id);
 
         res.status(201).json({
             success: true,
@@ -332,9 +352,12 @@ router.patch("/:slug", upload.single("image"), async (req, res) => {
         if (category) updateData.category = category;
         if (tags) {
             try {
-                updateData.tags = typeof tags === "string" ? (tags.includes(",") ? tags.split(",").map(t => t.trim()) : JSON.parse(tags)) : tags;
+                // First try to parse as JSON
+                const parsed = JSON.parse(tags);
+                updateData.tags = Array.isArray(parsed) ? parsed : [parsed];
             } catch (e) {
-                updateData.tags = [tags];
+                // If JSON parse fails, treat as comma-separated string
+                updateData.tags = typeof tags === "string" ? tags.split(",").map(t => t.trim()) : [tags];
             }
         }
         if (featured !== undefined) updateData.featured = featured === "true" || featured === true;
@@ -342,13 +365,19 @@ router.patch("/:slug", upload.single("image"), async (req, res) => {
 
         // Upload new image if provided
         if (req.file) {
-            const s3Result = await uploadToS3(
+            const timestamp = Date.now();
+            const sanitizedFileName = req.file.originalname
+                .replace(/^.*[\\\/]/, '')
+                .replace(/[^a-zA-Z0-9._-]/g, '-')
+                .replace(/-+/g, '-')
+                .toLowerCase();
+            const s3Key = `blog-images/${updateData.slug || slug}/${timestamp}-${sanitizedFileName}`;
+
+            updateData.imageUrl = await uploadToS3(
                 req.file.buffer,
-                req.file.originalname,
-                req.file.mimetype,
-                `blog-posts/${updateData.slug || slug}`
+                s3Key,
+                req.file.mimetype
             );
-            updateData.imageUrl = s3Result.url;
         }
 
         // Update blog post
