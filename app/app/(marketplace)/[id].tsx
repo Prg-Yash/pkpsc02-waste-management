@@ -13,9 +13,17 @@ import {
   Input,
   Separator,
 } from "tamagui";
-import { Alert, Modal, Pressable, View, Linking } from "react-native";
+import {
+  Alert,
+  Modal,
+  Pressable,
+  View,
+  Linking,
+  StyleSheet,
+} from "react-native";
 import { useUser } from "@clerk/clerk-expo";
 import { router, useLocalSearchParams } from "expo-router";
+import { Camera, CameraView } from "expo-camera";
 import {
   getListingDetails,
   placeBid,
@@ -41,6 +49,10 @@ export default function ListingDetailsScreen() {
   const [verifyingQR, setVerifyingQR] = React.useState(false);
   const [timeRemaining, setTimeRemaining] = React.useState<number>(0);
   const [selectedImageIndex, setSelectedImageIndex] = React.useState(0);
+  const [hasPermission, setHasPermission] = React.useState<boolean | null>(
+    null
+  );
+  const [scanned, setScanned] = React.useState(false);
 
   React.useEffect(() => {
     if (user && id) {
@@ -146,6 +158,59 @@ export default function ListingDetailsScreen() {
         },
       ]
     );
+  };
+
+  const requestCameraPermission = async () => {
+    const { status } = await Camera.requestCameraPermissionsAsync();
+    setHasPermission(status === "granted");
+    return status === "granted";
+  };
+
+  const handleBarCodeScanned = async ({
+    data,
+  }: {
+    type: string;
+    data: string;
+  }) => {
+    if (scanned || !user || !listing) return;
+
+    setScanned(true);
+    setQrCode(data);
+
+    // Auto-verify the scanned QR code
+    try {
+      setVerifyingQR(true);
+      await verifyQRCode(user.id, listing.id, data);
+      Alert.alert(
+        "Transaction Complete! 🎉",
+        "You earned 30 points! The buyer earned 20 points.",
+        [
+          {
+            text: "OK",
+            onPress: () => {
+              setQrModalVisible(false);
+              setQrCode("");
+              setScanned(false);
+              loadListingDetails();
+            },
+          },
+        ]
+      );
+    } catch (error) {
+      console.error("Error verifying QR:", error);
+      Alert.alert(
+        "Verification Failed",
+        error instanceof Error ? error.message : "Invalid QR code",
+        [
+          {
+            text: "Try Again",
+            onPress: () => setScanned(false),
+          },
+        ]
+      );
+    } finally {
+      setVerifyingQR(false);
+    }
   };
 
   const handleVerifyQR = async () => {
@@ -633,7 +698,17 @@ export default function ListingDetailsScreen() {
             {/* Verify QR Code */}
             {isOwner && listing.status === "ENDED" && listing.winner && (
               <Button
-                onPress={() => setQrModalVisible(true)}
+                onPress={async () => {
+                  const granted = await requestCameraPermission();
+                  if (granted) {
+                    setQrModalVisible(true);
+                  } else {
+                    Alert.alert(
+                      "Camera Permission Required",
+                      "Please enable camera access to scan QR codes."
+                    );
+                  }
+                }}
                 backgroundColor="$purple9"
                 color="white"
                 fontWeight="700"
@@ -783,74 +858,184 @@ export default function ListingDetailsScreen() {
         visible={qrModalVisible}
         transparent
         animationType="slide"
-        onRequestClose={() => setQrModalVisible(false)}
+        onRequestClose={() => {
+          setQrModalVisible(false);
+          setScanned(false);
+        }}
       >
-        <Pressable
-          style={{
-            flex: 1,
-            backgroundColor: "rgba(0,0,0,0.5)",
-            justifyContent: "flex-end",
-          }}
-          onPress={() => setQrModalVisible(false)}
-        >
-          <Pressable onPress={(e) => e.stopPropagation()}>
+        <View style={{ flex: 1, backgroundColor: "black" }}>
+          {hasPermission === null ? (
             <YStack
-              backgroundColor="white"
-              borderTopLeftRadius="$6"
-              borderTopRightRadius="$6"
-              padding="$5"
-              gap="$4"
+              flex={1}
+              justifyContent="center"
+              alignItems="center"
+              backgroundColor="black"
             >
-              <H4 color="$gray12">Verify Winner's QR Code</H4>
-              <Text color="$gray11" fontSize="$3">
-                Ask the winner to show their QR code and enter it below:
+              <Spinner size="large" color="white" />
+              <Text color="white" marginTop="$4">
+                Requesting camera permission...
               </Text>
-              <Input
-                value={qrCode}
-                onChangeText={setQrCode}
-                placeholder="Enter QR code"
-                size="$5"
+            </YStack>
+          ) : hasPermission === false ? (
+            <YStack
+              flex={1}
+              justifyContent="center"
+              alignItems="center"
+              padding="$5"
+              backgroundColor="black"
+            >
+              <Text
+                color="white"
                 fontSize="$6"
                 fontWeight="600"
                 textAlign="center"
-                autoCapitalize="characters"
-              />
-              <YStack
-                backgroundColor="$blue2"
-                padding="$3"
-                borderRadius="$3"
-                borderWidth={1}
-                borderColor="$blue5"
+                marginBottom="$4"
               >
-                <Text color="$blue11" fontSize="$2">
-                  💡 After verification, you'll earn 30 points and the buyer
-                  will earn 20 points!
-                </Text>
-              </YStack>
-              <XStack gap="$3">
-                <Button
-                  flex={1}
-                  onPress={() => setQrModalVisible(false)}
-                  backgroundColor="$gray5"
-                  color="$gray11"
-                >
-                  Cancel
-                </Button>
-                <Button
-                  flex={1}
-                  onPress={handleVerifyQR}
-                  backgroundColor="$purple9"
-                  color="white"
-                  fontWeight="600"
-                  disabled={verifyingQR}
-                  icon={verifyingQR ? <Spinner color="white" /> : undefined}
-                >
-                  {verifyingQR ? "Verifying..." : "Verify"}
-                </Button>
-              </XStack>
+                📷 Camera Permission Required
+              </Text>
+              <Text
+                color="$gray10"
+                fontSize="$4"
+                textAlign="center"
+                marginBottom="$6"
+              >
+                We need camera access to scan the winner's QR code. Please grant
+                permission in your device settings.
+              </Text>
+              <Button
+                onPress={async () => {
+                  const granted = await requestCameraPermission();
+                  if (!granted) {
+                    Alert.alert(
+                      "Permission Denied",
+                      "Please enable camera access in your device settings to scan QR codes."
+                    );
+                  }
+                }}
+                backgroundColor="$green9"
+                color="white"
+                marginBottom="$3"
+              >
+                Grant Permission
+              </Button>
+              <Button
+                onPress={() => {
+                  setQrModalVisible(false);
+                  setScanned(false);
+                }}
+                backgroundColor="$gray5"
+                color="$gray11"
+              >
+                Cancel
+              </Button>
             </YStack>
-          </Pressable>
-        </Pressable>
+          ) : (
+            <YStack flex={1}>
+              {/* Camera View */}
+              <View style={{ flex: 1 }}>
+                <CameraView
+                  style={StyleSheet.absoluteFillObject}
+                  facing="back"
+                  onBarcodeScanned={scanned ? undefined : handleBarCodeScanned}
+                  barcodeScannerSettings={{
+                    barcodeTypes: ["qr"],
+                  }}
+                />
+
+                {/* Overlay UI */}
+                <YStack flex={1} justifyContent="space-between">
+                  {/* Header */}
+                  <YStack
+                    backgroundColor="rgba(0,0,0,0.7)"
+                    padding="$4"
+                    gap="$2"
+                  >
+                    <Text color="white" fontSize="$6" fontWeight="600">
+                      Scan Winner's QR Code
+                    </Text>
+                    <Text color="$gray10" fontSize="$3">
+                      Position the QR code within the frame
+                    </Text>
+                  </YStack>
+
+                  {/* Center Frame */}
+                  <YStack flex={1} justifyContent="center" alignItems="center">
+                    <View
+                      style={{
+                        width: 250,
+                        height: 250,
+                        borderWidth: 3,
+                        borderColor: scanned ? "#22c55e" : "white",
+                        borderRadius: 20,
+                        backgroundColor: "transparent",
+                      }}
+                    >
+                      {scanned && (
+                        <YStack
+                          flex={1}
+                          justifyContent="center"
+                          alignItems="center"
+                        >
+                          <Text color="#22c55e" fontSize="$8" fontWeight="600">
+                            ✓
+                          </Text>
+                          <Text color="white" fontSize="$4" marginTop="$2">
+                            Verifying...
+                          </Text>
+                        </YStack>
+                      )}
+                    </View>
+                  </YStack>
+
+                  {/* Footer */}
+                  <YStack
+                    backgroundColor="rgba(0,0,0,0.7)"
+                    padding="$5"
+                    gap="$3"
+                  >
+                    <YStack
+                      backgroundColor="rgba(59, 130, 246, 0.2)"
+                      padding="$3"
+                      borderRadius="$3"
+                      borderWidth={1}
+                      borderColor="rgba(59, 130, 246, 0.5)"
+                    >
+                      <Text color="white" fontSize="$2" textAlign="center">
+                        💡 After verification, you'll earn 30 points and the
+                        buyer will earn 20 points!
+                      </Text>
+                    </YStack>
+                    <XStack gap="$3">
+                      <Button
+                        flex={1}
+                        onPress={() => {
+                          setQrModalVisible(false);
+                          setScanned(false);
+                        }}
+                        backgroundColor="$gray5"
+                        color="$gray11"
+                        disabled={verifyingQR}
+                      >
+                        Cancel
+                      </Button>
+                      {scanned && (
+                        <Button
+                          flex={1}
+                          onPress={() => setScanned(false)}
+                          backgroundColor="$yellow9"
+                          color="white"
+                          disabled={verifyingQR}
+                        >
+                          Scan Again
+                        </Button>
+                      )}
+                    </XStack>
+                  </YStack>
+                </YStack>
+              </View>
+            </YStack>
+          )}
+        </View>
       </Modal>
     </Theme>
   );

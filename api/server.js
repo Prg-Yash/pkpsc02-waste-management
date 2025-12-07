@@ -13,6 +13,8 @@ import phoneVerificationRoutes from "./routes/phoneVerification.js";
 import whatsappMessagingRoutes from "./routes/whatsappMessaging.js";
 import publicRoutePlannerRoutes from "./routes/publicRoutePlanner.js";
 import blogRoutes from "./routes/blog.js";
+import newsletterRoutes from "./routes/newsletter.js";
+import marketplaceRoutes from "./routes/marketplace.js";
 
 const app = express();
 
@@ -78,6 +80,24 @@ app.get("/", (req, res) => {
             phoneVerification: "/api/phone/send-otp",
             whatsappMessaging: "/api/whatsapp/enable",
             publicRoutePlanner: "/api/public/route-planner (no auth)",
+            newsletter: "/api/newsletter/generate/:userId",
+        },
+    });
+    res.json({
+        status: "ok",
+        message: "EcoFlow Waste Management API",
+        version: "1.0.0",
+        endpoints: {
+            user: "/api/user/me",
+            waste: "/api/waste/report",
+            notifications: "/api/notifications",
+            webhook: "/api/webhooks/clerk",
+            leaderboard: "/api/leaderboard/global",
+            routePlanner: "/api/route-planner",
+            phoneVerification: "/api/phone/send-otp",
+            whatsappMessaging: "/api/whatsapp/enable",
+            marketplace: "/api/marketplace/listings",
+            publicRoutePlanner: "/api/public/route-planner (no auth)",
         },
     });
 });
@@ -93,6 +113,11 @@ app.use("/api/phone", phoneVerificationRoutes);
 app.use("/api/whatsapp", whatsappMessagingRoutes);
 app.use("/api/public", publicRoutePlannerRoutes);
 app.use("/api/blog", blogRoutes);
+app.use("/api/newsletter", newsletterRoutes);
+app.use("/api/marketplace", marketplaceRoutes);
+app.use("/api/marketplace", marketplaceRoutes);
+// app.use("/api/test", testRoutes);
+app.use("/api/public", publicRoutePlannerRoutes);
 
 // 404 handler
 app.use((req, res) => {
