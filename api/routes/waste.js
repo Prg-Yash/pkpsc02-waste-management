@@ -363,6 +363,28 @@ router.post(
       const { collectorLocation, isLocationLatLng, latitude, longitude } =
         req.body;
 
+      console.log("\n🚀 ========== WASTE COLLECTION REQUEST ==========");
+      console.log("Waste ID:", wasteId);
+      console.log("User ID:", req.user?.id);
+      console.log("User Name:", req.user?.name);
+      console.log("User Email:", req.user?.email);
+      console.log("User City:", req.user?.city);
+      console.log("User State:", req.user?.state);
+      console.log("User Country:", req.user?.country);
+      console.log("User Phone Verified:", req.user?.phoneVerified);
+      console.log("User Collector Enabled:", req.user?.enableCollector);
+      console.log("Request Body:", req.body);
+      console.log("Has File:", !!req.file);
+      if (req.file) {
+        console.log("File Details:", {
+          fieldname: req.file.fieldname,
+          originalname: req.file.originalname,
+          mimetype: req.file.mimetype,
+          size: req.file.size,
+        });
+      }
+      console.log("=============================================\n");
+
       // Validate user has address fields set
       if (!req.user.city || !req.user.state || !req.user.country) {
         return res.status(400).json({
@@ -566,13 +588,21 @@ router.post(
         pointsEarned: COLLECT_POINTS,
       });
     } catch (error) {
-      console.error("❌ Error collecting waste:", error);
+      console.error("\n❌ ========== ERROR COLLECTING WASTE ==========");
+      console.error("Error name:", error.name);
+      console.error("Error message:", error.message);
+      console.error("Error code:", error.code);
+      console.error("Error meta:", error.meta);
+      console.error("Full error object:", JSON.stringify(error, Object.getOwnPropertyNames(error), 2));
       console.error("Error stack:", error.stack);
-      console.error("Error details:", {
-        message: error.message,
-        code: error.code,
-        meta: error.meta,
+      console.error("Request params:", {
+        wasteId: req.params.id,
+        userId: req.user?.id,
+        userName: req.user?.name,
       });
+      console.error("Request body:", req.body);
+      console.error("Has file:", !!req.file);
+      console.error("========================================\n");
 
       // Handle specific Prisma errors
       if (error.code === "P2025") {

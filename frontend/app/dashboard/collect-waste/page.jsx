@@ -490,7 +490,7 @@ const CollectPage = () => {
         // Submit collection to backend API via proxy
         const formData = new FormData();
         formData.append('userId', user.id);
-        formData.append('collectorImage', file);
+        formData.append('afterImage', file); // Backend expects 'afterImage' field name
         formData.append('latitude', currentLocation.latitude.toString());
         formData.append('longitude', currentLocation.longitude.toString());
 
@@ -654,7 +654,7 @@ const CollectPage = () => {
         // Submit collection to backend API via proxy
         const formData = new FormData();
         formData.append('userId', user.id);
-        formData.append('collectorImage', file);
+        formData.append('afterImage', file); // Backend expects 'afterImage' field name
         formData.append('latitude', currentLocation.latitude.toString());
         formData.append('longitude', currentLocation.longitude.toString());
 
