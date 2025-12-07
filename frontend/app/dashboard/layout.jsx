@@ -81,14 +81,14 @@ export default function DashboardLayout({ children }) {
     },
   ];
 
-  // Blog link
+ /*  // Blog link
   const blogLinks = [
     {
       label: 'Blog',
       href: '/dashboard/blog',
       icon: BookOpen,
     },
-  ];
+  ]; */
 
   // Bottom links
   const bottomLinks = [
@@ -111,7 +111,7 @@ export default function DashboardLayout({ children }) {
     ...commonLinks,
     ...(isCollector ? routeLinks : []),
     ...analyticsLinks,
-    ...blogLinks,
+    //...blogLinks,
     ...bottomLinks,
   ];
 

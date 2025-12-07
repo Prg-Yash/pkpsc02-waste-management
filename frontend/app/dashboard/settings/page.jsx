@@ -169,6 +169,7 @@ export default function ProfilePage() {
         state: data.user.state || '',
         country: data.user.country || '',
         enableCollector: data.user.enableCollector || false,
+        newsletterEnabled: data.user.newsletterEnabled !== undefined ? data.user.newsletterEnabled : true,
         reporterPoints: data.user.reporterPoints || 0,
         collectorPoints: data.user.collectorPoints || 0,
         globalPoints: data.user.globalPoints || 0,
@@ -1246,8 +1247,47 @@ export default function ProfilePage() {
               </div>
               <div className="mt-6 pt-6 border-t border-blue-200">
                 <button
-                  onClick={() => handleInputChange('newsletterEnabled', !userData.newsletterEnabled)}
-                  className={`w-full px-6 py-4 rounded-xl font-bold transition-all duration-300 transform hover:scale-105 shadow-lg hover:shadow-xl flex items-center justify-center gap-2 ${userData.newsletterEnabled
+                  onClick={async () => {
+                    const newValue = !userData.newsletterEnabled;
+                    console.log('📧 Newsletter toggle clicked. New value:', newValue);
+                    setUserData(prev => ({ ...prev, newsletterEnabled: newValue }));
+                    
+                    try {
+                      console.log('📤 Sending newsletter update to API...');
+                      const response = await fetch('/api/user/me', {
+                        method: 'PATCH',
+                        headers: {
+                          'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify({
+                          newsletterEnabled: newValue,
+                        }),
+                      });
+
+                      if (!response.ok) {
+                        const errorData = await response.json();
+                        console.error('❌ Newsletter update failed:', errorData);
+                        throw new Error(errorData.error || 'Failed to update newsletter subscription');
+                      }
+
+                      const data = await response.json();
+                      console.log('✅ Newsletter update successful:', data.user?.newsletterEnabled);
+                      setMessage({ 
+                        type: 'success', 
+                        text: newValue 
+                          ? '✅ Successfully subscribed to newsletter!' 
+                          : '✅ Successfully unsubscribed from newsletter.' 
+                      });
+                      setTimeout(() => setMessage({ type: '', text: '' }), 3000);
+                    } catch (error) {
+                      console.error('❌ Error updating newsletter:', error);
+                      setUserData(prev => ({ ...prev, newsletterEnabled: !newValue })); // Revert on error
+                      setMessage({ type: 'error', text: error.message || 'Failed to update newsletter subscription' });
+                      setTimeout(() => setMessage({ type: '', text: '' }), 3000);
+                    }
+                  }}
+                  disabled={saving}
+                  className={`w-full px-6 py-4 rounded-xl font-bold transition-all duration-300 transform hover:scale-105 shadow-lg hover:shadow-xl flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed ${userData.newsletterEnabled
                     ? 'bg-gray-400 hover:bg-gray-500 text-white'
                     : 'bg-linear-to-r from-blue-500 to-indigo-600 text-white hover:from-blue-600 hover:to-indigo-700'
                     }`}
