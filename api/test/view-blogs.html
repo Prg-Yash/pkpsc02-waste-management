@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -127,8 +128,13 @@
         }
 
         @keyframes spin {
-            0% { transform: rotate(0deg); }
-            100% { transform: rotate(360deg); }
+            0% {
+                transform: rotate(0deg);
+            }
+
+            100% {
+                transform: rotate(360deg);
+            }
         }
 
         .blogs-grid {
@@ -297,6 +303,7 @@
         }
     </style>
 </head>
+
 <body>
     <div class="container">
         <div class="header">
@@ -306,7 +313,7 @@
 
         <div class="controls">
             <div class="stats" id="stats"></div>
-            
+
             <div class="controls-grid">
                 <div class="control-group">
                     <label for="categoryFilter">Category</label>
@@ -343,7 +350,8 @@
 
             <div style="display: flex; gap: 10px;">
                 <button class="btn" onclick="loadBlogs()">🔄 Refresh</button>
-                <button class="btn btn-secondary" onclick="window.location.href='create-blog.html'">➕ Create New Post</button>
+                <button class="btn btn-secondary" onclick="window.location.href='create-blog.html'">➕ Create New
+                    Post</button>
             </div>
         </div>
 
@@ -401,7 +409,7 @@
         async function loadBlogs() {
             const loading = document.getElementById('loading');
             const container = document.getElementById('blogsContainer');
-            
+
             loading.style.display = 'block';
             container.innerHTML = '';
 
@@ -425,7 +433,7 @@
 
                 if (data.success) {
                     displayStats(data);
-                    
+
                     if (data.posts.length === 0) {
                         container.innerHTML = `
                             <div class="empty-state">
@@ -487,7 +495,7 @@
             posts.forEach(post => {
                 const card = document.createElement('div');
                 card.className = 'blog-card';
-                
+
                 const date = new Date(post.createdAt).toLocaleDateString('en-US', {
                     year: 'numeric',
                     month: 'short',
@@ -568,4 +576,5 @@
         loadBlogs();
     </script>
 </body>
+
 </html>

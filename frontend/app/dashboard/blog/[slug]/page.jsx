@@ -235,9 +235,9 @@ export default function BlogPostPage() {
       <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 pb-16">
         <div className="bg-white rounded-2xl shadow-lg p-8 sm:p-12">
           <article className="prose prose-lg max-w-none">
-            <div 
+            <div
               className="blog-content"
-              dangerouslySetInnerHTML={{ 
+              dangerouslySetInnerHTML={{
                 __html: post.content.split('\n').map(line => {
                   if (line.startsWith('# ')) return `<h1 class="text-3xl font-bold text-gray-900 mt-8 mb-4">${line.substring(2)}</h1>`;
                   if (line.startsWith('## ')) return `<h2 class="text-2xl font-bold text-gray-900 mt-6 mb-3">${line.substring(3)}</h2>`;
@@ -253,7 +253,7 @@ export default function BlogPostPage() {
                   if (line.trim() === '') return '<br/>';
                   return `<p class="text-gray-700 leading-relaxed mb-4">${line}</p>`;
                 }).join('')
-              }} 
+              }}
             />
           </article>
         </div>

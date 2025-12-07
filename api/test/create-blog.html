@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -238,11 +239,17 @@
         }
 
         @keyframes spin {
-            0% { transform: rotate(0deg); }
-            100% { transform: rotate(360deg); }
+            0% {
+                transform: rotate(0deg);
+            }
+
+            100% {
+                transform: rotate(360deg);
+            }
         }
     </style>
 </head>
+
 <body>
     <div class="container">
         <div class="header">
@@ -254,19 +261,22 @@
             <form id="blogForm">
                 <div class="form-group">
                     <label for="title">Blog Title *</label>
-                    <input type="text" id="title" name="title" required placeholder="e.g., 10 Ways to Reduce Plastic Waste">
+                    <input type="text" id="title" name="title" required
+                        placeholder="e.g., 10 Ways to Reduce Plastic Waste">
                     <div class="hint">This will be used to generate the URL slug automatically</div>
                 </div>
 
                 <div class="form-group">
                     <label for="excerpt">Excerpt *</label>
-                    <textarea id="excerpt" name="excerpt" required placeholder="Brief description of your blog post (1-2 sentences)"></textarea>
+                    <textarea id="excerpt" name="excerpt" required
+                        placeholder="Brief description of your blog post (1-2 sentences)"></textarea>
                     <div class="hint">This appears in blog listings and search results</div>
                 </div>
 
                 <div class="form-group">
                     <label for="content">Content *</label>
-                    <textarea id="content" name="content" required placeholder="Write your full blog post content here..."></textarea>
+                    <textarea id="content" name="content" required
+                        placeholder="Write your full blog post content here..."></textarea>
                     <div class="hint">Full article content. Read time will be calculated automatically.</div>
                 </div>
 
@@ -329,11 +339,11 @@
         const tags = [];
 
         // Image preview
-        document.getElementById('image').addEventListener('change', function(e) {
+        document.getElementById('image').addEventListener('change', function (e) {
             const file = e.target.files[0];
             if (file) {
                 const reader = new FileReader();
-                reader.onload = function(e) {
+                reader.onload = function (e) {
                     const preview = document.getElementById('imagePreview');
                     const img = document.getElementById('previewImg');
                     img.src = e.target.result;
@@ -347,7 +357,7 @@
         const tagInput = document.getElementById('tagInput');
         const tagsContainer = document.getElementById('tagsContainer');
 
-        tagInput.addEventListener('keydown', function(e) {
+        tagInput.addEventListener('keydown', function (e) {
             if (e.key === 'Enter') {
                 e.preventDefault();
                 const tag = tagInput.value.trim();
@@ -381,13 +391,13 @@
             // Clear existing tags
             const existingTags = tagsContainer.querySelectorAll('.tag');
             existingTags.forEach(tag => tag.remove());
-            
+
             // Re-render all tags
             tags.forEach(tag => addTagElement(tag));
         }
 
         // Form submission
-        document.getElementById('blogForm').addEventListener('submit', async function(e) {
+        document.getElementById('blogForm').addEventListener('submit', async function (e) {
             e.preventDefault();
 
             const submitBtn = document.getElementById('submitBtn');
@@ -428,7 +438,7 @@
                             <a href="view-blogs.html" style="color: #155724; text-decoration: underline;">View All Blogs →</a>
                         </p>
                     `;
-                    
+
                     // Reset form
                     document.getElementById('blogForm').reset();
                     document.getElementById('imagePreview').style.display = 'none';
@@ -455,4 +465,5 @@
         });
     </script>
 </body>
+
 </html>
