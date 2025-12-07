@@ -64,11 +64,11 @@ model User {
   routePlannerWaste WasteReport[]  @relation("RoutePlannerCollector")
   notifications     Notification[]
   phoneOTPs         PhoneOTP[]
-  
+
   // Marketplace relations
-  listings          MarketplaceListing[] @relation("UserListings")
-  bids              Bid[]                @relation("UserBids")
-  wonListings       MarketplaceListing[] @relation("WinnerListings")
+  listings    MarketplaceListing[] @relation("UserListings")
+  bids        Bid[]                @relation("UserBids")
+  wonListings MarketplaceListing[] @relation("WinnerListings")
 
   @@index([globalPoints, reporterPoints, collectorPoints])
 }
@@ -161,7 +161,7 @@ model MarketplaceListing {
   state     String?
 
   // Auction details
-  auctionDuration Int      @default(60) // in minutes
+  auctionDuration Int           @default(60) // in minutes
   auctionEndTime  DateTime
   status          ListingStatus @default(ACTIVE)
 
@@ -198,4 +198,33 @@ model Bid {
 
   @@index([listingId, amount])
   @@index([bidderId])
+}
+
+model BlogPost {
+  id       String @id @default(cuid())
+  slug     String @unique
+  title    String
+  excerpt  String
+  content  String @db.Text
+  imageUrl String
+
+  author     String  @default("Admin")
+  authorRole String? @default("Content Writer")
+
+  category String
+  tags     String[] // Array of tags
+
+  readTime  String
+  featured  Boolean @default(false)
+  published Boolean @default(true)
+
+  views Int @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([category])
+  @@index([published])
+  @@index([featured])
+  @@index([createdAt])
 }

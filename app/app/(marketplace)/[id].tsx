@@ -1,139 +1,256 @@
-import React from "react";
-import {
-  ScrollView,
-  YStack,
-  XStack,
-  Text,
-  Button,
-  H2,
-  H4,
-  Theme,
-  Spinner,
-  Image,
-  Input,
-  Separator,
-} from "tamagui";
+"use client"
+
+import { useUser } from "@clerk/clerk-expo"
+import { Camera, CameraView } from "expo-camera"
+import { LinearGradient } from "expo-linear-gradient"
+import { router, useLocalSearchParams } from "expo-router"
+import React from "react"
 import {
   Alert,
+  Animated,
+  Dimensions,
+  Linking,
   Modal,
   Pressable,
-  View,
-  Linking,
   StyleSheet,
-} from "react-native";
-import { useUser } from "@clerk/clerk-expo";
-import { router, useLocalSearchParams } from "expo-router";
-import { Camera, CameraView } from "expo-camera";
+  TouchableOpacity,
+  View,
+} from "react-native"
+import { Image, Input, ScrollView, Separator, Spinner, Text, XStack, YStack } from "tamagui"
 import {
+  calculateTimeRemaining,
+  closeBid,
+  formatTimeRemaining,
   getListingDetails,
   placeBid,
-  closeBid,
   verifyQRCode,
-  MarketplaceListing,
-  Bid,
-  formatTimeRemaining,
-  calculateTimeRemaining,
-} from "../services/marketplaceService";
+  type Bid,
+  type MarketplaceListing,
+} from "../services/marketplaceService"
 
-export default function ListingDetailsScreen() {
-  const { user } = useUser();
-  const { id } = useLocalSearchParams<{ id: string }>();
-  const [listing, setListing] = React.useState<MarketplaceListing | null>(null);
-  const [bids, setBids] = React.useState<Bid[]>([]);
-  const [loading, setLoading] = React.useState(true);
-  const [bidModalVisible, setBidModalVisible] = React.useState(false);
-  const [qrModalVisible, setQrModalVisible] = React.useState(false);
-  const [bidAmount, setBidAmount] = React.useState("");
-  const [qrCode, setQrCode] = React.useState("");
-  const [submittingBid, setSubmittingBid] = React.useState(false);
-  const [verifyingQR, setVerifyingQR] = React.useState(false);
-  const [timeRemaining, setTimeRemaining] = React.useState<number>(0);
-  const [selectedImageIndex, setSelectedImageIndex] = React.useState(0);
-  const [hasPermission, setHasPermission] = React.useState<boolean | null>(
-    null
-  );
-  const [scanned, setScanned] = React.useState(false);
+const { width } = Dimensions.get("window")
+
+// Floating particle component
+const FloatingParticle = ({ delay, startX, emoji }: { delay: number; startX: number; emoji: string }) => {
+  const translateY = React.useRef(new Animated.Value(0)).current
+  const translateX = React.useRef(new Animated.Value(0)).current
+  const opacity = React.useRef(new Animated.Value(0)).current
+  const rotate = React.useRef(new Animated.Value(0)).current
 
   React.useEffect(() => {
+    const animate = () => {
+      translateY.setValue(600)
+      translateX.setValue(0)
+      opacity.setValue(0)
+      rotate.setValue(0)
+
+      Animated.sequence([
+        Animated.delay(delay),
+        Animated.parallel([
+          Animated.timing(translateY, {
+            toValue: -100,
+            duration: 8000,
+            useNativeDriver: true,
+          }),
+          Animated.timing(opacity, {
+            toValue: 0.6,
+            duration: 1000,
+            useNativeDriver: true,
+          }),
+          Animated.timing(rotate, {
+            toValue: 1,
+            duration: 8000,
+            useNativeDriver: true,
+          }),
+          Animated.sequence([
+            Animated.timing(translateX, {
+              toValue: 30,
+              duration: 2000,
+              useNativeDriver: true,
+            }),
+            Animated.timing(translateX, {
+              toValue: -30,
+              duration: 2000,
+              useNativeDriver: true,
+            }),
+            Animated.timing(translateX, {
+              toValue: 0,
+              duration: 2000,
+              useNativeDriver: true,
+            }),
+          ]),
+        ]),
+      ]).start(() => animate())
+    }
+    animate()
+  }, [])
+
+  const spin = rotate.interpolate({
+    inputRange: [0, 1],
+    outputRange: ["0deg", "360deg"],
+  })
+
+  return (
+    <Animated.View
+      style={{
+        position: "absolute",
+        left: startX,
+        opacity,
+        transform: [{ translateY }, { translateX }, { rotate: spin }],
+      }}
+    >
+      <Text style={{ fontSize: 24 }}>{emoji}</Text>
+    </Animated.View>
+  )
+}
+
+export default function ListingDetailsScreen() {
+  const { user } = useUser()
+  const { id } = useLocalSearchParams<{ id: string }>()
+  const [listing, setListing] = React.useState<MarketplaceListing | null>(null)
+  const [bids, setBids] = React.useState<Bid[]>([])
+  const [loading, setLoading] = React.useState(true)
+  const [bidModalVisible, setBidModalVisible] = React.useState(false)
+  const [qrModalVisible, setQrModalVisible] = React.useState(false)
+  const [bidAmount, setBidAmount] = React.useState("")
+  const [qrCode, setQrCode] = React.useState("")
+  const [submittingBid, setSubmittingBid] = React.useState(false)
+  const [verifyingQR, setVerifyingQR] = React.useState(false)
+  const [timeRemaining, setTimeRemaining] = React.useState<number>(0)
+  const [selectedImageIndex, setSelectedImageIndex] = React.useState(0)
+  const [hasPermission, setHasPermission] = React.useState<boolean | null>(null)
+  const [scanned, setScanned] = React.useState(false)
+
+  // Animations
+  const headerAnim = React.useRef(new Animated.Value(-100)).current
+  const contentAnim = React.useRef(new Animated.Value(50)).current
+  const contentOpacity = React.useRef(new Animated.Value(0)).current
+  const logoScale = React.useRef(new Animated.Value(0.5)).current
+  const pulseAnim = React.useRef(new Animated.Value(1)).current
+
+  React.useEffect(() => {
+    // Animate header sliding down
+    Animated.spring(headerAnim, {
+      toValue: 0,
+      friction: 8,
+      tension: 40,
+      useNativeDriver: true,
+    }).start()
+
+    // Animate content sliding up
+    Animated.parallel([
+      Animated.spring(contentAnim, {
+        toValue: 0,
+        friction: 8,
+        tension: 40,
+        delay: 200,
+        useNativeDriver: true,
+      }),
+      Animated.timing(contentOpacity, {
+        toValue: 1,
+        duration: 500,
+        delay: 200,
+        useNativeDriver: true,
+      }),
+    ]).start()
+
+    // Logo scale animation
+    Animated.spring(logoScale, {
+      toValue: 1,
+      friction: 4,
+      tension: 40,
+      useNativeDriver: true,
+    }).start()
+
+    // Pulse animation for price
+    Animated.loop(
+      Animated.sequence([
+        Animated.timing(pulseAnim, {
+          toValue: 1.05,
+          duration: 1000,
+          useNativeDriver: true,
+        }),
+        Animated.timing(pulseAnim, {
+          toValue: 1,
+          duration: 1000,
+          useNativeDriver: true,
+        }),
+      ]),
+    ).start()
+
     if (user && id) {
-      loadListingDetails();
+      loadListingDetails()
       const interval = setInterval(() => {
         if (listing) {
-          const remaining = calculateTimeRemaining(listing.auctionEndTime);
-          setTimeRemaining(remaining);
+          const remaining = calculateTimeRemaining(listing.auctionEndTime)
+          setTimeRemaining(remaining)
         }
-      }, 1000);
-      return () => clearInterval(interval);
+      }, 1000)
+      return () => clearInterval(interval)
     }
-  }, [user, id]);
+  }, [user, id])
 
   React.useEffect(() => {
     if (listing) {
-      const remaining = calculateTimeRemaining(listing.auctionEndTime);
-      setTimeRemaining(remaining);
+      const remaining = calculateTimeRemaining(listing.auctionEndTime)
+      setTimeRemaining(remaining)
     }
-  }, [listing]);
+  }, [listing])
 
   const loadListingDetails = async () => {
-    if (!user || !id) return;
+    if (!user || !id) return
 
     try {
-      setLoading(true);
-      const data = await getListingDetails(user.id, id);
-      setListing(data.listing);
-      setBids(data.bids || []);
+      setLoading(true)
+      const data = await getListingDetails(user.id, id)
+      setListing(data.listing)
+      setBids(data.bids || [])
     } catch (error) {
-      console.error("Error loading listing details:", error);
-      Alert.alert("Error", "Failed to load listing details");
+      console.error("Error loading listing details:", error)
+      Alert.alert("Error", "Failed to load listing details")
     } finally {
-      setLoading(false);
+      setLoading(false)
     }
-  };
+  }
 
   const handlePlaceBid = async () => {
-    if (!user || !listing || !bidAmount) return;
+    if (!user || !listing || !bidAmount) return
 
-    const amount = parseFloat(bidAmount);
-    const currentPrice = listing.highestBid || listing.basePrice;
-    const minimumBid = currentPrice + 5;
+    const amount = Number.parseFloat(bidAmount)
+    const currentPrice = listing.highestBid || listing.basePrice
+    const minimumBid = currentPrice + 5
 
     if (isNaN(amount)) {
-      Alert.alert("Invalid Amount", "Please enter a valid bid amount");
-      return;
+      Alert.alert("Invalid Amount", "Please enter a valid bid amount")
+      return
     }
 
     if (amount < minimumBid) {
-      Alert.alert(
-        "Bid Too Low",
-        `Minimum bid is ₹${minimumBid} (current price + ₹5)`
-      );
-      return;
+      Alert.alert("Bid Too Low", `Minimum bid is Rs.${minimumBid} (current price + Rs.5)`)
+      return
     }
 
     try {
-      setSubmittingBid(true);
-      await placeBid(user.id, listing.id, amount);
-      Alert.alert("Success", "Your bid has been placed successfully!");
-      setBidModalVisible(false);
-      setBidAmount("");
-      await loadListingDetails();
+      setSubmittingBid(true)
+      await placeBid(user.id, listing.id, amount)
+      Alert.alert("Success", "Your bid has been placed successfully!")
+      setBidModalVisible(false)
+      setBidAmount("")
+      await loadListingDetails()
     } catch (error) {
-      console.error("Error placing bid:", error);
-      Alert.alert(
-        "Error",
-        error instanceof Error ? error.message : "Failed to place bid"
-      );
+      console.error("Error placing bid:", error)
+      Alert.alert("Error", error instanceof Error ? error.message : "Failed to place bid")
     } finally {
-      setSubmittingBid(false);
+      setSubmittingBid(false)
     }
-  };
+  }
 
   const handleCloseBid = async () => {
-    if (!user || !listing) return;
+    if (!user || !listing) return
 
     Alert.alert(
       "Close Bid Early?",
-      `This will end the auction now. The highest bidder (₹${listing.highestBid}) will win. Continue?`,
+      `This will end the auction now. The highest bidder (Rs.${listing.highestBid}) will win. Continue?`,
       [
         { text: "Cancel", style: "cancel" },
         {
@@ -141,258 +258,297 @@ export default function ListingDetailsScreen() {
           style: "destructive",
           onPress: async () => {
             try {
-              await closeBid(user.id, listing.id);
-              Alert.alert(
-                "Auction Closed! 🎉",
-                "The winner has been notified and will contact you for pickup."
-              );
-              await loadListingDetails();
+              await closeBid(user.id, listing.id)
+              Alert.alert("Auction Closed!", "The winner has been notified and will contact you for pickup.")
+              await loadListingDetails()
             } catch (error) {
-              console.error("Error closing bid:", error);
-              Alert.alert(
-                "Error",
-                error instanceof Error ? error.message : "Failed to close bid"
-              );
+              console.error("Error closing bid:", error)
+              Alert.alert("Error", error instanceof Error ? error.message : "Failed to close bid")
             }
           },
         },
-      ]
-    );
-  };
+      ],
+    )
+  }
 
   const requestCameraPermission = async () => {
-    const { status } = await Camera.requestCameraPermissionsAsync();
-    setHasPermission(status === "granted");
-    return status === "granted";
-  };
+    const { status } = await Camera.requestCameraPermissionsAsync()
+    setHasPermission(status === "granted")
+    return status === "granted"
+  }
 
-  const handleBarCodeScanned = async ({
-    data,
-  }: {
-    type: string;
-    data: string;
-  }) => {
-    if (scanned || !user || !listing) return;
+  const handleBarCodeScanned = async ({ data }: { type: string; data: string }) => {
+    if (scanned || !user || !listing) return
 
-    setScanned(true);
-    setQrCode(data);
+    setScanned(true)
+    setQrCode(data)
 
-    // Auto-verify the scanned QR code
     try {
-      setVerifyingQR(true);
-      await verifyQRCode(user.id, listing.id, data);
-      Alert.alert(
-        "Transaction Complete! 🎉",
-        "You earned 30 points! The buyer earned 20 points.",
-        [
-          {
-            text: "OK",
-            onPress: () => {
-              setQrModalVisible(false);
-              setQrCode("");
-              setScanned(false);
-              loadListingDetails();
-            },
+      setVerifyingQR(true)
+      await verifyQRCode(user.id, listing.id, data)
+      Alert.alert("Transaction Complete!", "You earned 30 points! The buyer earned 20 points.", [
+        {
+          text: "OK",
+          onPress: () => {
+            setQrModalVisible(false)
+            setQrCode("")
+            setScanned(false)
+            loadListingDetails()
           },
-        ]
-      );
+        },
+      ])
     } catch (error) {
-      console.error("Error verifying QR:", error);
-      Alert.alert(
-        "Verification Failed",
-        error instanceof Error ? error.message : "Invalid QR code",
-        [
-          {
-            text: "Try Again",
-            onPress: () => setScanned(false),
-          },
-        ]
-      );
+      console.error("Error verifying QR:", error)
+      Alert.alert("Verification Failed", error instanceof Error ? error.message : "Invalid QR code", [
+        {
+          text: "Try Again",
+          onPress: () => setScanned(false),
+        },
+      ])
     } finally {
-      setVerifyingQR(false);
+      setVerifyingQR(false)
     }
-  };
+  }
 
   const handleVerifyQR = async () => {
     if (!user || !listing || !qrCode.trim()) {
-      Alert.alert("Error", "Please enter the QR code");
-      return;
+      Alert.alert("Error", "Please enter the QR code")
+      return
     }
 
     try {
-      setVerifyingQR(true);
-      await verifyQRCode(user.id, listing.id, qrCode.trim());
-      Alert.alert(
-        "Transaction Complete! 🎉",
-        "You earned 30 points! The buyer earned 20 points."
-      );
-      setQrModalVisible(false);
-      setQrCode("");
-      await loadListingDetails();
+      setVerifyingQR(true)
+      await verifyQRCode(user.id, listing.id, qrCode.trim())
+      Alert.alert("Transaction Complete!", "You earned 30 points! The buyer earned 20 points.")
+      setQrModalVisible(false)
+      setQrCode("")
+      await loadListingDetails()
     } catch (error) {
-      console.error("Error verifying QR:", error);
-      Alert.alert(
-        "Verification Failed",
-        error instanceof Error ? error.message : "Invalid QR code"
-      );
+      console.error("Error verifying QR:", error)
+      Alert.alert("Verification Failed", error instanceof Error ? error.message : "Invalid QR code")
     } finally {
-      setVerifyingQR(false);
+      setVerifyingQR(false)
     }
-  };
+  }
 
   const handleCall = (phone: string) => {
-    Linking.openURL(`tel:${phone}`);
-  };
+    Linking.openURL(`tel:${phone}`)
+  }
 
   const handleEmail = (email: string) => {
-    Linking.openURL(`mailto:${email}`);
-  };
+    Linking.openURL(`mailto:${email}`)
+  }
 
   const getWasteTypeColor = (wasteType: string) => {
     const colorMap: { [key: string]: string } = {
-      Plastic: "$blue9",
-      Organic: "$green9",
-      Metal: "$yellow9",
-      Glass: "$purple9",
-      Electronic: "$red9",
-      Paper: "$teal9",
-      Mixed: "$gray9",
-    };
-    return colorMap[wasteType] || "$gray9";
-  };
+      Plastic: "#3b82f6",
+      Organic: "#22c55e",
+      Metal: "#eab308",
+      Glass: "#8b5cf6",
+      Electronic: "#ef4444",
+      Paper: "#14b8a6",
+      Mixed: "#6b7280",
+    }
+    return colorMap[wasteType] || "#6b7280"
+  }
 
   const getStatusBadge = (status: string) => {
-    const badges: {
-      [key: string]: { bg: string; text: string; label: string };
-    } = {
-      ACTIVE: { bg: "$green2", text: "$green11", label: "🟢 Active" },
-      ENDED: { bg: "$orange2", text: "$orange11", label: "⏸️ Ended" },
-      COMPLETED: { bg: "$blue2", text: "$blue11", label: "✅ Completed" },
-      CANCELLED: { bg: "$red2", text: "$red11", label: "❌ Cancelled" },
-    };
-    return badges[status] || badges.ACTIVE;
-  };
+    const badges: { [key: string]: { bg: string; text: string; label: string } } = {
+      ACTIVE: { bg: "#f0fdf4", text: "#166534", label: "🟢 Active" },
+      ENDED: { bg: "#fef3c7", text: "#92400e", label: "⏸️ Ended" },
+      COMPLETED: { bg: "#dbeafe", text: "#1d4ed8", label: "✅ Completed" },
+      CANCELLED: { bg: "#f3f4f6", text: "#374151", label: "❌ Cancelled" },
+    }
+    return badges[status] || badges.ACTIVE
+  }
+
+  const particles = [
+    { emoji: "💰", x: width * 0.1 },
+    { emoji: "♻️", x: width * 0.3 },
+    { emoji: "🏷️", x: width * 0.5 },
+    { emoji: "📦", x: width * 0.7 },
+    { emoji: "🌱", x: width * 0.9 },
+  ]
 
   if (loading) {
     return (
-      <Theme name="light">
-        <YStack
-          flex={1}
-          backgroundColor="$background"
-          justifyContent="center"
-          alignItems="center"
-        >
-          <Spinner size="large" color="$blue9" />
-          <Text color="$gray11" marginTop="$4" fontWeight="600">
+      <LinearGradient colors={["#f0fdf4", "#dcfce7", "#bbf7d0"]} style={{ flex: 1 }}>
+        <YStack flex={1} justifyContent="center" alignItems="center">
+          <YStack
+            width={80}
+            height={80}
+            borderRadius={40}
+            backgroundColor="white"
+            justifyContent="center"
+            alignItems="center"
+            style={{
+              shadowColor: "#22c55e",
+              shadowOffset: { width: 0, height: 4 },
+              shadowOpacity: 0.3,
+              shadowRadius: 12,
+              elevation: 8,
+            }}
+          >
+            <Spinner size="large" color="#22c55e" />
+          </YStack>
+          <Text color="#166534" marginTop="$4" fontWeight="600" fontSize={16}>
             Loading listing...
           </Text>
         </YStack>
-      </Theme>
-    );
+      </LinearGradient>
+    )
   }
 
   if (!listing) {
     return (
-      <Theme name="light">
-        <YStack
-          flex={1}
-          backgroundColor="$background"
-          justifyContent="center"
-          alignItems="center"
-          padding="$4"
-        >
+      <LinearGradient colors={["#f0fdf4", "#dcfce7", "#bbf7d0"]} style={{ flex: 1 }}>
+        <YStack flex={1} justifyContent="center" alignItems="center" padding="$4">
           <Text fontSize={50}>📦</Text>
-          <H4 color="$gray12" marginTop="$3">
+          <Text color="#166534" fontSize={20} fontWeight="700" marginTop="$3">
             Listing Not Found
-          </H4>
-          <Button
+          </Text>
+          <TouchableOpacity
             onPress={() => router.back()}
-            backgroundColor="$blue9"
-            color="white"
-            marginTop="$4"
+            style={{
+              backgroundColor: "#22c55e",
+              borderRadius: 16,
+              padding: 14,
+              paddingHorizontal: 28,
+              marginTop: 16,
+            }}
           >
-            Go Back
-          </Button>
+            <Text color="white" fontWeight="700">
+              Go Back
+            </Text>
+          </TouchableOpacity>
         </YStack>
-      </Theme>
-    );
+      </LinearGradient>
+    )
   }
 
-  const isOwner = listing.sellerId === user?.id;
-  const isWinner = listing.winnerId === user?.id;
-  const isExpired = timeRemaining <= 0;
-  const canBid = !isOwner && listing.status === "ACTIVE" && !isExpired && user;
-  const currentPrice = listing.highestBid || listing.basePrice;
-  const minimumBid = currentPrice + 5;
-  const statusBadge = getStatusBadge(listing.status);
+  const isOwner = listing.sellerId === user?.id
+  const isWinner = listing.winnerId === user?.id
+  const isExpired = timeRemaining <= 0
+  const canBid = !isOwner && listing.status === "ACTIVE" && !isExpired && user
+  const currentPrice = listing.highestBid || listing.basePrice
+  const minimumBid = currentPrice + 5
+  const statusBadge = getStatusBadge(listing.status)
 
   return (
-    <Theme name="light">
-      <ScrollView flex={1} backgroundColor="$background">
-        {/* Header */}
-        <YStack backgroundColor="$green9" padding="$5" paddingTop="$10">
-          <XStack alignItems="center" gap="$3" marginBottom="$3">
-            <Button
-              onPress={() => router.back()}
-              size="$3"
-              circular
-              backgroundColor="rgba(255,255,255,0.2)"
-              color="white"
-              fontWeight="600"
-            >
-              ←
-            </Button>
-            <YStack flex={1}>
-              <H2 color="white" fontWeight="bold">
-                Listing Details
-              </H2>
-            </YStack>
-          </XStack>
+    <LinearGradient colors={["#f0fdf4", "#dcfce7", "#bbf7d0"]} style={{ flex: 1 }}>
+      {/* Floating Particles */}
+      {particles.map((p, i) => (
+        <FloatingParticle key={i} delay={i * 1500} startX={p.x} emoji={p.emoji} />
+      ))}
 
-          {/* Status Badge */}
-          <YStack
-            backgroundColor={statusBadge.bg}
-            paddingHorizontal="$3"
-            paddingVertical="$2"
-            borderRadius="$3"
-            alignSelf="flex-start"
-          >
-            <Text color={statusBadge.text} fontSize="$4" fontWeight="600">
-              {statusBadge.label}
-            </Text>
+      <ScrollView flex={1} showsVerticalScrollIndicator={false}>
+        {/* Header */}
+        <Animated.View style={{ transform: [{ translateY: headerAnim }] }}>
+          <YStack paddingHorizontal="$5" paddingTop="$12" paddingBottom="$4">
+            <XStack alignItems="center" gap="$3" marginBottom="$3">
+              <TouchableOpacity onPress={() => router.back()}>
+                <YStack
+                  width={44}
+                  height={44}
+                  borderRadius={22}
+                  backgroundColor="white"
+                  justifyContent="center"
+                  alignItems="center"
+                  style={{
+                    shadowColor: "#22c55e",
+                    shadowOffset: { width: 0, height: 2 },
+                    shadowOpacity: 0.2,
+                    shadowRadius: 8,
+                    elevation: 4,
+                  }}
+                >
+                  <Text fontSize={20} color="#166534">
+                    ←
+                  </Text>
+                </YStack>
+              </TouchableOpacity>
+              <YStack flex={1}>
+                <Text fontSize={24} fontWeight="800" color="#166534">
+                  Listing Details
+                </Text>
+              </YStack>
+              {isOwner && (
+                <YStack
+                  backgroundColor="white"
+                  paddingHorizontal="$3"
+                  paddingVertical="$2"
+                  borderRadius={16}
+                  borderWidth={2}
+                  borderColor="#22c55e"
+                >
+                  <Text color="#22c55e" fontSize={12} fontWeight="700">
+                    Your Listing
+                  </Text>
+                </YStack>
+              )}
+              {isWinner && (
+                <YStack backgroundColor="#22c55e" paddingHorizontal="$3" paddingVertical="$2" borderRadius={16}>
+                  <Text color="white" fontSize={12} fontWeight="700">
+                    You Won! 🏆
+                  </Text>
+                </YStack>
+              )}
+            </XStack>
+
+            {/* Status Badge */}
+            <YStack
+              backgroundColor={statusBadge.bg}
+              paddingHorizontal="$4"
+              paddingVertical="$2"
+              borderRadius={16}
+              alignSelf="flex-start"
+            >
+              <Text color={statusBadge.text} fontSize={14} fontWeight="700">
+                {statusBadge.label}
+              </Text>
+            </YStack>
           </YStack>
-        </YStack>
+        </Animated.View>
 
         {/* Content */}
-        <YStack padding="$4" gap="$4">
+        <Animated.View
+          style={{
+            transform: [{ translateY: contentAnim }],
+            opacity: contentOpacity,
+            paddingHorizontal: 16,
+            paddingBottom: 32,
+          }}
+        >
           {/* Image Carousel */}
           {listing.images && listing.images.length > 0 && (
-            <YStack>
+            <YStack
+              backgroundColor="white"
+              borderRadius={24}
+              padding="$4"
+              marginBottom="$4"
+              style={{
+                shadowColor: "#22c55e",
+                shadowOffset: { width: 0, height: 4 },
+                shadowOpacity: 0.15,
+                shadowRadius: 12,
+                elevation: 6,
+              }}
+            >
               <Image
                 source={{ uri: listing.images[selectedImageIndex] }}
                 width="100%"
-                height={300}
-                borderRadius="$4"
-                backgroundColor="$gray3"
+                height={280}
+                borderRadius={20}
+                backgroundColor="#f0fdf4"
               />
-              <XStack
-                gap="$2"
-                justifyContent="center"
-                marginTop="$2"
-                flexWrap="wrap"
-              >
+              <XStack gap="$2" justifyContent="center" marginTop="$3" flexWrap="wrap">
                 {listing.images.map((_, index) => (
-                  <Pressable
-                    key={index}
-                    onPress={() => setSelectedImageIndex(index)}
-                  >
+                  <Pressable key={index} onPress={() => setSelectedImageIndex(index)}>
                     <YStack
-                      width={10}
-                      height={10}
-                      borderRadius={5}
-                      backgroundColor={
-                        index === selectedImageIndex ? "$green9" : "$gray6"
-                      }
+                      width={12}
+                      height={12}
+                      borderRadius={6}
+                      backgroundColor={index === selectedImageIndex ? "#22c55e" : "#d1d5db"}
                     />
                   </Pressable>
                 ))}
@@ -400,117 +556,111 @@ export default function ListingDetailsScreen() {
             </YStack>
           )}
 
-          {/* Title & Owner Badge */}
-          <XStack justifyContent="space-between" alignItems="flex-start">
-            <YStack flex={1}>
-              <XStack alignItems="center" gap="$2">
-                <YStack
-                  backgroundColor={getWasteTypeColor(listing.wasteType)}
-                  paddingHorizontal="$3"
-                  paddingVertical="$2"
-                  borderRadius="$3"
-                >
-                  <Text color="white" fontWeight="600" fontSize="$3">
-                    {listing.wasteType}
-                  </Text>
-                </YStack>
-              </XStack>
-              <Text color="$gray10" fontSize="$2" marginTop="$2">
-                Listed {new Date(listing.createdAt).toLocaleDateString()}
-              </Text>
-            </YStack>
-            {isOwner && (
-              <YStack
-                backgroundColor="$blue2"
-                paddingHorizontal="$3"
-                paddingVertical="$2"
-                borderRadius="$3"
-              >
-                <Text color="$blue10" fontSize="$3" fontWeight="600">
-                  Your Listing
-                </Text>
-              </YStack>
-            )}
-            {isWinner && (
-              <YStack
-                backgroundColor="$green2"
-                paddingHorizontal="$3"
-                paddingVertical="$2"
-                borderRadius="$3"
-              >
-                <Text color="$green10" fontSize="$3" fontWeight="600">
-                  You Won! 🏆
-                </Text>
-              </YStack>
-            )}
-          </XStack>
-
-          {/* Details */}
-          <XStack gap="$4">
-            <XStack alignItems="center" gap="$2">
-              <Text fontSize={18}>⚖️</Text>
-              <Text color="$gray12" fontSize="$4" fontWeight="600">
-                {listing.weightKg} kg
-              </Text>
-            </XStack>
-            <XStack alignItems="center" gap="$2">
-              <Text fontSize={18}>📍</Text>
-              <Text color="$gray12" fontSize="$4">
-                {listing.city}, {listing.state}
-              </Text>
-            </XStack>
-          </XStack>
-
-          {/* Price Card */}
+          {/* Waste Type & Details */}
           <YStack
             backgroundColor="white"
-            borderRadius="$4"
+            borderRadius={24}
             padding="$4"
-            borderWidth={2}
-            borderColor="$green9"
+            marginBottom="$4"
+            style={{
+              shadowColor: "#22c55e",
+              shadowOffset: { width: 0, height: 4 },
+              shadowOpacity: 0.15,
+              shadowRadius: 12,
+              elevation: 6,
+            }}
           >
-            <Text color="$gray10" fontSize="$3" marginBottom="$2">
-              {listing.highestBid ? "Current Bid" : "Starting Price"}
+            <XStack alignItems="center" gap="$2" marginBottom="$3">
+              <YStack
+                backgroundColor={getWasteTypeColor(listing.wasteType)}
+                paddingHorizontal="$4"
+                paddingVertical="$2"
+                borderRadius={16}
+              >
+                <Text color="white" fontWeight="700" fontSize={16}>
+                  {listing.wasteType}
+                </Text>
+              </YStack>
+            </XStack>
+            <Text color="#9ca3af" fontSize={12}>
+              Listed {new Date(listing.createdAt).toLocaleDateString()}
             </Text>
-            <Text color="$green10" fontWeight="700" fontSize="$9">
-              ₹{currentPrice}
-            </Text>
-            {canBid && (
-              <Text color="$gray10" fontSize="$2" marginTop="$1">
-                Minimum next bid: ₹{minimumBid}
-              </Text>
-            )}
-            {bids.length > 0 && (
-              <Text color="$gray10" fontSize="$2" marginTop="$1">
-                {bids.length} bid{bids.length !== 1 ? "s" : ""} placed
-              </Text>
-            )}
+
+            <XStack gap="$4" marginTop="$3">
+              <XStack alignItems="center" gap="$2">
+                <Text fontSize={18}>⚖️</Text>
+                <Text color="#166534" fontSize={16} fontWeight="700">
+                  {listing.weightKg} kg
+                </Text>
+              </XStack>
+              <XStack alignItems="center" gap="$2">
+                <Text fontSize={18}>📍</Text>
+                <Text color="#166534" fontSize={16}>
+                  {listing.city}, {listing.state}
+                </Text>
+              </XStack>
+            </XStack>
           </YStack>
+
+          {/* Price Card */}
+          <Animated.View style={{ transform: [{ scale: pulseAnim }] }}>
+            <YStack
+              backgroundColor="white"
+              borderRadius={24}
+              padding="$5"
+              marginBottom="$4"
+              borderWidth={3}
+              borderColor="#22c55e"
+              style={{
+                shadowColor: "#22c55e",
+                shadowOffset: { width: 0, height: 4 },
+                shadowOpacity: 0.25,
+                shadowRadius: 12,
+                elevation: 8,
+              }}
+            >
+              <Text color="#6b7280" fontSize={14} marginBottom="$1">
+                {listing.highestBid ? "Current Bid" : "Starting Price"}
+              </Text>
+              <Text color="#22c55e" fontWeight="900" fontSize={42}>
+                Rs.{currentPrice}
+              </Text>
+              {canBid && (
+                <Text color="#9ca3af" fontSize={12} marginTop="$1">
+                  Minimum next bid: Rs.{minimumBid}
+                </Text>
+              )}
+              {bids.length > 0 && (
+                <Text color="#9ca3af" fontSize={12} marginTop="$1">
+                  {bids.length} bid{bids.length !== 1 ? "s" : ""} placed
+                </Text>
+              )}
+            </YStack>
+          </Animated.View>
 
           {/* Timer */}
           {listing.status === "ACTIVE" && (
             <YStack
-              backgroundColor={isExpired ? "$red2" : "$blue2"}
-              borderRadius="$4"
+              backgroundColor={isExpired ? "#fef2f2" : "white"}
+              borderRadius={24}
               padding="$4"
-              borderWidth={1}
-              borderColor={isExpired ? "$red5" : "$blue5"}
+              marginBottom="$4"
+              borderWidth={2}
+              borderColor={isExpired ? "#ef4444" : "#22c55e"}
+              style={{
+                shadowColor: isExpired ? "#ef4444" : "#22c55e",
+                shadowOffset: { width: 0, height: 4 },
+                shadowOpacity: 0.15,
+                shadowRadius: 12,
+                elevation: 6,
+              }}
             >
               <XStack justifyContent="space-between" alignItems="center">
                 <YStack>
-                  <Text
-                    color={isExpired ? "$red11" : "$blue11"}
-                    fontSize="$3"
-                    fontWeight="600"
-                  >
+                  <Text color={isExpired ? "#dc2626" : "#166534"} fontSize={14} fontWeight="600">
                     {isExpired ? "Auction Ended" : "Time Remaining"}
                   </Text>
-                  <Text
-                    color={isExpired ? "$red11" : "$blue11"}
-                    fontSize="$6"
-                    fontWeight="700"
-                    marginTop="$1"
-                  >
+                  <Text color={isExpired ? "#dc2626" : "#166534"} fontSize={28} fontWeight="800" marginTop="$1">
                     {isExpired ? "Ended" : formatTimeRemaining(timeRemaining)}
                   </Text>
                 </YStack>
@@ -521,11 +671,23 @@ export default function ListingDetailsScreen() {
 
           {/* Description */}
           {listing.description && (
-            <YStack gap="$2">
-              <Text fontWeight="600" color="$gray12" fontSize="$5">
+            <YStack
+              backgroundColor="white"
+              borderRadius={24}
+              padding="$4"
+              marginBottom="$4"
+              style={{
+                shadowColor: "#22c55e",
+                shadowOffset: { width: 0, height: 4 },
+                shadowOpacity: 0.15,
+                shadowRadius: 12,
+                elevation: 6,
+              }}
+            >
+              <Text fontWeight="700" color="#166534" fontSize={18} marginBottom="$2">
                 Description
               </Text>
-              <Text color="$gray11" fontSize="$4" lineHeight={22}>
+              <Text color="#6b7280" fontSize={15} lineHeight={24}>
                 {listing.description}
               </Text>
             </YStack>
@@ -534,24 +696,29 @@ export default function ListingDetailsScreen() {
           {/* Seller Information */}
           <YStack
             backgroundColor="white"
-            borderRadius="$4"
+            borderRadius={24}
             padding="$4"
-            borderWidth={1}
-            borderColor="$gray6"
-            gap="$3"
+            marginBottom="$4"
+            style={{
+              shadowColor: "#22c55e",
+              shadowOffset: { width: 0, height: 4 },
+              shadowOpacity: 0.15,
+              shadowRadius: 12,
+              elevation: 6,
+            }}
           >
-            <Text fontWeight="600" color="$gray12" fontSize="$4">
+            <Text fontWeight="700" color="#166534" fontSize={18} marginBottom="$3">
               Seller Information
             </Text>
-            <XStack alignItems="center" gap="$2">
+            <XStack alignItems="center" gap="$2" marginBottom="$2">
               <Text fontSize={20}>👤</Text>
-              <Text color="$gray11" fontSize="$4">
+              <Text color="#374151" fontSize={16}>
                 {listing.seller.name || "Anonymous"}
               </Text>
             </XStack>
             <XStack alignItems="center" gap="$2">
               <Text fontSize={18}>📍</Text>
-              <Text color="$gray11" fontSize="$3">
+              <Text color="#6b7280" fontSize={14}>
                 {listing.seller.city}, {listing.seller.state}
               </Text>
             </XStack>
@@ -559,29 +726,48 @@ export default function ListingDetailsScreen() {
             {/* Contact Info for Winner */}
             {isWinner && listing.status !== "ACTIVE" && (
               <>
-                <Separator marginVertical="$2" />
-                <Text color="$green11" fontSize="$3" fontWeight="600">
+                <Separator marginVertical="$3" borderColor="#e5e7eb" />
+                <Text color="#22c55e" fontSize={14} fontWeight="700" marginBottom="$2">
                   Contact Seller for Pickup:
                 </Text>
                 {listing.seller.phone && (
-                  <Button
+                  <TouchableOpacity
                     onPress={() => handleCall(listing.seller.phone!)}
-                    backgroundColor="$green9"
-                    color="white"
-                    icon={<Text>📞</Text>}
+                    style={{
+                      backgroundColor: "#22c55e",
+                      borderRadius: 16,
+                      padding: 14,
+                      flexDirection: "row",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      gap: 8,
+                      marginBottom: 8,
+                    }}
                   >
-                    Call: {listing.seller.phone}
-                  </Button>
+                    <Text fontSize={16}>📞</Text>
+                    <Text color="white" fontWeight="700">
+                      Call: {listing.seller.phone}
+                    </Text>
+                  </TouchableOpacity>
                 )}
                 {listing.seller.email && (
-                  <Button
+                  <TouchableOpacity
                     onPress={() => handleEmail(listing.seller.email!)}
-                    backgroundColor="$blue9"
-                    color="white"
-                    icon={<Text>✉️</Text>}
+                    style={{
+                      backgroundColor: "#3b82f6",
+                      borderRadius: 16,
+                      padding: 14,
+                      flexDirection: "row",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      gap: 8,
+                    }}
                   >
-                    Email: {listing.seller.email}
-                  </Button>
+                    <Text fontSize={16}>✉️</Text>
+                    <Text color="white" fontWeight="700">
+                      Email: {listing.seller.email}
+                    </Text>
+                  </TouchableOpacity>
                 )}
               </>
             )}
@@ -590,156 +776,222 @@ export default function ListingDetailsScreen() {
           {/* Winner Information (for Seller) */}
           {isOwner && listing.winner && listing.status !== "ACTIVE" && (
             <YStack
-              backgroundColor="$green2"
-              borderRadius="$4"
+              backgroundColor="white"
+              borderRadius={24}
               padding="$4"
-              borderWidth={1}
-              borderColor="$green5"
-              gap="$3"
+              marginBottom="$4"
+              borderWidth={2}
+              borderColor="#22c55e"
+              style={{
+                shadowColor: "#22c55e",
+                shadowOffset: { width: 0, height: 4 },
+                shadowOpacity: 0.15,
+                shadowRadius: 12,
+                elevation: 6,
+              }}
             >
-              <Text fontWeight="600" color="$green11" fontSize="$4">
+              <Text fontWeight="700" color="#166534" fontSize={18} marginBottom="$3">
                 Winner Information
               </Text>
-              <XStack alignItems="center" gap="$2">
+              <XStack alignItems="center" gap="$2" marginBottom="$2">
                 <Text fontSize={20}>🏆</Text>
-                <Text color="$green11" fontSize="$4" fontWeight="600">
+                <Text color="#166534" fontSize={16} fontWeight="700">
                   {listing.winner.name || "Anonymous"}
                 </Text>
               </XStack>
-              <Text color="$green11" fontSize="$3">
-                Winning Bid: ₹{listing.highestBid}
+              <Text color="#22c55e" fontSize={14} marginBottom="$3">
+                Winning Bid: Rs.{listing.highestBid}
               </Text>
 
               {listing.winner.phone && (
-                <Button
+                <TouchableOpacity
                   onPress={() => handleCall(listing.winner!.phone!)}
-                  backgroundColor="$green9"
-                  color="white"
-                  size="$4"
-                  icon={<Text>📞</Text>}
+                  style={{
+                    backgroundColor: "#22c55e",
+                    borderRadius: 16,
+                    padding: 14,
+                    flexDirection: "row",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    gap: 8,
+                    marginBottom: 8,
+                  }}
                 >
-                  Call: {listing.winner.phone}
-                </Button>
+                  <Text fontSize={16}>📞</Text>
+                  <Text color="white" fontWeight="700">
+                    Call: {listing.winner.phone}
+                  </Text>
+                </TouchableOpacity>
               )}
               {listing.winner.email && (
-                <Button
+                <TouchableOpacity
                   onPress={() => handleEmail(listing.winner!.email!)}
-                  backgroundColor="$green9"
-                  color="white"
-                  size="$4"
-                  icon={<Text>✉️</Text>}
+                  style={{
+                    backgroundColor: "#22c55e",
+                    borderRadius: 16,
+                    padding: 14,
+                    flexDirection: "row",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    gap: 8,
+                  }}
                 >
-                  Email: {listing.winner.email}
-                </Button>
+                  <Text fontSize={16}>✉️</Text>
+                  <Text color="white" fontWeight="700">
+                    Email: {listing.winner.email}
+                  </Text>
+                </TouchableOpacity>
               )}
             </YStack>
           )}
 
           {/* QR Code Display for Winner */}
-          {isWinner &&
-            listing.status === "ENDED" &&
-            listing.verificationCode && (
-              <YStack
-                backgroundColor="$purple2"
-                borderRadius="$4"
-                padding="$4"
-                borderWidth={2}
-                borderColor="$purple9"
-                gap="$2"
-                alignItems="center"
-              >
-                <Text color="$purple11" fontSize="$5" fontWeight="700">
-                  Your QR Code
-                </Text>
-                <Text
-                  color="$purple11"
-                  fontSize="$9"
-                  fontWeight="900"
-                  letterSpacing={4}
-                >
+          {isWinner && listing.status === "ENDED" && listing.verificationCode && (
+            <YStack
+              backgroundColor="white"
+              borderRadius={24}
+              padding="$5"
+              marginBottom="$4"
+              borderWidth={3}
+              borderColor="#22c55e"
+              alignItems="center"
+              style={{
+                shadowColor: "#22c55e",
+                shadowOffset: { width: 0, height: 4 },
+                shadowOpacity: 0.25,
+                shadowRadius: 12,
+                elevation: 8,
+              }}
+            >
+              <Text color="#166534" fontSize={20} fontWeight="800" marginBottom="$2">
+                Your QR Code
+              </Text>
+              <YStack backgroundColor="#f0fdf4" padding="$4" borderRadius={16} marginBottom="$2">
+                <Text color="#166534" fontSize={36} fontWeight="900" letterSpacing={4}>
                   {listing.verificationCode}
                 </Text>
-                <Text color="$purple10" fontSize="$3" textAlign="center">
-                  Show this code to the seller during pickup
-                </Text>
               </YStack>
-            )}
+              <Text color="#6b7280" fontSize={14} textAlign="center">
+                Show this code to the seller during pickup
+              </Text>
+            </YStack>
+          )}
 
           {/* Action Buttons */}
           <YStack gap="$3">
             {/* Place Bid */}
             {canBid && (
-              <Button
+              <TouchableOpacity
                 onPress={() => setBidModalVisible(true)}
-                backgroundColor="$green9"
-                color="white"
-                fontWeight="700"
-                size="$5"
-                icon={<Text fontSize={20}>💰</Text>}
+                style={{
+                  backgroundColor: "#22c55e",
+                  borderRadius: 24,
+                  padding: 18,
+                  flexDirection: "row",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  gap: 8,
+                  shadowColor: "#22c55e",
+                  shadowOffset: { width: 0, height: 4 },
+                  shadowOpacity: 0.3,
+                  shadowRadius: 12,
+                  elevation: 8,
+                }}
               >
-                Place Bid
-              </Button>
+                <Text fontSize={20}>💰</Text>
+                <Text color="white" fontWeight="800" fontSize={18}>
+                  Place Bid
+                </Text>
+              </TouchableOpacity>
             )}
 
             {/* Close Bid Early */}
             {isOwner && listing.status === "ACTIVE" && bids.length > 0 && (
-              <Button
+              <TouchableOpacity
                 onPress={handleCloseBid}
-                backgroundColor="$orange9"
-                color="white"
-                fontWeight="700"
-                size="$5"
-                icon={<Text fontSize={20}>🔒</Text>}
+                style={{
+                  backgroundColor: "#f59e0b",
+                  borderRadius: 24,
+                  padding: 18,
+                  flexDirection: "row",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  gap: 8,
+                  shadowColor: "#f59e0b",
+                  shadowOffset: { width: 0, height: 4 },
+                  shadowOpacity: 0.3,
+                  shadowRadius: 12,
+                  elevation: 8,
+                }}
               >
-                Close Auction Early
-              </Button>
+                <Text fontSize={20}>🔒</Text>
+                <Text color="white" fontWeight="800" fontSize={18}>
+                  Close Auction Early
+                </Text>
+              </TouchableOpacity>
             )}
 
             {/* Verify QR Code */}
             {isOwner && listing.status === "ENDED" && listing.winner && (
-              <Button
+              <TouchableOpacity
                 onPress={async () => {
-                  const granted = await requestCameraPermission();
+                  const granted = await requestCameraPermission()
                   if (granted) {
-                    setQrModalVisible(true);
+                    setQrModalVisible(true)
                   } else {
-                    Alert.alert(
-                      "Camera Permission Required",
-                      "Please enable camera access to scan QR codes."
-                    );
+                    Alert.alert("Camera Permission Required", "Please enable camera access to scan QR codes.")
                   }
                 }}
-                backgroundColor="$purple9"
-                color="white"
-                fontWeight="700"
-                size="$5"
-                icon={<Text fontSize={20}>📱</Text>}
+                style={{
+                  backgroundColor: "#8b5cf6",
+                  borderRadius: 24,
+                  padding: 18,
+                  flexDirection: "row",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  gap: 8,
+                  shadowColor: "#8b5cf6",
+                  shadowOffset: { width: 0, height: 4 },
+                  shadowOpacity: 0.3,
+                  shadowRadius: 12,
+                  elevation: 8,
+                }}
               >
-                Verify Winner's QR Code
-              </Button>
+                <Text fontSize={20}>📱</Text>
+                <Text color="white" fontWeight="800" fontSize={18}>
+                  Verify Winner's QR Code
+                </Text>
+              </TouchableOpacity>
             )}
 
             {/* Completed Badge */}
             {listing.status === "COMPLETED" && (
               <YStack
-                backgroundColor="$blue2"
-                padding="$4"
-                borderRadius="$4"
-                borderWidth={1}
-                borderColor="$blue5"
+                backgroundColor="white"
+                padding="$5"
+                borderRadius={24}
+                borderWidth={2}
+                borderColor="#22c55e"
                 alignItems="center"
+                style={{
+                  shadowColor: "#22c55e",
+                  shadowOffset: { width: 0, height: 4 },
+                  shadowOpacity: 0.15,
+                  shadowRadius: 12,
+                  elevation: 6,
+                }}
               >
                 <Text fontSize={40}>🎉</Text>
-                <Text color="$blue11" fontSize="$5" fontWeight="700">
+                <Text color="#166534" fontSize={20} fontWeight="800" marginTop="$2">
                   Transaction Completed!
                 </Text>
                 {isOwner && (
-                  <Text color="$blue10" fontSize="$3" marginTop="$2">
+                  <Text color="#22c55e" fontSize={14} marginTop="$2">
                     You earned 30 points
                   </Text>
                 )}
                 {isWinner && (
-                  <Text color="$blue10" fontSize="$3" marginTop="$2">
+                  <Text color="#22c55e" fontSize={14} marginTop="$2">
                     You earned 20 points
                   </Text>
                 )}
@@ -749,44 +1001,51 @@ export default function ListingDetailsScreen() {
 
           {/* Bid History */}
           {bids.length > 0 && (
-            <YStack gap="$3" marginTop="$2">
-              <H4 color="$gray12">Bid History</H4>
+            <YStack
+              backgroundColor="white"
+              borderRadius={24}
+              padding="$4"
+              marginTop="$4"
+              style={{
+                shadowColor: "#22c55e",
+                shadowOffset: { width: 0, height: 4 },
+                shadowOpacity: 0.15,
+                shadowRadius: 12,
+                elevation: 6,
+              }}
+            >
+              <Text fontWeight="700" color="#166534" fontSize={18} marginBottom="$3">
+                Bid History
+              </Text>
               {bids.map((bid, index) => (
                 <XStack
                   key={bid.id}
-                  backgroundColor={index === 0 ? "$green2" : "white"}
-                  borderRadius="$3"
+                  backgroundColor={index === 0 ? "#f0fdf4" : "#f9fafb"}
+                  borderRadius={16}
                   padding="$3"
-                  borderWidth={1}
-                  borderColor={index === 0 ? "$green5" : "$gray6"}
+                  marginBottom="$2"
+                  borderLeftWidth={4}
+                  borderLeftColor={index === 0 ? "#22c55e" : "#d1d5db"}
                   justifyContent="space-between"
                   alignItems="center"
                 >
                   <YStack>
-                    <Text
-                      color={index === 0 ? "$green11" : "$gray12"}
-                      fontSize="$4"
-                      fontWeight="600"
-                    >
+                    <Text color={index === 0 ? "#166534" : "#374151"} fontSize={14} fontWeight="700">
                       {bid.bidder.name || "Anonymous"}
                       {index === 0 && " 🏆"}
                     </Text>
-                    <Text color="$gray10" fontSize="$2">
+                    <Text color="#9ca3af" fontSize={12}>
                       {new Date(bid.createdAt).toLocaleString()}
                     </Text>
                   </YStack>
-                  <Text
-                    color={index === 0 ? "$green11" : "$gray12"}
-                    fontSize="$5"
-                    fontWeight="700"
-                  >
-                    ₹{bid.amount}
+                  <Text color={index === 0 ? "#22c55e" : "#374151"} fontSize={18} fontWeight="800">
+                    Rs.{bid.amount}
                   </Text>
                 </XStack>
               ))}
             </YStack>
           )}
-        </YStack>
+        </Animated.View>
       </ScrollView>
 
       {/* Place Bid Modal */}
@@ -805,17 +1064,21 @@ export default function ListingDetailsScreen() {
           onPress={() => setBidModalVisible(false)}
         >
           <Pressable onPress={(e) => e.stopPropagation()}>
-            <YStack
-              backgroundColor="white"
-              borderTopLeftRadius="$6"
-              borderTopRightRadius="$6"
-              padding="$5"
-              gap="$4"
-            >
-              <H4 color="$gray12">Place Your Bid</H4>
+            <YStack backgroundColor="white" borderTopLeftRadius={32} borderTopRightRadius={32} padding="$5" gap="$4">
+              <YStack
+                width={40}
+                height={4}
+                backgroundColor="#d1d5db"
+                borderRadius={2}
+                alignSelf="center"
+                marginBottom="$2"
+              />
+              <Text fontSize={22} fontWeight="800" color="#166534">
+                Place Your Bid
+              </Text>
               <YStack gap="$2">
-                <Text color="$gray11" fontSize="$3">
-                  Minimum Bid: ₹{minimumBid}
+                <Text color="#6b7280" fontSize={14}>
+                  Minimum Bid: Rs.{minimumBid}
                 </Text>
                 <Input
                   value={bidAmount}
@@ -823,30 +1086,49 @@ export default function ListingDetailsScreen() {
                   placeholder="Enter bid amount"
                   keyboardType="decimal-pad"
                   size="$5"
-                  fontSize="$6"
-                  fontWeight="600"
+                  fontSize={24}
+                  fontWeight="700"
+                  backgroundColor="#f0fdf4"
+                  borderWidth={2}
+                  borderColor="#22c55e"
+                  borderRadius={16}
+                  color="#166534"
                 />
               </YStack>
               <XStack gap="$3">
-                <Button
-                  flex={1}
+                <TouchableOpacity
                   onPress={() => setBidModalVisible(false)}
-                  backgroundColor="$gray5"
-                  color="$gray11"
+                  style={{
+                    flex: 1,
+                    backgroundColor: "#f3f4f6",
+                    borderRadius: 16,
+                    padding: 16,
+                    alignItems: "center",
+                  }}
                 >
-                  Cancel
-                </Button>
-                <Button
-                  flex={1}
+                  <Text color="#6b7280" fontWeight="700">
+                    Cancel
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
                   onPress={handlePlaceBid}
-                  backgroundColor="$green9"
-                  color="white"
-                  fontWeight="600"
                   disabled={submittingBid}
-                  icon={submittingBid ? <Spinner color="white" /> : undefined}
+                  style={{
+                    flex: 1,
+                    backgroundColor: submittingBid ? "#d1d5db" : "#22c55e",
+                    borderRadius: 16,
+                    padding: 16,
+                    alignItems: "center",
+                    flexDirection: "row",
+                    justifyContent: "center",
+                    gap: 8,
+                  }}
                 >
-                  {submittingBid ? "Placing..." : "Place Bid"}
-                </Button>
+                  {submittingBid && <Spinner color="white" size="small" />}
+                  <Text color="white" fontWeight="700">
+                    {submittingBid ? "Placing..." : "Place Bid"}
+                  </Text>
+                </TouchableOpacity>
               </XStack>
             </YStack>
           </Pressable>
@@ -859,79 +1141,67 @@ export default function ListingDetailsScreen() {
         transparent
         animationType="slide"
         onRequestClose={() => {
-          setQrModalVisible(false);
-          setScanned(false);
+          setQrModalVisible(false)
+          setScanned(false)
         }}
       >
         <View style={{ flex: 1, backgroundColor: "black" }}>
           {hasPermission === null ? (
-            <YStack
-              flex={1}
-              justifyContent="center"
-              alignItems="center"
-              backgroundColor="black"
-            >
+            <YStack flex={1} justifyContent="center" alignItems="center" backgroundColor="black">
               <Spinner size="large" color="white" />
               <Text color="white" marginTop="$4">
                 Requesting camera permission...
               </Text>
             </YStack>
           ) : hasPermission === false ? (
-            <YStack
-              flex={1}
-              justifyContent="center"
-              alignItems="center"
-              padding="$5"
-              backgroundColor="black"
-            >
-              <Text
-                color="white"
-                fontSize="$6"
-                fontWeight="600"
-                textAlign="center"
-                marginBottom="$4"
-              >
+            <YStack flex={1} justifyContent="center" alignItems="center" padding="$5" backgroundColor="black">
+              <Text color="white" fontSize={24} fontWeight="700" textAlign="center" marginBottom="$4">
                 📷 Camera Permission Required
               </Text>
-              <Text
-                color="$gray10"
-                fontSize="$4"
-                textAlign="center"
-                marginBottom="$6"
-              >
-                We need camera access to scan the winner's QR code. Please grant
-                permission in your device settings.
+              <Text color="#9ca3af" fontSize={16} textAlign="center" marginBottom="$6">
+                We need camera access to scan the winner's QR code. Please grant permission in your device settings.
               </Text>
-              <Button
+              <TouchableOpacity
                 onPress={async () => {
-                  const granted = await requestCameraPermission();
+                  const granted = await requestCameraPermission()
                   if (!granted) {
                     Alert.alert(
                       "Permission Denied",
-                      "Please enable camera access in your device settings to scan QR codes."
-                    );
+                      "Please enable camera access in your device settings to scan QR codes.",
+                    )
                   }
                 }}
-                backgroundColor="$green9"
-                color="white"
-                marginBottom="$3"
-              >
-                Grant Permission
-              </Button>
-              <Button
-                onPress={() => {
-                  setQrModalVisible(false);
-                  setScanned(false);
+                style={{
+                  backgroundColor: "#22c55e",
+                  borderRadius: 16,
+                  padding: 16,
+                  paddingHorizontal: 32,
+                  marginBottom: 12,
                 }}
-                backgroundColor="$gray5"
-                color="$gray11"
               >
-                Cancel
-              </Button>
+                <Text color="white" fontWeight="700">
+                  Grant Permission
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={() => {
+                  setQrModalVisible(false)
+                  setScanned(false)
+                }}
+                style={{
+                  backgroundColor: "#374151",
+                  borderRadius: 16,
+                  padding: 16,
+                  paddingHorizontal: 32,
+                }}
+              >
+                <Text color="white" fontWeight="700">
+                  Cancel
+                </Text>
+              </TouchableOpacity>
             </YStack>
           ) : (
             <YStack flex={1}>
-              {/* Camera View */}
               <View style={{ flex: 1 }}>
                 <CameraView
                   style={StyleSheet.absoluteFillObject}
@@ -942,18 +1212,13 @@ export default function ListingDetailsScreen() {
                   }}
                 />
 
-                {/* Overlay UI */}
                 <YStack flex={1} justifyContent="space-between">
                   {/* Header */}
-                  <YStack
-                    backgroundColor="rgba(0,0,0,0.7)"
-                    padding="$4"
-                    gap="$2"
-                  >
-                    <Text color="white" fontSize="$6" fontWeight="600">
+                  <YStack backgroundColor="rgba(0,0,0,0.7)" padding="$4" gap="$2">
+                    <Text color="white" fontSize={20} fontWeight="700">
                       Scan Winner's QR Code
                     </Text>
-                    <Text color="$gray10" fontSize="$3">
+                    <Text color="#9ca3af" fontSize={14}>
                       Position the QR code within the frame
                     </Text>
                   </YStack>
@@ -966,20 +1231,16 @@ export default function ListingDetailsScreen() {
                         height: 250,
                         borderWidth: 3,
                         borderColor: scanned ? "#22c55e" : "white",
-                        borderRadius: 20,
+                        borderRadius: 24,
                         backgroundColor: "transparent",
                       }}
                     >
                       {scanned && (
-                        <YStack
-                          flex={1}
-                          justifyContent="center"
-                          alignItems="center"
-                        >
-                          <Text color="#22c55e" fontSize="$8" fontWeight="600">
+                        <YStack flex={1} justifyContent="center" alignItems="center">
+                          <Text color="#22c55e" fontSize={48} fontWeight="700">
                             ✓
                           </Text>
-                          <Text color="white" fontSize="$4" marginTop="$2">
+                          <Text color="white" fontSize={16} marginTop="$2">
                             Verifying...
                           </Text>
                         </YStack>
@@ -988,46 +1249,53 @@ export default function ListingDetailsScreen() {
                   </YStack>
 
                   {/* Footer */}
-                  <YStack
-                    backgroundColor="rgba(0,0,0,0.7)"
-                    padding="$5"
-                    gap="$3"
-                  >
+                  <YStack backgroundColor="rgba(0,0,0,0.7)" padding="$5" gap="$3">
                     <YStack
-                      backgroundColor="rgba(59, 130, 246, 0.2)"
+                      backgroundColor="rgba(34, 197, 94, 0.2)"
                       padding="$3"
-                      borderRadius="$3"
+                      borderRadius={16}
                       borderWidth={1}
-                      borderColor="rgba(59, 130, 246, 0.5)"
+                      borderColor="rgba(34, 197, 94, 0.5)"
                     >
-                      <Text color="white" fontSize="$2" textAlign="center">
-                        💡 After verification, you'll earn 30 points and the
-                        buyer will earn 20 points!
+                      <Text color="white" fontSize={12} textAlign="center">
+                        💡 After verification, you'll earn 30 points and the buyer will earn 20 points!
                       </Text>
                     </YStack>
                     <XStack gap="$3">
-                      <Button
-                        flex={1}
+                      <TouchableOpacity
                         onPress={() => {
-                          setQrModalVisible(false);
-                          setScanned(false);
+                          setQrModalVisible(false)
+                          setScanned(false)
                         }}
-                        backgroundColor="$gray5"
-                        color="$gray11"
                         disabled={verifyingQR}
+                        style={{
+                          flex: 1,
+                          backgroundColor: "#374151",
+                          borderRadius: 16,
+                          padding: 16,
+                          alignItems: "center",
+                        }}
                       >
-                        Cancel
-                      </Button>
+                        <Text color="white" fontWeight="700">
+                          Cancel
+                        </Text>
+                      </TouchableOpacity>
                       {scanned && (
-                        <Button
-                          flex={1}
+                        <TouchableOpacity
                           onPress={() => setScanned(false)}
-                          backgroundColor="$yellow9"
-                          color="white"
                           disabled={verifyingQR}
+                          style={{
+                            flex: 1,
+                            backgroundColor: "#f59e0b",
+                            borderRadius: 16,
+                            padding: 16,
+                            alignItems: "center",
+                          }}
                         >
-                          Scan Again
-                        </Button>
+                          <Text color="white" fontWeight="700">
+                            Scan Again
+                          </Text>
+                        </TouchableOpacity>
                       )}
                     </XStack>
                   </YStack>
@@ -1037,6 +1305,6 @@ export default function ListingDetailsScreen() {
           )}
         </View>
       </Modal>
-    </Theme>
-  );
+    </LinearGradient>
+  )
 }
