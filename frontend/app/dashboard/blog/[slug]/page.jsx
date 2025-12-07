@@ -24,6 +24,15 @@ import { motion, useScroll, useSpring } from "framer-motion";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3000";
 
+// Get cached blog posts from localStorage
+function getCachedBlogPosts() {
+  if (typeof window !== 'undefined') {
+    const cached = localStorage.getItem('generatedBlogPosts');
+    return cached ? JSON.parse(cached) : [];
+  }
+  return [];
+}
+
 /**
  * Enhanced Markdown Parser with Magazine Styling
  */
@@ -175,16 +184,49 @@ export default function BlogPostPage() {
     restDelta: 0.001,
   });
 
-  // Fetch blog post
+  // Load blog post from cache
   useEffect(() => {
     if (params.slug) {
-      fetchBlogPost();
+      loadBlogPost();
     }
   }, [params.slug]);
 
-  const fetchBlogPost = async () => {
+  const loadBlogPost = () => {
     try {
       setLoading(true);
+      
+      // Try to get from cached generated posts first
+      const cachedPosts = getCachedBlogPosts();
+      
+      if (cachedPosts && cachedPosts.length > 0) {
+        const foundPost = cachedPosts.find(p => p.slug === params.slug);
+        
+        if (foundPost) {
+          setPost(foundPost);
+          
+          // Get related posts from same category
+          const related = cachedPosts
+            .filter(p => p.category === foundPost.category && p.id !== foundPost.id)
+            .slice(0, 3);
+          setRelatedPosts(related);
+          
+          setError(null);
+          setLoading(false);
+          return;
+        }
+      }
+      
+      // Fallback to API if not in cache
+      fetchBlogPostFromAPI();
+    } catch (err) {
+      console.error("Error loading blog post:", err);
+      setError(err.message);
+      setLoading(false);
+    }
+  };
+
+  const fetchBlogPostFromAPI = async () => {
+    try {
       const response = await fetch(`${API_URL}/api/blog/${params.slug}`, {
         headers: {
           "ngrok-skip-browser-warning": "true",
@@ -196,7 +238,7 @@ export default function BlogPostPage() {
         setPost(data.post);
         setError(null);
         // Fetch related posts
-        fetchRelatedPosts(data.post);
+        fetchRelatedPostsFromAPI(data.post);
       } else {
         setError(data.error || "Blog post not found");
       }
@@ -208,7 +250,7 @@ export default function BlogPostPage() {
     }
   };
 
-  const fetchRelatedPosts = async (currentPost) => {
+  const fetchRelatedPostsFromAPI = async (currentPost) => {
     try {
       const response = await fetch(
         `${API_URL}/api/blog?category=${currentPost.category}&limit=4`,
@@ -386,7 +428,7 @@ export default function BlogPostPage() {
               </div>
               <div className="text-left">
                 <h4 className="font-bold text-gray-900 text-lg leading-tight group-hover:text-emerald-700 transition-colors">
-                  {post.author}
+                  {post.author?.name || post.author}
                 </h4>
                 <div className="flex flex-wrap items-center gap-x-2 text-sm text-gray-500">
                   <span className="font-medium">{post.authorRole}</span>
@@ -526,29 +568,37 @@ export default function BlogPostPage() {
 
               {/* Tags & Footer Meta */}
               <div className="mt-16 pt-10 border-t border-gray-100">
-                <div className="flex flex-wrap gap-2 mb-8">
-                  {post.tags.map((tag) => (
-                    <span
-                      key={tag}
-                      className="px-4 py-2 bg-gray-50 hover:bg-gray-100 text-gray-600 rounded-lg text-sm font-medium transition-colors cursor-pointer"
-                    >
-                      #{tag}
-                    </span>
-                  ))}
-                </div>
+                {post.tags && post.tags.length > 0 && (
+                  <div className="flex flex-wrap gap-2 mb-8">
+                    {post.tags.map((tag) => (
+                      <span
+                        key={tag}
+                        className="px-4 py-2 bg-gray-50 hover:bg-gray-100 text-gray-600 rounded-lg text-sm font-medium transition-colors cursor-pointer"
+                      >
+                        #{tag}
+                      </span>
+                    ))}
+                  </div>
+                )}
 
                 <div className="bg-emerald-50 rounded-2xl p-8 sm:p-10 flex flex-col sm:flex-row items-center sm:items-start gap-6 text-center sm:text-left">
-                  <div className="w-20 h-20 rounded-full bg-white flex items-center justify-center text-emerald-600 shadow-sm shrink-0">
-                    <User className="w-10 h-10" />
-                  </div>
+                  {post.author?.avatar ? (
+                    <img 
+                      src={post.author.avatar} 
+                      alt={post.author.name}
+                      className="w-20 h-20 rounded-full shadow-sm shrink-0"
+                    />
+                  ) : (
+                    <div className="w-20 h-20 rounded-full bg-white flex items-center justify-center text-emerald-600 shadow-sm shrink-0">
+                      <User className="w-10 h-10" />
+                    </div>
+                  )}
                   <div className="flex-1">
                     <h3 className="text-xl font-bold text-gray-900 mb-2">
-                      Written by {post.author}
+                      Written by {post.author?.name || post.author}
                     </h3>
                     <p className="text-gray-600 mb-6 leading-relaxed">
-                      {post.authorRole} at PKP Mumbai. Passionate about waste
-                      management, sustainability, and community-driven
-                      initiatives.
+                      {post.authorRole || 'Contributing to a cleaner environment through data-driven insights and community engagement.'}
                     </p>
                     <button className="px-6 py-2 bg-white text-emerald-700 font-semibold rounded-full border border-emerald-200 hover:border-emerald-300 shadow-sm transition-all text-sm">
                       Follow Author
@@ -594,7 +644,7 @@ export default function BlogPostPage() {
                 >
                   <div className="relative h-48 overflow-hidden">
                     <img
-                      src={related.imageUrl}
+                      src={related.coverImage || related.imageUrl || 'https://images.unsplash.com/photo-1532996122724-e3c354a0b15b?w=400&h=300&fit=crop'}
                       alt={related.title}
                       className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700"
                       onError={(e) => {
@@ -617,11 +667,19 @@ export default function BlogPostPage() {
                     </p>
                     <div className="flex items-center justify-between pt-4 border-t border-gray-50">
                       <div className="flex items-center gap-2">
-                        <div className="w-6 h-6 rounded-full bg-gray-100 flex items-center justify-center text-gray-500">
-                          <User className="w-3 h-3" />
-                        </div>
+                        {related.author?.avatar ? (
+                          <img 
+                            src={related.author.avatar} 
+                            alt={related.author.name}
+                            className="w-6 h-6 rounded-full"
+                          />
+                        ) : (
+                          <div className="w-6 h-6 rounded-full bg-gray-100 flex items-center justify-center text-gray-500">
+                            <User className="w-3 h-3" />
+                          </div>
+                        )}
                         <span className="text-xs font-medium text-gray-900">
-                          {related.author}
+                          {related.author?.name || related.author}
                         </span>
                       </div>
                       <span className="text-xs text-gray-400 font-medium">

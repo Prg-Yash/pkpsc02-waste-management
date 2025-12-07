@@ -3,6 +3,22 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { Calendar, Clock, ArrowRight, Search, Sparkles, Eye } from 'lucide-react';
+import { generateBlogPosts } from '@/lib/blogDataGenerator';
+
+// Store generated posts in localStorage for access by detail page
+function cacheBlogPosts(posts) {
+  if (typeof window !== 'undefined') {
+    localStorage.setItem('generatedBlogPosts', JSON.stringify(posts));
+  }
+}
+
+export function getCachedBlogPosts() {
+  if (typeof window !== 'undefined') {
+    const cached = localStorage.getItem('generatedBlogPosts');
+    return cached ? JSON.parse(cached) : [];
+  }
+  return [];
+}
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000';
 
@@ -14,65 +30,78 @@ export default function BlogPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('All');
 
-  // Fetch blog posts from API
+  // Generate blog posts from real data
   useEffect(() => {
-    fetchPosts();
-    fetchCategories();
+    generateBlogContent();
   }, []);
 
-  const fetchPosts = async () => {
+  const generateBlogContent = async () => {
     try {
       setLoading(true);
-      const response = await fetch(`${API_URL}/api/blog?published=true&limit=50&sortBy=createdAt&order=desc`, {
-        headers: {
-          'ngrok-skip-browser-warning': 'true'
-        }
-      });
+      
+      // Fetch real data from your database
+      const [wasteResponse, leaderboardResponse] = await Promise.all([
+        fetch(`${API_URL}/api/waste`, {
+          headers: { 'ngrok-skip-browser-warning': 'true' }
+        }),
+        fetch(`${API_URL}/api/leaderboard`, {
+          headers: { 'ngrok-skip-browser-warning': 'true' }
+        })
+      ]);
 
-      // Check if the response is JSON
-      const contentType = response.headers.get('content-type');
-      if (!contentType || !contentType.includes('application/json')) {
-        throw new Error(`API server not responding correctly. Make sure the backend is running on ${API_URL}`);
+      let wasteData = [];
+      let leaderboardData = [];
+      let cityStats = [];
+
+      // Parse waste data
+      if (wasteResponse.ok) {
+        const wasteResult = await wasteResponse.json();
+        wasteData = wasteResult.wasteReports || wasteResult.reports || [];
+        
+        // Generate city stats from waste data
+        cityStats = wasteData.reduce((acc, report) => {
+          const existing = acc.find(s => 
+            s.city === report.location?.split(',')[0] && 
+            s.wasteType === report.wasteType
+          );
+          if (existing) {
+            existing.count++;
+          } else {
+            acc.push({
+              city: report.location?.split(',')[0] || 'Unknown',
+              wasteType: report.wasteType || 'MIXED',
+              count: 1
+            });
+          }
+          return acc;
+        }, []);
       }
 
-      const data = await response.json();
+      // Parse leaderboard data
+      if (leaderboardResponse.ok) {
+        const leaderboardResult = await leaderboardResponse.json();
+        leaderboardData = leaderboardResult.leaderboard || [];
+      }
 
-      if (data.success) {
-        setPosts(data.posts);
-        setError(null);
+      // Generate AI-powered blog posts
+      const generatedPosts = await generateBlogPosts(wasteData, leaderboardData, cityStats);
+      
+      if (generatedPosts && generatedPosts.length > 0) {
+        setPosts(generatedPosts);
+        cacheBlogPosts(generatedPosts); // Cache for detail page
+        
+        // Extract unique categories
+        const uniqueCategories = [...new Set(generatedPosts.map(p => p.category))];
+        setCategories(['All', ...uniqueCategories]);
       } else {
-        throw new Error(data.error || 'Failed to fetch blog posts');
+        setError('No blog content could be generated. Please check your Gemini API key.');
       }
-    } catch (err) {
-      console.error('Error fetching blog posts:', err);
-      setError(err.message);
-    } finally {
+      
       setLoading(false);
-    }
-  };
-
-  const fetchCategories = async () => {
-    try {
-      const response = await fetch(`${API_URL}/api/blog/categories`, {
-        headers: {
-          'ngrok-skip-browser-warning': 'true'
-        }
-      });
-
-      // Check if the response is JSON
-      const contentType = response.headers.get('content-type');
-      if (!contentType || !contentType.includes('application/json')) {
-        console.warn('Categories endpoint not available');
-        return;
-      }
-
-      const data = await response.json();
-
-      if (data.success && data.categories.length > 0) {
-        setCategories(['All', ...data.categories]);
-      }
     } catch (err) {
-      console.error('Error fetching categories:', err);
+      console.error('Error generating blog content:', err);
+      setError(err.message || 'Failed to generate blog content');
+      setLoading(false);
     }
   };
 
@@ -80,13 +109,14 @@ export default function BlogPage() {
   const filteredPosts = posts.filter(post => {
     const matchesSearch = post.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
       post.excerpt.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      post.tags.some(tag => tag.toLowerCase().includes(searchQuery.toLowerCase()));
+      (post.tags && post.tags.some(tag => tag.toLowerCase().includes(searchQuery.toLowerCase())));
     const matchesCategory = selectedCategory === 'All' || post.category === selectedCategory;
     return matchesSearch && matchesCategory;
   });
 
   // Get latest 2 posts for featured section
-  const latestPosts = posts.slice(0, 2);
+  const latestPosts = posts.filter(p => p.featured).slice(0, 2);
+  const regularPosts = posts.filter(p => !p.featured);
 
   if (loading) {
     return (
@@ -107,7 +137,7 @@ export default function BlogPage() {
           <h2 className="text-2xl font-bold text-gray-900 mb-2">Error Loading Blogs</h2>
           <p className="text-gray-600 mb-4">{error}</p>
           <button
-            onClick={fetchPosts}
+            onClick={generateBlogContent}
             className="bg-gradient-to-r from-emerald-500 to-green-600 text-white px-6 py-2 rounded-lg font-semibold hover:shadow-lg transition-all"
           >
             Try Again
@@ -183,7 +213,7 @@ export default function BlogPage() {
                 >
                   <div className="relative h-64 overflow-hidden">
                     <img
-                      src={post.imageUrl}
+                      src={post.coverImage || 'https://images.unsplash.com/photo-1532996122724-e3c354a0b15b?w=800&h=500&fit=crop'}
                       alt={post.title}
                       className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-300"
                       onError={(e) => {
@@ -204,7 +234,7 @@ export default function BlogPage() {
                       </span>
                       <div className="flex items-center gap-1">
                         <Calendar className="w-4 h-4" />
-                        {new Date(post.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                        {new Date(post.publishedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
                       </div>
                       <div className="flex items-center gap-1">
                         <Clock className="w-4 h-4" />
@@ -222,7 +252,7 @@ export default function BlogPage() {
                       {post.excerpt}
                     </p>
                     <div className="flex items-center justify-between">
-                      <span className="text-sm text-gray-500">By {post.author}</span>
+                      <span className="text-sm text-gray-500">By {post.author?.name || post.author}</span>
                       <div className="flex items-center gap-2 text-emerald-600 font-semibold">
                         Read More
                         <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
@@ -250,7 +280,7 @@ export default function BlogPage() {
                 >
                   <div className="relative h-48 overflow-hidden">
                     <img
-                      src={post.imageUrl}
+                      src={post.coverImage || 'https://images.unsplash.com/photo-1532996122724-e3c354a0b15b?w=800&h=500&fit=crop'}
                       alt={post.title}
                       className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-300"
                       onError={(e) => {
@@ -279,7 +309,7 @@ export default function BlogPage() {
                       {post.excerpt}
                     </p>
                     <div className="flex items-center justify-between pt-3 border-t border-gray-100">
-                      <span className="text-xs text-gray-500">{post.author}</span>
+                      <span className="text-xs text-gray-500">{post.author?.name || post.author}</span>
                       <div className="flex items-center gap-1 text-emerald-600 text-sm font-semibold">
                         Read
                         <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
