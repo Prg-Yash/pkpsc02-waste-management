@@ -80,9 +80,9 @@ router.post("/create", upload.array("images", 5), async (req, res) => {
       imageUrls.push(url);
     }
 
-    // Calculate auction end time
+    // Calculate auction end time (auctionDuration is in hours)
     const auctionEndTime = new Date(
-      Date.now() + parseInt(auctionDuration) * 60 * 1000
+      Date.now() + parseInt(auctionDuration) * 60 * 60 * 1000
     );
 
     // Create listing

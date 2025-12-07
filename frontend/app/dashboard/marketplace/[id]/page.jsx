@@ -35,6 +35,8 @@ export default function ListingDetailPage() {
   const [verificationCode, setVerificationCode] = useState("");
   const [verifying, setVerifying] = useState(false);
   const [selectedImage, setSelectedImage] = useState(0);
+  const [closing, setClosing] = useState(false);
+  const [cancelling, setCancelling] = useState(false);
 
   useEffect(() => {
     if (user && listingId) {
@@ -158,6 +160,82 @@ export default function ListingDetailPage() {
       alert("Verification failed");
     } finally {
       setVerifying(false);
+    }
+  };
+
+  const handleCloseBid = async () => {
+    if (
+      !confirm(
+        "Close this auction early? The current highest bidder will be selected as the winner."
+      )
+    ) {
+      return;
+    }
+
+    setClosing(true);
+
+    try {
+      const response = await fetch(
+        `${API_CONFIG.BASE_URL}/api/marketplace/${listingId}/close-bid`,
+        {
+          method: "POST",
+          headers: {
+            "x-user-id": user.id,
+          },
+        }
+      );
+
+      const data = await response.json();
+
+      if (response.ok) {
+        alert("Auction closed successfully! Winner has been notified.");
+        fetchListing();
+      } else {
+        alert(data.error || "Failed to close auction");
+      }
+    } catch (error) {
+      console.error("Error closing auction:", error);
+      alert("Failed to close auction");
+    } finally {
+      setClosing(false);
+    }
+  };
+
+  const handleCancelListing = async () => {
+    if (
+      !confirm(
+        "Cancel this listing? This action cannot be undone."
+      )
+    ) {
+      return;
+    }
+
+    setCancelling(true);
+
+    try {
+      const response = await fetch(
+        `${API_CONFIG.BASE_URL}/api/marketplace/${listingId}/cancel`,
+        {
+          method: "POST",
+          headers: {
+            "x-user-id": user.id,
+          },
+        }
+      );
+
+      const data = await response.json();
+
+      if (response.ok) {
+        alert("Listing cancelled successfully");
+        fetchListing();
+      } else {
+        alert(data.error || "Failed to cancel listing");
+      }
+    } catch (error) {
+      console.error("Error cancelling listing:", error);
+      alert("Failed to cancel listing");
+    } finally {
+      setCancelling(false);
     }
   };
 
@@ -605,15 +683,62 @@ export default function ListingDetailPage() {
                 </div>
               )}
 
-              {/* Cannot Bid (Own Listing) */}
+              {/* Seller Actions */}
               {isSeller && listing.status === "ACTIVE" && (
-                <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg text-center">
-                  <p className="text-blue-900 font-semibold">
-                    This is your listing
-                  </p>
-                  <p className="text-sm text-blue-700 mt-1">
-                    {listing.bids.length} bids received
-                  </p>
+                <div className="space-y-4">
+                  <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg text-center">
+                    <p className="text-blue-900 font-semibold">
+                      This is your listing
+                    </p>
+                    <p className="text-sm text-blue-700 mt-1">
+                      {listing.bids.length} bids received
+                    </p>
+                  </div>
+
+                  {/* Seller Action Buttons */}
+                  <div className="space-y-3">
+                    {/* Close Bid Early - Only if bids exist */}
+                    {listing.bids.length > 0 && (
+                      <button
+                        onClick={handleCloseBid}
+                        disabled={closing}
+                        className="w-full py-3 bg-gradient-to-r from-blue-500 to-indigo-500 text-white rounded-lg font-bold hover:shadow-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                      >
+                        {closing ? (
+                          <>
+                            <Loader2 className="w-5 h-5 animate-spin" />
+                            Closing Auction...
+                          </>
+                        ) : (
+                          <>
+                            <CheckCircle2 className="w-5 h-5" />
+                            Close Auction Early
+                          </>
+                        )}
+                      </button>
+                    )}
+
+                    {/* Cancel Listing - Only if no bids */}
+                    {listing.bids.length === 0 && (
+                      <button
+                        onClick={handleCancelListing}
+                        disabled={cancelling}
+                        className="w-full py-3 bg-gradient-to-r from-red-500 to-pink-500 text-white rounded-lg font-bold hover:shadow-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                      >
+                        {cancelling ? (
+                          <>
+                            <Loader2 className="w-5 h-5 animate-spin" />
+                            Cancelling...
+                          </>
+                        ) : (
+                          <>
+                            <XCircle className="w-5 h-5" />
+                            Cancel Listing
+                          </>
+                        )}
+                      </button>
+                    )}
+                  </div>
                 </div>
               )}
             </div>
