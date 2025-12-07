@@ -20,8 +20,11 @@ import {
   QrCode,
   Phone,
   Mail,
+  Camera,
+  Scan,
 } from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
+import { Scanner } from "@yudiel/react-qr-scanner";
 import { API_CONFIG } from "@/lib/api-config";
 
 export default function ListingDetailPage() {
@@ -39,6 +42,7 @@ export default function ListingDetailPage() {
   const [selectedImage, setSelectedImage] = useState(0);
   const [closing, setClosing] = useState(false);
   const [cancelling, setCancelling] = useState(false);
+  const [showScanner, setShowScanner] = useState(false);
 
   useEffect(() => {
     if (user && listingId) {
@@ -153,6 +157,49 @@ export default function ListingDetailPage() {
         alert(
           `Transaction completed! You earned ${data.pointsAwarded.seller} points!`
         );
+        fetchListing();
+      } else {
+        alert(data.error || "Verification failed");
+      }
+    } catch (error) {
+      console.error("Error verifying:", error);
+      alert("Verification failed");
+    } finally {
+      setVerifying(false);
+    }
+  };
+
+  const handleScanResult = async (result) => {
+    if (!result || result.length === 0) return;
+    
+    const scannedCode = typeof result === 'string' ? result : result[0]?.rawValue;
+    if (!scannedCode || !scannedCode.trim()) return;
+
+    const code = scannedCode.trim();
+    setVerificationCode(code);
+    setShowScanner(false);
+    setVerifying(true);
+
+    try {
+      const response = await fetch(
+        `${API_CONFIG.BASE_URL}/api/marketplace/${listingId}/verify-qr`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "x-user-id": user.id,
+          },
+          body: JSON.stringify({ verificationCode: code }),
+        }
+      );
+
+      const data = await response.json();
+
+      if (response.ok) {
+        alert(
+          `Transaction completed! You earned ${data.pointsAwarded.seller} points!`
+        );
+        setVerificationCode("");
         fetchListing();
       } else {
         alert(data.error || "Verification failed");
@@ -571,48 +618,90 @@ export default function ListingDetailPage() {
                     </div>
                   </div>
 
-                  <div className="p-4 bg-purple-50 border border-purple-200 rounded-lg">
-                    <div className="flex items-center gap-2 text-purple-900 mb-2">
-                      <QrCode className="w-5 h-5" />
-                      <h4 className="font-semibold">Verification Code</h4>
+                  {/* QR Scanner Section */}
+                  {showScanner ? (
+                    <div className="space-y-3">
+                      <div className="relative overflow-hidden rounded-lg">
+                        <Scanner
+                          onScan={handleScanResult}
+                          onError={(error) => {
+                            console.error("Scanner error:", error);
+                            alert("Camera access failed. Please use manual entry.");
+                            setShowScanner(false);
+                          }}
+                          constraints={{
+                            facingMode: "environment",
+                            aspectRatio: 1,
+                          }}
+                          styles={{
+                            container: { width: "100%" },
+                            video: { width: "100%", height: "auto" },
+                          }}
+                        />
+                      </div>
+                      <p className="text-sm text-center text-gray-600">
+                        Position the buyer's QR code in the camera frame
+                      </p>
+                      <button
+                        type="button"
+                        onClick={() => setShowScanner(false)}
+                        className="w-full py-3 bg-gray-200 text-gray-700 rounded-lg font-bold hover:bg-gray-300 transition-all flex items-center justify-center gap-2"
+                      >
+                        <XCircle className="w-5 h-5" />
+                        Cancel Scan
+                      </button>
                     </div>
-                    <p className="text-3xl font-bold text-purple-600 text-center py-3 bg-white rounded-lg">
-                      {listing.verificationCode}
-                    </p>
-                    <p className="text-xs text-purple-700 mt-2">
-                      Ask buyer to show this code from their app
-                    </p>
-                  </div>
+                  ) : (
+                    <div className="space-y-3">
+                      <button
+                        type="button"
+                        onClick={() => setShowScanner(true)}
+                        className="w-full py-3 bg-blue-500 text-white rounded-lg font-bold hover:bg-blue-600 transition-all flex items-center justify-center gap-2"
+                      >
+                        <Scan className="w-5 h-5" />
+                        Scan Buyer's QR Code
+                      </button>
+                      
+                      <div className="relative">
+                        <div className="absolute inset-0 flex items-center">
+                          <div className="w-full border-t border-gray-300"></div>
+                        </div>
+                        <div className="relative flex justify-center text-sm">
+                          <span className="px-2 bg-white text-gray-500">or enter manually</span>
+                        </div>
+                      </div>
 
-                  <form onSubmit={handleVerifyQR} className="space-y-3">
-                    <input
-                      type="text"
-                      value={verificationCode}
-                      onChange={(e) =>
-                        setVerificationCode(e.target.value)
-                      }
-                      placeholder="Enter buyer's code"
-                      className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent font-mono"
-                      required
-                    />
-                    <button
-                      type="submit"
-                      disabled={verifying}
-                      className="w-full py-3 bg-gradient-to-r from-emerald-500 to-teal-500 text-white rounded-lg font-bold hover:shadow-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-                    >
-                      {verifying ? (
-                        <>
-                          <Loader2 className="w-5 h-5 animate-spin" />
-                          Verifying...
-                        </>
-                      ) : (
-                        <>
-                          <CheckCircle2 className="w-5 h-5" />
-                          Verify & Complete
-                        </>
-                      )}
-                    </button>
-                  </form>
+                      <form onSubmit={handleVerifyQR} className="space-y-3">
+                        <input
+                          type="text"
+                          value={verificationCode}
+                          onChange={(e) =>
+                            setVerificationCode(e.target.value)
+                          }
+                          placeholder="Enter buyer's code"
+                          className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent font-mono"
+                          required
+                        />
+                        <button
+                          type="submit"
+                          disabled={verifying}
+                          className="w-full py-3 bg-gradient-to-r from-emerald-500 to-teal-500 text-white rounded-lg font-bold hover:shadow-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                        >
+                          {verifying ? (
+                            <>
+                              <Loader2 className="w-5 h-5 animate-spin" />
+                              Verifying...
+                            </>
+                          ) : (
+                            <>
+                              <CheckCircle2 className="w-5 h-5" />
+                              Verify & Complete
+                            </>
+                          )}
+                        </button>
+                      </form>
+                    </div>
+                  )}
                 </div>
               )}
 
@@ -659,15 +748,6 @@ export default function ListingDetailPage() {
                           fgColor="#7c3aed"
                         />
                       </div>
-                      <p className="text-sm text-gray-600 mb-2 text-center font-semibold">
-                        Verification Code
-                      </p>
-                      <p className="text-2xl font-bold text-purple-600 text-center tracking-wider">
-                        {listing.verificationCode}
-                      </p>
-                      <p className="text-xs text-gray-500 mt-2 text-center">
-                        (Backup text code if QR scan fails)
-                      </p>
                     </div>
 
                     <div className="text-sm text-gray-600 space-y-2">
