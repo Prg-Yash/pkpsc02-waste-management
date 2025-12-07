@@ -2,26 +2,86 @@
 
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { Calendar, Clock, ArrowLeft, Share2, Tag, User, Facebook, Twitter, Linkedin, Link as LinkIcon } from 'lucide-react';
-import { getBlogPost, BLOG_POSTS } from '../blogData';
-import { useState } from 'react';
+import { Calendar, Clock, ArrowLeft, Share2, Tag, User, Facebook, Twitter, Linkedin, Link as LinkIcon, Eye } from 'lucide-react';
+import { useState, useEffect } from 'react';
+
+const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000';
 
 export default function BlogPostPage() {
   const params = useParams();
   const router = useRouter();
   const [copied, setCopied] = useState(false);
-  
-  const post = getBlogPost(params.slug);
+  const [post, setPost] = useState(null);
+  const [relatedPosts, setRelatedPosts] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
 
-  if (!post) {
+  // Fetch blog post
+  useEffect(() => {
+    if (params.slug) {
+      fetchBlogPost();
+    }
+  }, [params.slug]);
+
+  const fetchBlogPost = async () => {
+    try {
+      setLoading(true);
+      const response = await fetch(`${API_URL}/api/blog/${params.slug}`);
+      const data = await response.json();
+
+      if (data.success) {
+        setPost(data.post);
+        setError(null);
+        // Fetch related posts
+        fetchRelatedPosts(data.post);
+      } else {
+        setError(data.error || 'Blog post not found');
+      }
+    } catch (err) {
+      console.error('Error fetching blog post:', err);
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const fetchRelatedPosts = async (currentPost) => {
+    try {
+      const response = await fetch(`${API_URL}/api/blog?category=${currentPost.category}&limit=4`);
+      const data = await response.json();
+
+      if (data.success) {
+        // Filter out current post and limit to 3
+        const related = data.posts
+          .filter(p => p.id !== currentPost.id)
+          .slice(0, 3);
+        setRelatedPosts(related);
+      }
+    } catch (err) {
+      console.error('Error fetching related posts:', err);
+    }
+  };
+
+  if (loading) {
     return (
-      <div className="min-h-screen bg-linear-to-br from-slate-50 via-emerald-50 to-teal-50 flex items-center justify-center">
+      <div className="min-h-screen bg-gradient-to-br from-slate-50 via-emerald-50 to-teal-50 flex items-center justify-center">
+        <div className="text-center">
+          <div className="inline-block animate-spin rounded-full h-16 w-16 border-4 border-emerald-500 border-t-transparent"></div>
+          <p className="mt-4 text-gray-600 font-medium">Loading blog post...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (error || !post) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-slate-50 via-emerald-50 to-teal-50 flex items-center justify-center">
         <div className="text-center">
           <h1 className="text-4xl font-bold text-gray-900 mb-4">Blog Post Not Found</h1>
-          <p className="text-gray-600 mb-6">The article you're looking for doesn't exist.</p>
+          <p className="text-gray-600 mb-6">{error || "The article you're looking for doesn't exist."}</p>
           <Link
             href="/dashboard/blog"
-            className="inline-flex items-center gap-2 px-6 py-3 bg-linear-to-r from-emerald-500 to-green-600 text-white rounded-xl hover:shadow-lg transition-all"
+            className="inline-flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-emerald-500 to-green-600 text-white rounded-xl hover:shadow-lg transition-all"
           >
             <ArrowLeft className="w-5 h-5" />
             Back to Blog
@@ -30,10 +90,6 @@ export default function BlogPostPage() {
       </div>
     );
   }
-
-  const relatedPosts = BLOG_POSTS.filter(
-    p => p.id !== post.id && (p.category === post.category || p.tags.some(tag => post.tags.includes(tag)))
-  ).slice(0, 3);
 
   const handleShare = async (platform) => {
     const url = window.location.href;
@@ -93,11 +149,15 @@ export default function BlogPostPage() {
             </div>
             <div className="flex items-center gap-2">
               <Calendar className="w-5 h-5" />
-              {new Date(post.date).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}
+              {new Date(post.createdAt).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}
             </div>
             <div className="flex items-center gap-2">
               <Clock className="w-5 h-5" />
               {post.readTime}
+            </div>
+            <div className="flex items-center gap-2">
+              <Eye className="w-5 h-5" />
+              {post.views} views
             </div>
           </div>
 
@@ -161,9 +221,12 @@ export default function BlogPostPage() {
       <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 -mt-8 mb-12">
         <div className="relative h-96 rounded-2xl overflow-hidden shadow-2xl">
           <img
-            src={post.image}
+            src={post.imageUrl}
             alt={post.title}
             className="w-full h-full object-cover"
+            onError={(e) => {
+              e.target.src = 'https://via.placeholder.com/1200x600?text=Blog+Image';
+            }}
           />
         </div>
       </div>
@@ -209,9 +272,12 @@ export default function BlogPostPage() {
               >
                 <div className="relative h-48 overflow-hidden">
                   <img
-                    src={relatedPost.image}
+                    src={relatedPost.imageUrl}
                     alt={relatedPost.title}
                     className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-300"
+                    onError={(e) => {
+                      e.target.src = 'https://via.placeholder.com/400x300?text=Blog+Image';
+                    }}
                   />
                 </div>
                 <div className="p-5">

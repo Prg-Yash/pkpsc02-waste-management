@@ -1,0 +1,571 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>View Blogs - EcoFlow</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        .header {
+            background: white;
+            border-radius: 20px;
+            padding: 40px;
+            margin-bottom: 30px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            text-align: center;
+        }
+
+        .header h1 {
+            font-size: 2.5rem;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            margin-bottom: 10px;
+        }
+
+        .header p {
+            color: #666;
+            font-size: 1.1rem;
+        }
+
+        .controls {
+            background: white;
+            border-radius: 20px;
+            padding: 30px;
+            margin-bottom: 30px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+        }
+
+        .controls-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+
+        .control-group {
+            display: flex;
+            flex-direction: column;
+        }
+
+        .control-group label {
+            font-weight: 600;
+            margin-bottom: 8px;
+            color: #333;
+        }
+
+        .control-group select,
+        .control-group input {
+            padding: 10px;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            font-size: 1rem;
+            transition: all 0.3s;
+        }
+
+        .control-group select:focus,
+        .control-group input:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        .btn {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 12px 30px;
+            font-size: 1rem;
+            font-weight: 600;
+            border-radius: 10px;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 30px rgba(102, 126, 234, 0.4);
+        }
+
+        .btn-secondary {
+            background: #6c757d;
+        }
+
+        .loading {
+            background: white;
+            border-radius: 20px;
+            padding: 60px;
+            text-align: center;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+            display: none;
+        }
+
+        .spinner {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #667eea;
+            border-radius: 50%;
+            width: 50px;
+            height: 50px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 20px;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .blogs-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
+            gap: 30px;
+        }
+
+        .blog-card {
+            background: white;
+            border-radius: 20px;
+            overflow: hidden;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+            transition: all 0.3s;
+        }
+
+        .blog-card:hover {
+            transform: translateY(-10px);
+            box-shadow: 0 20px 50px rgba(0, 0, 0, 0.3);
+        }
+
+        .blog-image {
+            width: 100%;
+            height: 220px;
+            object-fit: cover;
+        }
+
+        .blog-content {
+            padding: 25px;
+        }
+
+        .blog-meta {
+            display: flex;
+            gap: 15px;
+            margin-bottom: 15px;
+            flex-wrap: wrap;
+        }
+
+        .badge {
+            padding: 5px 12px;
+            border-radius: 20px;
+            font-size: 0.85rem;
+            font-weight: 600;
+        }
+
+        .badge-category {
+            background: #e7f3ff;
+            color: #0066cc;
+        }
+
+        .badge-featured {
+            background: #fff3cd;
+            color: #856404;
+        }
+
+        .badge-views {
+            background: #d4edda;
+            color: #155724;
+        }
+
+        .blog-title {
+            font-size: 1.4rem;
+            margin-bottom: 12px;
+            color: #333;
+            line-height: 1.4;
+        }
+
+        .blog-excerpt {
+            color: #666;
+            margin-bottom: 15px;
+            line-height: 1.6;
+        }
+
+        .blog-tags {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            margin-bottom: 15px;
+        }
+
+        .tag {
+            background: #667eea;
+            color: white;
+            padding: 4px 10px;
+            border-radius: 15px;
+            font-size: 0.8rem;
+        }
+
+        .blog-footer {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding-top: 15px;
+            border-top: 1px solid #e0e0e0;
+        }
+
+        .blog-info {
+            font-size: 0.85rem;
+            color: #666;
+        }
+
+        .blog-actions {
+            display: flex;
+            gap: 10px;
+        }
+
+        .btn-small {
+            padding: 8px 15px;
+            font-size: 0.9rem;
+        }
+
+        .btn-delete {
+            background: #dc3545;
+        }
+
+        .btn-delete:hover {
+            background: #c82333;
+        }
+
+        .empty-state {
+            background: white;
+            border-radius: 20px;
+            padding: 60px;
+            text-align: center;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+        }
+
+        .empty-state h2 {
+            color: #666;
+            margin-bottom: 20px;
+        }
+
+        .stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+
+        .stat-card {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 20px;
+            border-radius: 15px;
+            text-align: center;
+        }
+
+        .stat-value {
+            font-size: 2rem;
+            font-weight: bold;
+            margin-bottom: 5px;
+        }
+
+        .stat-label {
+            font-size: 0.9rem;
+            opacity: 0.9;
+        }
+
+        .error {
+            background: #f8d7da;
+            border: 2px solid #dc3545;
+            color: #721c24;
+            padding: 20px;
+            border-radius: 10px;
+            margin: 20px 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>📚 Blog Posts</h1>
+            <p>Manage and view all blog posts</p>
+        </div>
+
+        <div class="controls">
+            <div class="stats" id="stats"></div>
+            
+            <div class="controls-grid">
+                <div class="control-group">
+                    <label for="categoryFilter">Category</label>
+                    <select id="categoryFilter">
+                        <option value="">All Categories</option>
+                    </select>
+                </div>
+
+                <div class="control-group">
+                    <label for="tagFilter">Tag</label>
+                    <select id="tagFilter">
+                        <option value="">All Tags</option>
+                    </select>
+                </div>
+
+                <div class="control-group">
+                    <label for="sortBy">Sort By</label>
+                    <select id="sortBy">
+                        <option value="createdAt">Latest First</option>
+                        <option value="views">Most Viewed</option>
+                        <option value="title">Title (A-Z)</option>
+                    </select>
+                </div>
+
+                <div class="control-group">
+                    <label for="limitFilter">Show</label>
+                    <select id="limitFilter">
+                        <option value="20">20 posts</option>
+                        <option value="50">50 posts</option>
+                        <option value="100">100 posts</option>
+                    </select>
+                </div>
+            </div>
+
+            <div style="display: flex; gap: 10px;">
+                <button class="btn" onclick="loadBlogs()">🔄 Refresh</button>
+                <button class="btn btn-secondary" onclick="window.location.href='create-blog.html'">➕ Create New Post</button>
+            </div>
+        </div>
+
+        <div class="loading" id="loading">
+            <div class="spinner"></div>
+            <p>Loading blogs...</p>
+        </div>
+
+        <div id="blogsContainer"></div>
+    </div>
+
+    <script>
+        const API_URL = 'http://localhost:3000';
+        let allCategories = [];
+        let allTags = [];
+
+        // Load categories and tags
+        async function loadFilters() {
+            try {
+                const [categoriesRes, tagsRes] = await Promise.all([
+                    fetch(`${API_URL}/api/blog/categories`),
+                    fetch(`${API_URL}/api/blog/tags`)
+                ]);
+
+                const categoriesData = await categoriesRes.json();
+                const tagsData = await tagsRes.json();
+
+                if (categoriesData.success) {
+                    allCategories = categoriesData.categories;
+                    const categorySelect = document.getElementById('categoryFilter');
+                    allCategories.forEach(cat => {
+                        const option = document.createElement('option');
+                        option.value = cat;
+                        option.textContent = cat;
+                        categorySelect.appendChild(option);
+                    });
+                }
+
+                if (tagsData.success) {
+                    allTags = tagsData.tags;
+                    const tagSelect = document.getElementById('tagFilter');
+                    allTags.forEach(tag => {
+                        const option = document.createElement('option');
+                        option.value = tag;
+                        option.textContent = tag;
+                        tagSelect.appendChild(option);
+                    });
+                }
+            } catch (error) {
+                console.error('Error loading filters:', error);
+            }
+        }
+
+        // Load blogs
+        async function loadBlogs() {
+            const loading = document.getElementById('loading');
+            const container = document.getElementById('blogsContainer');
+            
+            loading.style.display = 'block';
+            container.innerHTML = '';
+
+            try {
+                const category = document.getElementById('categoryFilter').value;
+                const tag = document.getElementById('tagFilter').value;
+                const sortBy = document.getElementById('sortBy').value;
+                const limit = document.getElementById('limitFilter').value;
+
+                const params = new URLSearchParams({
+                    limit,
+                    sortBy,
+                    order: 'desc'
+                });
+
+                if (category) params.append('category', category);
+                if (tag) params.append('tag', tag);
+
+                const response = await fetch(`${API_URL}/api/blog?${params}`);
+                const data = await response.json();
+
+                if (data.success) {
+                    displayStats(data);
+                    
+                    if (data.posts.length === 0) {
+                        container.innerHTML = `
+                            <div class="empty-state">
+                                <h2>📭 No blog posts found</h2>
+                                <p>Start by creating your first blog post!</p>
+                                <button class="btn" onclick="window.location.href='create-blog.html'" style="margin-top: 20px;">Create Blog Post</button>
+                            </div>
+                        `;
+                    } else {
+                        displayBlogs(data.posts);
+                    }
+                } else {
+                    throw new Error(data.error || 'Failed to load blogs');
+                }
+            } catch (error) {
+                container.innerHTML = `
+                    <div class="error">
+                        <h3>❌ Error Loading Blogs</h3>
+                        <p>${error.message}</p>
+                    </div>
+                `;
+            } finally {
+                loading.style.display = 'none';
+            }
+        }
+
+        // Display statistics
+        function displayStats(data) {
+            const stats = document.getElementById('stats');
+            const totalViews = data.posts.reduce((sum, post) => sum + post.views, 0);
+            const featuredCount = data.posts.filter(post => post.featured).length;
+
+            stats.innerHTML = `
+                <div class="stat-card">
+                    <div class="stat-value">${data.total}</div>
+                    <div class="stat-label">Total Posts</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value">${totalViews}</div>
+                    <div class="stat-label">Total Views</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value">${featuredCount}</div>
+                    <div class="stat-label">Featured</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value">${allCategories.length}</div>
+                    <div class="stat-label">Categories</div>
+                </div>
+            `;
+        }
+
+        // Display blogs
+        function displayBlogs(posts) {
+            const container = document.getElementById('blogsContainer');
+            const grid = document.createElement('div');
+            grid.className = 'blogs-grid';
+
+            posts.forEach(post => {
+                const card = document.createElement('div');
+                card.className = 'blog-card';
+                
+                const date = new Date(post.createdAt).toLocaleDateString('en-US', {
+                    year: 'numeric',
+                    month: 'short',
+                    day: 'numeric'
+                });
+
+                card.innerHTML = `
+                    <img src="${post.imageUrl}" alt="${post.title}" class="blog-image" onerror="this.src='https://via.placeholder.com/400x220?text=No+Image'">
+                    <div class="blog-content">
+                        <div class="blog-meta">
+                            <span class="badge badge-category">${post.category}</span>
+                            ${post.featured ? '<span class="badge badge-featured">⭐ Featured</span>' : ''}
+                            <span class="badge badge-views">👁️ ${post.views} views</span>
+                        </div>
+                        <h2 class="blog-title">${post.title}</h2>
+                        <p class="blog-excerpt">${post.excerpt}</p>
+                        ${post.tags.length > 0 ? `
+                            <div class="blog-tags">
+                                ${post.tags.map(tag => `<span class="tag">${tag}</span>`).join('')}
+                            </div>
+                        ` : ''}
+                        <div class="blog-footer">
+                            <div class="blog-info">
+                                <div>📅 ${date}</div>
+                                <div>⏱️ ${post.readTime}</div>
+                            </div>
+                            <div class="blog-actions">
+                                <button class="btn btn-small" onclick="viewBlog('${post.slug}')">View</button>
+                                <button class="btn btn-small btn-delete" onclick="deleteBlog('${post.slug}', '${post.title}')">Delete</button>
+                            </div>
+                        </div>
+                    </div>
+                `;
+
+                grid.appendChild(card);
+            });
+
+            container.appendChild(grid);
+        }
+
+        // View blog
+        function viewBlog(slug) {
+            window.open(`${API_URL}/api/blog/${slug}`, '_blank');
+        }
+
+        // Delete blog
+        async function deleteBlog(slug, title) {
+            if (!confirm(`Are you sure you want to delete "${title}"?`)) {
+                return;
+            }
+
+            try {
+                const response = await fetch(`${API_URL}/api/blog/${slug}`, {
+                    method: 'DELETE'
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    alert('✅ Blog post deleted successfully!');
+                    loadBlogs();
+                } else {
+                    throw new Error(data.error || 'Failed to delete blog');
+                }
+            } catch (error) {
+                alert(`❌ Error: ${error.message}`);
+            }
+        }
+
+        // Event listeners
+        document.getElementById('categoryFilter').addEventListener('change', loadBlogs);
+        document.getElementById('tagFilter').addEventListener('change', loadBlogs);
+        document.getElementById('sortBy').addEventListener('change', loadBlogs);
+        document.getElementById('limitFilter').addEventListener('change', loadBlogs);
+
+        // Initialize
+        loadFilters();
+        loadBlogs();
+    </script>
+</body>
+</html>

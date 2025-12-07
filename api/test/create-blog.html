@@ -1,0 +1,458 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Create Blog Post - EcoFlow</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            overflow: hidden;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 30px;
+            text-align: center;
+        }
+
+        .header h1 {
+            font-size: 2.5rem;
+            margin-bottom: 10px;
+        }
+
+        .header p {
+            opacity: 0.9;
+        }
+
+        .form-container {
+            padding: 40px;
+        }
+
+        .form-group {
+            margin-bottom: 25px;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 600;
+            color: #333;
+            font-size: 1rem;
+        }
+
+        .form-group input,
+        .form-group textarea,
+        .form-group select {
+            width: 100%;
+            padding: 12px 15px;
+            border: 2px solid #e0e0e0;
+            border-radius: 10px;
+            font-size: 1rem;
+            transition: all 0.3s;
+            font-family: inherit;
+        }
+
+        .form-group input:focus,
+        .form-group textarea:focus,
+        .form-group select:focus {
+            outline: none;
+            border-color: #667eea;
+            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+        }
+
+        .form-group textarea {
+            min-height: 200px;
+            resize: vertical;
+        }
+
+        .form-group input[type="file"] {
+            padding: 10px;
+            background: #f8f9fa;
+        }
+
+        .image-preview {
+            margin-top: 15px;
+            border-radius: 10px;
+            overflow: hidden;
+            display: none;
+        }
+
+        .image-preview img {
+            max-width: 100%;
+            height: auto;
+            display: block;
+        }
+
+        .checkbox-group {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .checkbox-group input[type="checkbox"] {
+            width: auto;
+            margin: 0;
+        }
+
+        .tags-input {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            padding: 8px;
+            border: 2px solid #e0e0e0;
+            border-radius: 10px;
+            min-height: 45px;
+        }
+
+        .tag {
+            background: #667eea;
+            color: white;
+            padding: 5px 12px;
+            border-radius: 20px;
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            font-size: 0.9rem;
+        }
+
+        .tag button {
+            background: none;
+            border: none;
+            color: white;
+            cursor: pointer;
+            font-size: 1.2rem;
+            padding: 0;
+            width: 20px;
+            height: 20px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .tag-input-field {
+            border: none;
+            outline: none;
+            flex: 1;
+            min-width: 100px;
+            padding: 5px;
+        }
+
+        .btn {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 15px 40px;
+            font-size: 1.1rem;
+            font-weight: 600;
+            border-radius: 10px;
+            cursor: pointer;
+            transition: all 0.3s;
+            width: 100%;
+        }
+
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 30px rgba(102, 126, 234, 0.4);
+        }
+
+        .btn:active {
+            transform: translateY(0);
+        }
+
+        .btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .response {
+            margin-top: 25px;
+            padding: 20px;
+            border-radius: 10px;
+            display: none;
+        }
+
+        .response.success {
+            background: #d4edda;
+            border: 2px solid #28a745;
+            color: #155724;
+        }
+
+        .response.error {
+            background: #f8d7da;
+            border: 2px solid #dc3545;
+            color: #721c24;
+        }
+
+        .response h3 {
+            margin-bottom: 10px;
+        }
+
+        .response pre {
+            background: rgba(0, 0, 0, 0.1);
+            padding: 15px;
+            border-radius: 5px;
+            overflow-x: auto;
+            font-size: 0.9rem;
+        }
+
+        .hint {
+            font-size: 0.9rem;
+            color: #666;
+            margin-top: 5px;
+        }
+
+        .loading {
+            display: none;
+            text-align: center;
+            padding: 20px;
+        }
+
+        .spinner {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #667eea;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>📝 Create Blog Post</h1>
+            <p>Share your waste management insights with the community</p>
+        </div>
+
+        <div class="form-container">
+            <form id="blogForm">
+                <div class="form-group">
+                    <label for="title">Blog Title *</label>
+                    <input type="text" id="title" name="title" required placeholder="e.g., 10 Ways to Reduce Plastic Waste">
+                    <div class="hint">This will be used to generate the URL slug automatically</div>
+                </div>
+
+                <div class="form-group">
+                    <label for="excerpt">Excerpt *</label>
+                    <textarea id="excerpt" name="excerpt" required placeholder="Brief description of your blog post (1-2 sentences)"></textarea>
+                    <div class="hint">This appears in blog listings and search results</div>
+                </div>
+
+                <div class="form-group">
+                    <label for="content">Content *</label>
+                    <textarea id="content" name="content" required placeholder="Write your full blog post content here..."></textarea>
+                    <div class="hint">Full article content. Read time will be calculated automatically.</div>
+                </div>
+
+                <div class="form-group">
+                    <label for="image">Cover Image *</label>
+                    <input type="file" id="image" name="image" accept="image/*" required>
+                    <div class="hint">Recommended: 1200x630px, JPG or PNG, max 10MB</div>
+                    <div class="image-preview" id="imagePreview">
+                        <img id="previewImg" src="" alt="Preview">
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label for="category">Category *</label>
+                    <select id="category" name="category" required>
+                        <option value="">Select a category</option>
+                        <option value="Recycling">Recycling</option>
+                        <option value="Composting">Composting</option>
+                        <option value="E-Waste">E-Waste</option>
+                        <option value="Sustainability">Sustainability</option>
+                        <option value="Zero Waste">Zero Waste</option>
+                        <option value="Community">Community</option>
+                        <option value="Technology">Technology</option>
+                        <option value="Education">Education</option>
+                    </select>
+                </div>
+
+                <div class="form-group">
+                    <label>Tags</label>
+                    <div class="tags-input" id="tagsContainer">
+                        <input type="text" class="tag-input-field" id="tagInput" placeholder="Type and press Enter">
+                    </div>
+                    <div class="hint">Add relevant tags to help users find your content</div>
+                </div>
+
+                <div class="form-group">
+                    <div class="checkbox-group">
+                        <input type="checkbox" id="featured" name="featured">
+                        <label for="featured" style="margin-bottom: 0;">Mark as Featured</label>
+                    </div>
+                    <div class="hint">Featured posts appear prominently on the blog page</div>
+                </div>
+
+                <button type="submit" class="btn" id="submitBtn">
+                    Create Blog Post
+                </button>
+            </form>
+
+            <div class="loading" id="loading">
+                <div class="spinner"></div>
+                <p style="margin-top: 15px;">Creating blog post...</p>
+            </div>
+
+            <div class="response" id="response"></div>
+        </div>
+    </div>
+
+    <script>
+        const API_URL = 'http://localhost:3000'; // Change to your API URL
+        const tags = [];
+
+        // Image preview
+        document.getElementById('image').addEventListener('change', function(e) {
+            const file = e.target.files[0];
+            if (file) {
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    const preview = document.getElementById('imagePreview');
+                    const img = document.getElementById('previewImg');
+                    img.src = e.target.result;
+                    preview.style.display = 'block';
+                };
+                reader.readAsDataURL(file);
+            }
+        });
+
+        // Tags functionality
+        const tagInput = document.getElementById('tagInput');
+        const tagsContainer = document.getElementById('tagsContainer');
+
+        tagInput.addEventListener('keydown', function(e) {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                const tag = tagInput.value.trim();
+                if (tag && !tags.includes(tag)) {
+                    tags.push(tag);
+                    addTagElement(tag);
+                    tagInput.value = '';
+                }
+            }
+        });
+
+        function addTagElement(tag) {
+            const tagEl = document.createElement('div');
+            tagEl.className = 'tag';
+            tagEl.innerHTML = `
+                ${tag}
+                <button type="button" onclick="removeTag('${tag}')">×</button>
+            `;
+            tagsContainer.insertBefore(tagEl, tagInput);
+        }
+
+        function removeTag(tag) {
+            const index = tags.indexOf(tag);
+            if (index > -1) {
+                tags.splice(index, 1);
+            }
+            renderTags();
+        }
+
+        function renderTags() {
+            // Clear existing tags
+            const existingTags = tagsContainer.querySelectorAll('.tag');
+            existingTags.forEach(tag => tag.remove());
+            
+            // Re-render all tags
+            tags.forEach(tag => addTagElement(tag));
+        }
+
+        // Form submission
+        document.getElementById('blogForm').addEventListener('submit', async function(e) {
+            e.preventDefault();
+
+            const submitBtn = document.getElementById('submitBtn');
+            const loading = document.getElementById('loading');
+            const response = document.getElementById('response');
+
+            // Disable form
+            submitBtn.disabled = true;
+            loading.style.display = 'block';
+            response.style.display = 'none';
+
+            try {
+                const formData = new FormData();
+                formData.append('title', document.getElementById('title').value);
+                formData.append('excerpt', document.getElementById('excerpt').value);
+                formData.append('content', document.getElementById('content').value);
+                formData.append('category', document.getElementById('category').value);
+                formData.append('tags', JSON.stringify(tags));
+                formData.append('featured', document.getElementById('featured').checked);
+                formData.append('image', document.getElementById('image').files[0]);
+
+                const res = await fetch(`${API_URL}/api/blog`, {
+                    method: 'POST',
+                    body: formData
+                });
+
+                const data = await res.json();
+
+                if (data.success) {
+                    response.className = 'response success';
+                    response.innerHTML = `
+                        <h3>✅ Success!</h3>
+                        <p><strong>Blog post created successfully!</strong></p>
+                        <p><strong>Slug:</strong> ${data.post.slug}</p>
+                        <p><strong>Read Time:</strong> ${data.post.readTime}</p>
+                        <pre>${JSON.stringify(data.post, null, 2)}</pre>
+                        <p style="margin-top: 15px;">
+                            <a href="view-blogs.html" style="color: #155724; text-decoration: underline;">View All Blogs →</a>
+                        </p>
+                    `;
+                    
+                    // Reset form
+                    document.getElementById('blogForm').reset();
+                    document.getElementById('imagePreview').style.display = 'none';
+                    tags.length = 0;
+                    renderTags();
+                } else {
+                    throw new Error(data.error || 'Unknown error');
+                }
+
+                response.style.display = 'block';
+            } catch (error) {
+                response.className = 'response error';
+                response.innerHTML = `
+                    <h3>❌ Error</h3>
+                    <p><strong>Failed to create blog post:</strong></p>
+                    <p>${error.message}</p>
+                    <pre>${error.stack || ''}</pre>
+                `;
+                response.style.display = 'block';
+            } finally {
+                submitBtn.disabled = false;
+                loading.style.display = 'none';
+            }
+        });
+    </script>
+</body>
+</html>
