@@ -19,7 +19,9 @@ import {
   Package,
   QrCode,
   Phone,
+  Mail,
 } from "lucide-react";
+import { QRCodeSVG } from "qrcode.react";
 import { API_CONFIG } from "@/lib/api-config";
 
 export default function ListingDetailPage() {
@@ -587,10 +589,10 @@ export default function ListingDetailPage() {
                       type="text"
                       value={verificationCode}
                       onChange={(e) =>
-                        setVerificationCode(e.target.value.toUpperCase())
+                        setVerificationCode(e.target.value)
                       }
                       placeholder="Enter buyer's code"
-                      className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent uppercase"
+                      className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent font-mono"
                       required
                     />
                     <button
@@ -616,39 +618,70 @@ export default function ListingDetailPage() {
 
               {/* Buyer - Show QR Code */}
               {isWinner && listing.status === "ENDED" && (
-                <div className="p-6 bg-gradient-to-br from-purple-50 to-blue-50 border-2 border-purple-200 rounded-xl">
-                  <div className="text-center mb-4">
-                    <div className="inline-flex items-center justify-center w-16 h-16 bg-purple-500 text-white rounded-full mb-3">
-                      <CheckCircle2 className="w-8 h-8" />
+                <div className="space-y-4">
+                  {/* Email Notification Banner */}
+                  <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg">
+                    <div className="flex items-start gap-3">
+                      <Mail className="w-5 h-5 text-blue-600 mt-0.5" />
+                      <div>
+                        <p className="text-sm font-semibold text-blue-900">
+                          QR Code Sent to Email
+                        </p>
+                        <p className="text-xs text-blue-700 mt-1">
+                          We've sent this QR code to your email ({user?.primaryEmailAddress?.emailAddress || 'your registered email'}). You can show either the email or this screen to the seller.
+                        </p>
+                      </div>
                     </div>
-                    <h3 className="text-xl font-bold text-gray-900 mb-2">
-                      You Won! 🎉
-                    </h3>
-                    <p className="text-sm text-gray-600">
-                      Show this code to the seller at pickup
-                    </p>
                   </div>
 
-                  <div className="bg-white p-6 rounded-xl mb-4">
-                    <p className="text-sm text-gray-600 mb-2 text-center">
-                      Your Verification Code
-                    </p>
-                    <p className="text-4xl font-bold text-purple-600 text-center tracking-wider">
-                      {listing.verificationCode}
-                    </p>
-                  </div>
-
-                  <div className="text-sm text-gray-600 space-y-2">
-                    <p className="flex items-center gap-2">
-                      <MapPin className="w-4 h-4" />
-                      Pickup at: {listing.city}, {listing.state}
-                    </p>
-                    {listing.seller.phone && (
-                      <p className="flex items-center gap-2">
-                        <Phone className="w-4 h-4" />
-                        Contact: {listing.seller.phone}
+                  {/* QR Code Display */}
+                  <div className="p-6 bg-gradient-to-br from-purple-50 to-blue-50 border-2 border-purple-200 rounded-xl">
+                    <div className="text-center mb-4">
+                      <div className="inline-flex items-center justify-center w-16 h-16 bg-purple-500 text-white rounded-full mb-3">
+                        <CheckCircle2 className="w-8 h-8" />
+                      </div>
+                      <h3 className="text-xl font-bold text-gray-900 mb-2">
+                        You Won! 🎉
+                      </h3>
+                      <p className="text-sm text-gray-600">
+                        Show this QR code to the seller at pickup
                       </p>
-                    )}
+                    </div>
+
+                    {/* QR Code Visual */}
+                    <div className="bg-white p-6 rounded-xl mb-4 flex flex-col items-center">
+                      <div className="bg-white p-4 rounded-lg border-4 border-purple-500 mb-4">
+                        <QRCodeSVG
+                          value={listing.verificationCode}
+                          size={200}
+                          level="H"
+                          includeMargin={true}
+                          fgColor="#7c3aed"
+                        />
+                      </div>
+                      <p className="text-sm text-gray-600 mb-2 text-center font-semibold">
+                        Verification Code
+                      </p>
+                      <p className="text-2xl font-bold text-purple-600 text-center tracking-wider">
+                        {listing.verificationCode}
+                      </p>
+                      <p className="text-xs text-gray-500 mt-2 text-center">
+                        (Backup text code if QR scan fails)
+                      </p>
+                    </div>
+
+                    <div className="text-sm text-gray-600 space-y-2">
+                      <p className="flex items-center gap-2">
+                        <MapPin className="w-4 h-4" />
+                        Pickup at: {listing.city}, {listing.state}
+                      </p>
+                      {listing.seller.phone && (
+                        <p className="flex items-center gap-2">
+                          <Phone className="w-4 h-4" />
+                          Contact: {listing.seller.phone}
+                        </p>
+                      )}
+                    </div>
                   </div>
                 </div>
               )}
