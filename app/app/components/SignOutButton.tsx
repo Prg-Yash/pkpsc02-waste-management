@@ -17,17 +17,15 @@ export const SignOutButton = () => {
 
   return (
     <Button
-      onPress={handleSignOut}
-      backgroundColor="rgba(255, 255, 255, 0.2)"
-      paddingHorizontal="$3"
-      paddingVertical="$2"
-      borderRadius="$3"
+      size="$3"
+      backgroundColor="#fee2e2"
+      borderColor="#fecaca"
       borderWidth={1}
-      borderColor="rgba(255, 255, 255, 0.5)"
-      pressStyle={{ opacity: 0.7, backgroundColor: "rgba(255, 255, 255, 0.3)" }}
-      height="unset"
+      pressStyle={{ scale: 0.95, backgroundColor: "#fecaca" }}
+      onPress={handleSignOut}
+      paddingHorizontal="$3"
     >
-      <Text color="white" fontWeight="600" fontSize="$3">
+      <Text color="#dc2626" fontWeight="600" fontSize="$3">
         Sign Out
       </Text>
     </Button>

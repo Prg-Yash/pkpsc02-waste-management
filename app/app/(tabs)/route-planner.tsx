@@ -1,343 +1,452 @@
-import React from "react";
-import {
-  ScrollView,
-  YStack,
-  XStack,
-  Text,
-  Button,
-  H2,
-  H4,
-  Paragraph,
-  Theme,
-  Spinner,
-  Image,
-  Separator,
-} from "tamagui";
-import { useUser } from "@clerk/clerk-expo";
-import { Alert, RefreshControl, Linking, Dimensions, View } from "react-native";
-import * as Location from "expo-location";
-import MapView, { Marker, Polyline, PROVIDER_GOOGLE } from "react-native-maps";
-import {
-  fetchRoutePlannerReports,
-  removeFromRoutePlanner,
-  RouteReport,
-} from "../services/routePlannerService";
-import { formatDistance, calculateDistance } from "../utils/locationUtils";
-import CollectorVerificationScreen from "../components/CollectorVerificationScreen";
-import {
-  MapPin,
-  Navigation,
-  Trash2,
-  ChevronUp,
-  ChevronDown,
-} from "@tamagui/lucide-icons";
+"use client"
 
-const { width, height } = Dimensions.get("window");
+import { useUser } from "@clerk/clerk-expo"
+import { ChevronDown, ChevronUp, Navigation, Trash2 } from "@tamagui/lucide-icons"
+import { LinearGradient } from "expo-linear-gradient"
+import * as Location from "expo-location"
+import React, { useEffect, useRef } from "react"
+import { Alert, Animated, Dimensions, Easing, Linking, RefreshControl, View } from "react-native"
+import MapView, { Marker, Polyline, PROVIDER_GOOGLE } from "react-native-maps"
+import { Button, Image, ScrollView, Spinner, Text, Theme, XStack, YStack } from "tamagui"
+import CollectorVerificationScreen from "../components/CollectorVerificationScreen"
+import { fetchRoutePlannerReports, removeFromRoutePlanner, type RouteReport } from "../services/routePlannerService"
+import { calculateDistance, formatDistance } from "../utils/locationUtils"
+
+const { width, height } = Dimensions.get("window")
+const SCREEN_HEIGHT = height
+
+const FloatingParticle = ({ delay, startX }: { delay: number; startX: number }) => {
+  const translateY = useRef(new Animated.Value(SCREEN_HEIGHT + 50)).current
+  const translateX = useRef(new Animated.Value(0)).current
+  const rotate = useRef(new Animated.Value(0)).current
+  const opacity = useRef(new Animated.Value(0)).current
+
+  useEffect(() => {
+    const animate = () => {
+      translateY.setValue(SCREEN_HEIGHT + 50)
+      translateX.setValue(0)
+      rotate.setValue(0)
+      opacity.setValue(0)
+
+      Animated.parallel([
+        Animated.timing(translateY, {
+          toValue: -100,
+          duration: 8000 + Math.random() * 4000,
+          delay,
+          easing: Easing.linear,
+          useNativeDriver: true,
+        }),
+        Animated.sequence([
+          Animated.timing(opacity, {
+            toValue: 0.6,
+            duration: 1000,
+            delay,
+            useNativeDriver: true,
+          }),
+          Animated.timing(opacity, {
+            toValue: 0.6,
+            duration: 5000 + Math.random() * 3000,
+            useNativeDriver: true,
+          }),
+          Animated.timing(opacity, {
+            toValue: 0,
+            duration: 1500,
+            useNativeDriver: true,
+          }),
+        ]),
+        Animated.timing(translateX, {
+          toValue: Math.sin(delay) * 40,
+          duration: 8000 + Math.random() * 4000,
+          delay,
+          easing: Easing.inOut(Easing.sin),
+          useNativeDriver: true,
+        }),
+        Animated.timing(rotate, {
+          toValue: 1,
+          duration: 8000 + Math.random() * 4000,
+          delay,
+          easing: Easing.linear,
+          useNativeDriver: true,
+        }),
+      ]).start(() => animate())
+    }
+    animate()
+  }, [])
+
+  const spin = rotate.interpolate({
+    inputRange: [0, 1],
+    outputRange: ["0deg", "360deg"],
+  })
+
+  return (
+    <Animated.View
+      style={{
+        position: "absolute",
+        left: startX,
+        opacity,
+        transform: [{ translateY }, { translateX }, { rotate: spin }],
+      }}
+    >
+      <Text style={{ fontSize: 16 + Math.random() * 10, color: "#22c55e" }}>
+        {["🗺️", "📍", "🚗", "✦", "●"][Math.floor(Math.random() * 5)]}
+      </Text>
+    </Animated.View>
+  )
+}
 
 export default function RoutePlannerScreen() {
-  const { user } = useUser();
-  const [reports, setReports] = React.useState<RouteReport[]>([]);
-  const [isLoading, setIsLoading] = React.useState(true);
-  const [refreshing, setRefreshing] = React.useState(false);
-  const [userLocation, setUserLocation] = React.useState<{
-    latitude: number;
-    longitude: number;
-  } | null>(null);
-  const [selectedReport, setSelectedReport] =
-    React.useState<RouteReport | null>(null);
-  const [totalDistance, setTotalDistance] = React.useState<number>(0);
-  const [mapRegion, setMapRegion] = React.useState({
-    latitude: 19.076, // Default to Mumbai
-    longitude: 72.8777,
-    latitudeDelta: 0.0922,
-    longitudeDelta: 0.0421,
-  });
+  const { user } = useUser()
+  const [reports, setReports] = React.useState<RouteReport[]>([])
+  const [loading, setLoading] = React.useState(true)
+  const [refreshing, setRefreshing] = React.useState(false)
+  const [selectedReport, setSelectedReport] = React.useState<RouteReport | null>(null)
+  const [currentLocation, setCurrentLocation] = React.useState<{ latitude: number; longitude: number } | null>(null)
+  const [expandedCard, setExpandedCard] = React.useState<string | null>(null)
+  const mapRef = useRef<MapView>(null)
 
-  // Fetch user location on mount
-  React.useEffect(() => {
-    getUserLocation();
-  }, []);
+  // Animation values
+  const headerSlide = useRef(new Animated.Value(-50)).current
+  const headerOpacity = useRef(new Animated.Value(0)).current
+  const statsSlide = useRef(new Animated.Value(50)).current
+  const statsOpacity = useRef(new Animated.Value(0)).current
+  const mapSlide = useRef(new Animated.Value(100)).current
+  const mapOpacity = useRef(new Animated.Value(0)).current
+  const logoRotate = useRef(new Animated.Value(0)).current
+  const logoPulse = useRef(new Animated.Value(1)).current
 
-  // Fetch route reports on mount
-  React.useEffect(() => {
-    if (user) {
-      loadRouteReports();
-    }
-  }, [user]);
+  // Animated counters
+  const [animatedStops, setAnimatedStops] = React.useState(0)
+  const [animatedDistance, setAnimatedDistance] = React.useState("0.0")
+  const [animatedPoints, setAnimatedPoints] = React.useState(0)
 
-  // Calculate total distance when reports or user location changes
-  React.useEffect(() => {
-    if (userLocation && reports.length > 0) {
-      calculateTotalDistance();
-    }
-  }, [reports, userLocation]);
+  useEffect(() => {
+    // Entrance animations
+    Animated.parallel([
+      Animated.spring(headerSlide, {
+        toValue: 0,
+        tension: 50,
+        friction: 8,
+        useNativeDriver: true,
+      }),
+      Animated.timing(headerOpacity, {
+        toValue: 1,
+        duration: 600,
+        useNativeDriver: true,
+      }),
+      Animated.spring(statsSlide, {
+        toValue: 0,
+        tension: 50,
+        friction: 8,
+        delay: 200,
+        useNativeDriver: true,
+      }),
+      Animated.timing(statsOpacity, {
+        toValue: 1,
+        duration: 600,
+        delay: 200,
+        useNativeDriver: true,
+      }),
+      Animated.spring(mapSlide, {
+        toValue: 0,
+        tension: 50,
+        friction: 8,
+        delay: 400,
+        useNativeDriver: true,
+      }),
+      Animated.timing(mapOpacity, {
+        toValue: 1,
+        duration: 600,
+        delay: 400,
+        useNativeDriver: true,
+      }),
+    ]).start()
 
-  // Update map region when user location or reports change
-  React.useEffect(() => {
-    if (reports.length > 0 && reports[0].latitude && reports[0].longitude) {
-      setMapRegion({
-        latitude: reports[0].latitude,
-        longitude: reports[0].longitude,
-        latitudeDelta: 0.0922,
-        longitudeDelta: 0.0421,
-      });
-    } else if (userLocation) {
-      setMapRegion({
-        latitude: userLocation.latitude,
-        longitude: userLocation.longitude,
-        latitudeDelta: 0.0922,
-        longitudeDelta: 0.0421,
-      });
-    }
-  }, [reports, userLocation]);
+    // Logo animations
+    Animated.loop(
+      Animated.timing(logoRotate, {
+        toValue: 1,
+        duration: 10000,
+        easing: Easing.linear,
+        useNativeDriver: true,
+      }),
+    ).start()
 
-  const getUserLocation = async () => {
-    try {
-      const { status } = await Location.requestForegroundPermissionsAsync();
-      if (status !== "granted") {
-        console.log("Location permission denied");
-        return;
+    Animated.loop(
+      Animated.sequence([
+        Animated.timing(logoPulse, {
+          toValue: 1.1,
+          duration: 1500,
+          easing: Easing.inOut(Easing.ease),
+          useNativeDriver: true,
+        }),
+        Animated.timing(logoPulse, {
+          toValue: 1,
+          duration: 1500,
+          easing: Easing.inOut(Easing.ease),
+          useNativeDriver: true,
+        }),
+      ]),
+    ).start()
+  }, [])
+
+  // Animate counters when reports change
+  useEffect(() => {
+    const targetStops = reports.length
+    const targetDistance = calculateTotalDistance()
+    const targetPoints = reports.length * 50
+
+    // Animate stops
+    let currentStops = 0
+    const stopsInterval = setInterval(() => {
+      if (currentStops < targetStops) {
+        currentStops++
+        setAnimatedStops(currentStops)
+      } else {
+        clearInterval(stopsInterval)
       }
+    }, 100)
 
-      const location = await Location.getCurrentPositionAsync({});
-      setUserLocation({
+    // Animate distance
+    let currentDistance = 0
+    const distanceInterval = setInterval(() => {
+      if (currentDistance < targetDistance) {
+        currentDistance += targetDistance / 20
+        setAnimatedDistance(Math.min(currentDistance, targetDistance).toFixed(1))
+      } else {
+        clearInterval(distanceInterval)
+      }
+    }, 50)
+
+    // Animate points
+    let currentPoints = 0
+    const pointsInterval = setInterval(() => {
+      if (currentPoints < targetPoints) {
+        currentPoints += Math.ceil(targetPoints / 20)
+        setAnimatedPoints(Math.min(currentPoints, targetPoints))
+      } else {
+        clearInterval(pointsInterval)
+      }
+    }, 50)
+
+    return () => {
+      clearInterval(stopsInterval)
+      clearInterval(distanceInterval)
+      clearInterval(pointsInterval)
+    }
+  }, [reports])
+
+  const spin = logoRotate.interpolate({
+    inputRange: [0, 1],
+    outputRange: ["0deg", "360deg"],
+  })
+
+  useEffect(() => {
+    loadData()
+    getCurrentLocation()
+  }, [user])
+
+  const getCurrentLocation = async () => {
+    try {
+      const { status } = await Location.requestForegroundPermissionsAsync()
+      if (status !== "granted") {
+        Alert.alert("Permission Denied", "Location permission is required to show your current location on the map.")
+        return
+      }
+      const location = await Location.getCurrentPositionAsync({})
+      setCurrentLocation({
         latitude: location.coords.latitude,
         longitude: location.coords.longitude,
-      });
+      })
     } catch (error) {
-      console.error("Error getting location:", error);
+      console.error("Error getting location:", error)
     }
-  };
+  }
 
-  const loadRouteReports = async () => {
-    if (!user) return;
-
+  const loadData = async () => {
+    if (!user) return
     try {
-      setIsLoading(true);
-      const routeReports = await fetchRoutePlannerReports(user.id);
-      setReports(routeReports);
-      console.log(`✅ Loaded ${routeReports.length} reports in route planner`);
+      setLoading(true)
+      const data = await fetchRoutePlannerReports(user.id)
+      setReports(data)
     } catch (error) {
-      console.error("Error loading route reports:", error);
-      Alert.alert(
-        "Error",
-        "Failed to load route planner reports. Please try again."
-      );
+      console.error("Error loading route planner:", error)
+      Alert.alert("Error", "Failed to load route planner data")
     } finally {
-      setIsLoading(false);
+      setLoading(false)
     }
-  };
-
-  const calculateTotalDistance = () => {
-    if (!userLocation || reports.length === 0) {
-      setTotalDistance(0);
-      return;
-    }
-
-    let total = 0;
-    let currentLat = userLocation.latitude;
-    let currentLng = userLocation.longitude;
-
-    // Calculate distance from user to first report, then between consecutive reports
-    reports.forEach((report) => {
-      if (report.latitude && report.longitude) {
-        const distance = calculateDistance(
-          currentLat,
-          currentLng,
-          report.latitude,
-          report.longitude
-        );
-        total += distance;
-        currentLat = report.latitude;
-        currentLng = report.longitude;
-      }
-    });
-
-    // Convert meters to kilometers
-    setTotalDistance(total / 1000);
-  };
+  }
 
   const onRefresh = async () => {
-    setRefreshing(true);
-    await getUserLocation();
-    await loadRouteReports();
-    setRefreshing(false);
-  };
+    setRefreshing(true)
+    await loadData()
+    setRefreshing(false)
+  }
 
   const handleRemoveFromRoute = async (reportId: string) => {
-    if (!user) return;
+    if (!user) return
 
-    Alert.alert(
-      "Remove from Route?",
-      "This will change the report status back to PENDING.",
-      [
-        { text: "Cancel", style: "cancel" },
-        {
-          text: "Remove",
-          style: "destructive",
-          onPress: async () => {
-            try {
-              await removeFromRoutePlanner(reportId, user.id);
-              Alert.alert("Removed", "Report removed from route planner");
-              await loadRouteReports();
-            } catch (error: any) {
-              Alert.alert(
-                "Error",
-                error.message || "Failed to remove from route"
-              );
-            }
-          },
+    Alert.alert("Remove from Route?", "This will change the report status back to PENDING.", [
+      { text: "Cancel", style: "cancel" },
+      {
+        text: "Remove",
+        style: "destructive",
+        onPress: async () => {
+          try {
+            await removeFromRoutePlanner(reportId, user.id)
+            Alert.alert("Removed", "Report removed from route planner")
+            await loadData()
+          } catch (error: any) {
+            Alert.alert("Error", error.message || "Failed to remove from route")
+          }
         },
-      ]
-    );
-  };
+      },
+    ])
+  }
+
+  const movePriorityUp = (reportId: string) => {
+    const index = reports.findIndex((r) => r.id === reportId)
+    if (index === 0) return // Already at top
+
+    const newReports = [...reports]
+    ;[newReports[index - 1], newReports[index]] = [newReports[index], newReports[index - 1]]
+    setReports(newReports)
+  }
+
+  const movePriorityDown = (reportId: string) => {
+    const index = reports.findIndex((r) => r.id === reportId)
+    if (index === reports.length - 1) return // Already at bottom
+
+    const newReports = [...reports]
+    ;[newReports[index], newReports[index + 1]] = [newReports[index + 1], newReports[index]]
+    setReports(newReports)
+  }
 
   const handleCollectNow = (report: RouteReport) => {
-    setSelectedReport(report);
-  };
+    setSelectedReport(report)
+  }
 
   const handleVerificationSuccess = async () => {
-    // Reload reports (collected report will be removed)
-    setSelectedReport(null);
-    await loadRouteReports();
-    Alert.alert(
-      "Success! 🎉",
-      "Collection verified successfully. The report has been removed from your route."
-    );
-  };
+    setSelectedReport(null)
+    await loadData()
+    Alert.alert("Success! 🎉", "Collection verified successfully. The report has been removed from your route.")
+  }
 
   const handleVerificationCancel = () => {
-    setSelectedReport(null);
-  };
+    setSelectedReport(null)
+  }
 
-  // Move priority up (decrease index)
-  const movePriorityUp = (index: number) => {
-    if (index === 0) return; // Already at top
+  const calculateTotalDistance = () => {
+    if (reports.length < 2 || !currentLocation) return 0
 
-    const newReports = [...reports];
-    [newReports[index - 1], newReports[index]] = [
-      newReports[index],
-      newReports[index - 1],
-    ];
-    setReports(newReports);
-  };
+    let totalDistance = 0
+    const sortedReports = [...reports].sort((a, b) => a.priority - b.priority)
 
-  // Move priority down (increase index)
-  const movePriorityDown = (index: number) => {
-    if (index === reports.length - 1) return; // Already at bottom
+    // Distance from current location to first stop
+    totalDistance += calculateDistance(
+      currentLocation.latitude,
+      currentLocation.longitude,
+      sortedReports[0].latitude,
+      sortedReports[0].longitude,
+    )
 
-    const newReports = [...reports];
-    [newReports[index], newReports[index + 1]] = [
-      newReports[index + 1],
-      newReports[index],
-    ];
-    setReports(newReports);
-  };
+    // Distance between stops
+    for (let i = 0; i < sortedReports.length - 1; i++) {
+      totalDistance += calculateDistance(
+        sortedReports[i].latitude,
+        sortedReports[i].longitude,
+        sortedReports[i + 1].latitude,
+        sortedReports[i + 1].longitude,
+      )
+    }
+
+    return totalDistance
+  }
 
   const openRouteInMaps = () => {
     if (reports.length === 0) {
-      Alert.alert("No Route", "Add some reports to your route first!");
-      return;
+      Alert.alert("No Stops", "Add some waste reports to your route first")
+      return
     }
 
-    if (!userLocation) {
-      Alert.alert("Location Error", "Unable to get your current location");
-      return;
+    const sortedReports = [...reports].sort((a, b) => a.priority - b.priority)
+    const waypoints = sortedReports.map((r) => `${r.latitude},${r.longitude}`).join("|")
+    const destination = sortedReports[sortedReports.length - 1]
+    const origin = currentLocation
+      ? `${currentLocation.latitude},${currentLocation.longitude}`
+      : `${sortedReports[0].latitude},${sortedReports[0].longitude}`
+
+    const url = `https://www.google.com/maps/dir/?api=1&origin=${origin}&destination=${destination.latitude},${destination.longitude}&waypoints=${waypoints}&travelmode=driving`
+
+    Linking.openURL(url)
+  }
+
+  const fitMapToMarkers = () => {
+    if (mapRef.current && reports.length > 0) {
+      const coordinates = reports.map((r) => ({
+        latitude: r.latitude,
+        longitude: r.longitude,
+      }))
+      if (currentLocation) {
+        coordinates.push(currentLocation)
+      }
+      mapRef.current.fitToCoordinates(coordinates, {
+        edgePadding: { top: 50, right: 50, bottom: 50, left: 50 },
+        animated: true,
+      })
     }
-
-    // Build route: origin (user) -> waypoints (all except last) -> destination (last report)
-    const origin = `${userLocation.latitude},${userLocation.longitude}`;
-
-    const validReports = reports.filter((r) => r.latitude && r.longitude);
-
-    if (validReports.length === 0) {
-      Alert.alert("No Route", "No valid locations found in route!");
-      return;
-    }
-
-    // Last report is the destination
-    const lastReport = validReports[validReports.length - 1];
-    const destination = `${lastReport.latitude},${lastReport.longitude}`;
-
-    // All reports except the last are waypoints
-    const waypoints = validReports
-      .slice(0, -1)
-      .map((r) => `${r.latitude},${r.longitude}`)
-      .join("|");
-
-    // Build Google Maps URL - dir_action=navigate forces navigation mode
-    let url = `https://www.google.com/maps/dir/?api=1&origin=${origin}&destination=${destination}&travelmode=driving&dir_action=navigate`;
-
-    // Only add waypoints parameter if there are intermediate stops
-    if (waypoints) {
-      url += `&waypoints=${waypoints}`;
-    }
-
-    console.log("Opening Google Maps with URL:", url);
-
-    Linking.openURL(url).catch((err) => {
-      console.error("Failed to open maps:", err);
-      Alert.alert("Error", "Failed to open Google Maps");
-    });
-  };
+  }
 
   const getRouteCoordinates = () => {
-    if (!userLocation || reports.length === 0) return [];
+    const sortedReports = [...reports].sort((a, b) => a.priority - b.priority)
+    const coordinates = []
 
-    const coordinates = [
-      {
-        latitude: userLocation.latitude,
-        longitude: userLocation.longitude,
-      },
-    ];
-
-    // Add all report locations in priority order
-    reports.forEach((report) => {
-      if (report.latitude && report.longitude) {
-        coordinates.push({
-          latitude: report.latitude,
-          longitude: report.longitude,
-        });
-      }
-    });
-
-    return coordinates;
-  };
-
-  const getDistanceText = (report: RouteReport): string => {
-    if (!userLocation || !report.latitude || !report.longitude) {
-      return "Unknown";
+    if (currentLocation) {
+      coordinates.push(currentLocation)
     }
-    const distance = calculateDistance(
-      userLocation.latitude,
-      userLocation.longitude,
-      report.latitude,
-      report.longitude
-    );
-    return formatDistance(distance);
-  };
+
+    sortedReports.forEach((report) => {
+      coordinates.push({
+        latitude: report.latitude,
+        longitude: report.longitude,
+      })
+    })
+
+    return coordinates
+  }
+
+  const getPriorityColor = (priority: number) => {
+    if (priority === 1) return "#dc2626"
+    if (priority === 2) return "#ea580c"
+    if (priority === 3) return "#ca8a04"
+    return "#16a34a"
+  }
+
+  const getWasteTypeBgColor = (wasteType: string) => {
+    const colors: { [key: string]: string } = {
+      Plastic: "#dbeafe",
+      Organic: "#dcfce7",
+      Metal: "#fef3c7",
+      Glass: "#f3e8ff",
+      Electronic: "#fee2e2",
+      Paper: "#ccfbf1",
+      Mixed: "#f3f4f6",
+    }
+    return colors[wasteType] || "#f3f4f6"
+  }
 
   const getWasteTypeColor = (wasteType: string) => {
     const colors: { [key: string]: string } = {
-      Plastic: "$blue9",
-      Organic: "$green9",
-      Metal: "$yellow9",
-      Glass: "$purple9",
-      Electronic: "$red9",
-      Paper: "$teal9",
-      Mixed: "$gray9",
-    };
-    return colors[wasteType] || "$gray9";
-  };
+      Plastic: "#2563eb",
+      Organic: "#16a34a",
+      Metal: "#ca8a04",
+      Glass: "#9333ea",
+      Electronic: "#dc2626",
+      Paper: "#0d9488",
+      Mixed: "#6b7280",
+    }
+    return colors[wasteType] || "#6b7280"
+  }
 
-  const getPriorityColor = (priority: number) => {
-    if (priority === 1) return "$red9";
-    if (priority === 2) return "$orange9";
-    if (priority === 3) return "$yellow9";
-    return "$green9";
-  };
-
-  // If verification screen is open, show it
   if (selectedReport && user) {
     return (
       <CollectorVerificationScreen
@@ -346,423 +455,518 @@ export default function RoutePlannerScreen() {
         onSuccess={handleVerificationSuccess}
         onCancel={handleVerificationCancel}
       />
-    );
+    )
+  }
+
+  if (loading) {
+    return (
+      <Theme name="light">
+        <YStack flex={1} backgroundColor="#f0fdf4" justifyContent="center" alignItems="center">
+          <LinearGradient
+            colors={["#f0fdf4", "#dcfce7", "#bbf7d0"]}
+            style={{
+              position: "absolute",
+              left: 0,
+              right: 0,
+              top: 0,
+              bottom: 0,
+            }}
+          />
+          <Spinner size="large" color="#22c55e" />
+          <Text style={{ color: "#166534", marginTop: 16, fontWeight: "600" }}>Loading route data...</Text>
+        </YStack>
+      </Theme>
+    )
   }
 
   return (
     <Theme name="light">
-      <ScrollView
-        flex={1}
-        backgroundColor="$background"
-        refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
-        }
-      >
-        {/* Header with Stats */}
-        <YStack margin="$4">
-          <XStack
-            justifyContent="space-between"
-            alignItems="center"
-            marginBottom="$4"
-            gap="$2"
-            flexWrap="wrap"
+      <YStack flex={1} backgroundColor="#f0fdf4">
+        <LinearGradient
+          colors={["#f0fdf4", "#dcfce7", "#bbf7d0"]}
+          style={{
+            position: "absolute",
+            left: 0,
+            right: 0,
+            top: 0,
+            bottom: 0,
+          }}
+        />
+
+        {/* Floating particles */}
+        {[...Array(8)].map((_, i) => (
+          <FloatingParticle key={i} delay={i * 800} startX={Math.random() * width} />
+        ))}
+
+        <ScrollView
+          flex={1}
+          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+          showsVerticalScrollIndicator={false}
+        >
+          {/* Header */}
+          <Animated.View
+            style={{
+              transform: [{ translateY: headerSlide }],
+              opacity: headerOpacity,
+              paddingTop: 60,
+              paddingBottom: 20,
+              alignItems: "center",
+            }}
           >
-            <YStack flex={1} minWidth={200}>
-              <H2 color="$gray12" fontWeight="bold">
-                🗺️ Collection Route
-              </H2>
-              <Text color="$gray10" fontSize="$2" marginTop="$1">
-                Plan your optimal route
-              </Text>
+            <YStack alignItems="center" marginBottom={8}>
+              <YStack
+                position="absolute"
+                width={80}
+                height={80}
+                borderRadius={40}
+                backgroundColor="#22c55e"
+                opacity={0.2}
+              />
+              <Animated.View
+                style={{
+                  transform: [{ rotate: spin }, { scale: logoPulse }],
+                }}
+              >
+                <Text style={{ fontSize: 56 }}>🗺️</Text>
+              </Animated.View>
             </YStack>
+            <Text
+              style={{
+                fontSize: 28,
+                fontWeight: "bold",
+                color: "#166534",
+                marginTop: 8,
+              }}
+            >
+              Collection Route
+            </Text>
+            <Text style={{ fontSize: 14, color: "#22c55e", marginTop: 4 }}>Plan your optimal route</Text>
+          </Animated.View>
+
+          {/* Stats Card */}
+          <Animated.View
+            style={{
+              transform: [{ translateY: statsSlide }],
+              opacity: statsOpacity,
+              marginHorizontal: 20,
+              marginBottom: 20,
+            }}
+          >
+            <YStack
+              backgroundColor="white"
+              borderRadius={24}
+              padding={20}
+              style={{
+                shadowColor: "#22c55e",
+                shadowOffset: { width: 0, height: 4 },
+                shadowOpacity: 0.15,
+                shadowRadius: 12,
+                elevation: 8,
+              }}
+            >
+              <XStack justifyContent="space-around" alignItems="center">
+                <YStack alignItems="center">
+                  <YStack
+                    width={60}
+                    height={60}
+                    borderRadius={30}
+                    backgroundColor="#dcfce7"
+                    alignItems="center"
+                    justifyContent="center"
+                    marginBottom={8}
+                  >
+                    <Text style={{ fontSize: 24 }}>📍</Text>
+                  </YStack>
+                  <Text style={{ fontSize: 28, fontWeight: "bold", color: "#166534" }}>{animatedStops}</Text>
+                  <Text style={{ fontSize: 12, color: "#6b7280", marginTop: 2 }}>Stops</Text>
+                </YStack>
+
+                <YStack width={1} height={60} backgroundColor="#e5e7eb" />
+
+                <YStack alignItems="center">
+                  <YStack
+                    width={60}
+                    height={60}
+                    borderRadius={30}
+                    backgroundColor="#dbeafe"
+                    alignItems="center"
+                    justifyContent="center"
+                    marginBottom={8}
+                  >
+                    <Text style={{ fontSize: 24 }}>🚗</Text>
+                  </YStack>
+                  <Text style={{ fontSize: 28, fontWeight: "bold", color: "#2563eb" }}>{animatedDistance}</Text>
+                  <Text style={{ fontSize: 12, color: "#6b7280", marginTop: 2 }}>km Total</Text>
+                </YStack>
+
+                <YStack width={1} height={60} backgroundColor="#e5e7eb" />
+
+                <YStack alignItems="center">
+                  <YStack
+                    width={60}
+                    height={60}
+                    borderRadius={30}
+                    backgroundColor="#fef3c7"
+                    alignItems="center"
+                    justifyContent="center"
+                    marginBottom={8}
+                  >
+                    <Text style={{ fontSize: 24 }}>🏆</Text>
+                  </YStack>
+                  <Text style={{ fontSize: 28, fontWeight: "bold", color: "#ca8a04" }}>{animatedPoints}</Text>
+                  <Text style={{ fontSize: 12, color: "#6b7280", marginTop: 2 }}>Points</Text>
+                </YStack>
+              </XStack>
+            </YStack>
+          </Animated.View>
+
+          {/* Open Maps Button */}
+          <Animated.View
+            style={{
+              opacity: statsOpacity,
+              marginHorizontal: 20,
+              marginBottom: 20,
+            }}
+          >
             <Button
               onPress={openRouteInMaps}
-              backgroundColor="$purple9"
+              backgroundColor="#22c55e"
               color="white"
-              size="$3"
-              icon={<Navigation size={16} color="white" />}
+              size="$4"
+              borderRadius={20}
               disabled={reports.length === 0}
-              flexShrink={0}
+              pressStyle={{ scale: 0.95, backgroundColor: "#16a34a" }}
+              animation="quick"
+              style={{
+                shadowColor: "#22c55e",
+                shadowOffset: { width: 0, height: 4 },
+                shadowOpacity: 0.3,
+                shadowRadius: 8,
+              }}
             >
-              Open Maps
+              <XStack alignItems="center" gap={8}>
+                <Navigation size={20} color="white" />
+                <Text style={{ color: "white", fontWeight: "600", fontSize: 16 }}>Open in Google Maps</Text>
+              </XStack>
             </Button>
-          </XStack>
-
-          {/* Stats Cards */}
-          <XStack gap="$3" marginBottom="$4">
-            <YStack
-              flex={1}
-              backgroundColor="white"
-              padding="$3"
-              borderRadius="$4"
-              elevation="$2"
-              alignItems="center"
-            >
-              <Text fontSize={24}>📍</Text>
-              <H4 color="$purple9" fontWeight="bold" marginTop="$1">
-                {reports.length}
-              </H4>
-              <Text color="$gray10" fontSize="$1">
-                Stops
-              </Text>
-            </YStack>
-
-            <YStack
-              flex={1}
-              backgroundColor="white"
-              padding="$3"
-              borderRadius="$4"
-              elevation="$2"
-              alignItems="center"
-            >
-              <Text fontSize={24}>🗺️</Text>
-              <H4 color="$blue9" fontWeight="bold" marginTop="$1">
-                {totalDistance > 0 ? totalDistance.toFixed(1) : "0"}
-              </H4>
-              <Text color="$gray10" fontSize="$1">
-                km Total
-              </Text>
-            </YStack>
-
-            <YStack
-              flex={1}
-              backgroundColor="white"
-              padding="$3"
-              borderRadius="$4"
-              elevation="$2"
-              alignItems="center"
-            >
-              <Text fontSize={24}>🏆</Text>
-              <H4 color="$yellow9" fontWeight="bold" marginTop="$1">
-                {reports.length * 20}
-              </H4>
-              <Text color="$gray10" fontSize="$1">
-                Points
-              </Text>
-            </YStack>
-          </XStack>
+          </Animated.View>
 
           {/* Map View */}
           {reports.length > 0 && (
-            <YStack
-              backgroundColor="white"
-              borderRadius="$4"
-              overflow="hidden"
-              marginBottom="$4"
-              elevation="$2"
+            <Animated.View
+              style={{
+                transform: [{ translateY: mapSlide }],
+                opacity: mapOpacity,
+                marginHorizontal: 20,
+                marginBottom: 20,
+              }}
             >
-              <View style={{ height: 400, width: "100%" }}>
-                <MapView
-                  style={{ flex: 1 }}
-                  provider={PROVIDER_GOOGLE}
-                  region={mapRegion}
-                  showsUserLocation={true}
-                  showsMyLocationButton={true}
-                >
-                  {/* Route Polyline - draws path connecting all stops */}
-                  {getRouteCoordinates().length > 1 && (
-                    <Polyline
-                      coordinates={getRouteCoordinates()}
-                      strokeColor="#8b5cf6" // Purple color for route
-                      strokeWidth={4}
-                      lineDashPattern={[1]}
-                    />
-                  )}
-
-                  {/* User Location Marker */}
-                  {userLocation && (
-                    <Marker
-                      coordinate={userLocation}
-                      title="Your Location"
-                      pinColor="blue"
-                    />
-                  )}
-
-                  {/* Waste Report Markers */}
-                  {reports.map((report, index) => {
-                    if (!report.latitude || !report.longitude) return null;
-                    return (
-                      <Marker
-                        key={report.id}
-                        coordinate={{
-                          latitude: report.latitude,
-                          longitude: report.longitude,
-                        }}
-                        title={`Stop ${index + 1}`}
-                        description={`${report.city || report.locationRaw} - ${
-                          report.aiAnalysis.wasteType
-                        }`}
-                      >
-                        <View
-                          style={{
-                            backgroundColor:
-                              index === 0
-                                ? "#dc2626"
-                                : index === 1
-                                ? "#ea580c"
-                                : index === 2
-                                ? "#ca8a04"
-                                : "#16a34a",
-                            paddingHorizontal: 8,
-                            paddingVertical: 4,
-                            borderRadius: 12,
-                            borderWidth: 2,
-                            borderColor: "white",
-                          }}
-                        >
-                          <Text
-                            style={{
-                              color: "white",
-                              fontWeight: "bold",
-                              fontSize: 14,
-                            }}
-                          >
-                            {index + 1}
-                          </Text>
-                        </View>
-                      </Marker>
-                    );
-                  })}
-                </MapView>
-              </View>
-            </YStack>
-          )}
-        </YStack>
-
-        {/* Route Reports List */}
-        <YStack paddingHorizontal="$4">
-          <XStack
-            justifyContent="space-between"
-            alignItems="center"
-            marginBottom="$4"
-          >
-            <H4 color="$gray12" fontWeight="bold">
-              Your Collection Points
-            </H4>
-            {reports.length > 0 && (
-              <Text color="$purple9" fontWeight="600" fontSize="$2">
-                {reports.length} stops
-              </Text>
-            )}
-          </XStack>
-
-          {isLoading ? (
-            <YStack padding="$8" alignItems="center" justifyContent="center">
-              <Spinner size="large" color="$purple9" />
-              <Text color="$gray10" marginTop="$4">
-                Loading your route...
-              </Text>
-            </YStack>
-          ) : reports.length === 0 ? (
-            <YStack
-              padding="$8"
-              alignItems="center"
-              justifyContent="center"
-              backgroundColor="white"
-              borderRadius="$4"
-            >
-              <Text fontSize={60}>🗺️</Text>
-              <H4 color="$gray11" marginTop="$3" textAlign="center">
-                No Reports in Route
-              </H4>
-              <Paragraph color="$gray10" textAlign="center" marginTop="$2">
-                Add reports from the Collect tab to build your collection route
-              </Paragraph>
-            </YStack>
-          ) : (
-            reports.map((report, index) => (
               <YStack
-                key={report.id}
                 backgroundColor="white"
-                borderRadius="$4"
-                padding="$4"
-                marginBottom="$3"
-                elevation="$1"
-                borderLeftWidth={4}
-                borderLeftColor={getPriorityColor(index + 1)}
+                borderRadius={24}
+                overflow="hidden"
+                style={{
+                  shadowColor: "#22c55e",
+                  shadowOffset: { width: 0, height: 4 },
+                  shadowOpacity: 0.15,
+                  shadowRadius: 12,
+                  elevation: 8,
+                }}
               >
-                {/* Stop Number Badge & Priority Controls */}
-                <XStack
-                  justifyContent="space-between"
-                  alignItems="center"
-                  marginBottom="$3"
+                <MapView
+                  ref={mapRef}
+                  style={{ width: "100%", height: 250 }}
+                  provider={PROVIDER_GOOGLE}
+                  initialRegion={{
+                    latitude: reports[0]?.latitude || 0,
+                    longitude: reports[0]?.longitude || 0,
+                    latitudeDelta: 0.1,
+                    longitudeDelta: 0.1,
+                  }}
+                  onMapReady={fitMapToMarkers}
                 >
-                  <YStack
-                    backgroundColor={getPriorityColor(index + 1)}
-                    width={40}
-                    height={40}
-                    borderRadius="$10"
-                    alignItems="center"
-                    justifyContent="center"
-                  >
-                    <Text color="white" fontWeight="bold" fontSize="$5">
-                      {index + 1}
-                    </Text>
-                  </YStack>
+                  {currentLocation && (
+                    <Marker coordinate={currentLocation} title="Your Location">
+                      <View
+                        style={{
+                          width: 24,
+                          height: 24,
+                          borderRadius: 12,
+                          backgroundColor: "#22c55e",
+                          borderWidth: 3,
+                          borderColor: "white",
+                        }}
+                      />
+                    </Marker>
+                  )}
 
-                  {/* Priority Control Buttons */}
-                  <XStack gap="$2">
-                    <Button
-                      size="$2"
-                      circular
-                      icon={<ChevronUp size={16} />}
-                      backgroundColor="$gray3"
-                      onPress={() => movePriorityUp(index)}
-                      disabled={index === 0}
-                      opacity={index === 0 ? 0.3 : 1}
-                    />
-                    <Button
-                      size="$2"
-                      circular
-                      icon={<ChevronDown size={16} />}
-                      backgroundColor="$gray3"
-                      onPress={() => movePriorityDown(index)}
-                      disabled={index === reports.length - 1}
-                      opacity={index === reports.length - 1 ? 0.3 : 1}
-                    />
-                  </XStack>
-                </XStack>
-
-                {/* Report Image */}
-                <Image
-                  source={{ uri: report.imageUrl }}
-                  width="100%"
-                  height={150}
-                  borderRadius="$3"
-                  marginBottom="$3"
-                />
-
-                <XStack justifyContent="space-between" marginBottom="$3">
-                  <YStack flex={1}>
-                    <Text
-                      color="$gray12"
-                      fontWeight="600"
-                      fontSize="$4"
-                      marginBottom="$2"
+                  {reports.map((report, index) => (
+                    <Marker
+                      key={report.id}
+                      coordinate={{
+                        latitude: report.latitude,
+                        longitude: report.longitude,
+                      }}
+                      title={`Stop ${report.priority}: ${report.wasteType}`}
+                      description={report.location}
                     >
-                      {report.city || report.locationRaw}
-                    </Text>
-                    <XStack alignItems="center" gap="$2" flexWrap="wrap">
-                      <YStack
-                        paddingHorizontal="$3"
-                        paddingVertical="$1"
-                        borderRadius="$3"
-                        backgroundColor={getWasteTypeColor(
-                          report.aiAnalysis.wasteType
-                        )}
-                        opacity={0.2}
+                      <View
+                        style={{
+                          backgroundColor: getPriorityColor(report.priority),
+                          borderRadius: 20,
+                          padding: 8,
+                          borderWidth: 2,
+                          borderColor: "white",
+                        }}
                       >
-                        <Text
-                          color={getWasteTypeColor(report.aiAnalysis.wasteType)}
-                          fontSize="$2"
-                          fontWeight="600"
-                        >
-                          {report.aiAnalysis.wasteType}
-                        </Text>
-                      </YStack>
-                      <Text color="$gray10" fontSize="$2">
-                        📍 {getDistanceText(report)}
-                      </Text>
-                    </XStack>
-                  </YStack>
-                  <YStack
-                    backgroundColor="$yellow2"
-                    paddingHorizontal="$3"
-                    paddingVertical="$2"
-                    borderRadius="$2"
-                    alignItems="center"
-                  >
-                    <Text color="$yellow10" fontSize="$5" fontWeight="bold">
-                      +20
-                    </Text>
-                    <Text color="$yellow10" fontSize="$1">
-                      pts
-                    </Text>
-                  </YStack>
-                </XStack>
+                        <Text style={{ color: "white", fontWeight: "bold", fontSize: 12 }}>{report.priority}</Text>
+                      </View>
+                    </Marker>
+                  ))}
 
-                {/* Additional Info */}
-                {report.aiAnalysis.estimatedWeightKg && (
-                  <YStack
-                    backgroundColor="$gray2"
-                    padding="$2"
-                    borderRadius="$2"
-                    marginBottom="$3"
-                  >
-                    <Text color="$gray11" fontSize="$1" marginBottom="$1">
-                      Estimated Weight
-                    </Text>
-                    <Text color="$gray12" fontWeight="600" fontSize="$3">
-                      {report.aiAnalysis.estimatedWeightKg} kg
-                    </Text>
-                  </YStack>
-                )}
-
-                <Separator borderColor="$gray4" marginVertical="$2" />
-
-                {/* Action Buttons */}
-                <XStack gap="$2" paddingTop="$2">
-                  <Button
-                    onPress={() => handleRemoveFromRoute(report.id)}
-                    backgroundColor="$red9"
-                    flex={1}
-                    paddingVertical="$2"
-                    borderRadius="$2"
-                    height="unset"
-                  >
-                    <XStack alignItems="center" gap="$2">
-                      <Trash2 size={16} color="white" />
-                      <Text color="white" fontWeight="600" fontSize="$2">
-                        Remove
-                      </Text>
-                    </XStack>
-                  </Button>
-                  <Button
-                    onPress={() => handleCollectNow(report)}
-                    backgroundColor="$green9"
-                    flex={1}
-                    paddingVertical="$2"
-                    borderRadius="$2"
-                    height="unset"
-                  >
-                    <Text color="white" fontWeight="600" fontSize="$2">
-                      Collect Now
-                    </Text>
-                  </Button>
-                </XStack>
+                  <Polyline coordinates={getRouteCoordinates()} strokeColor="#22c55e" strokeWidth={4} />
+                </MapView>
               </YStack>
-            ))
+            </Animated.View>
           )}
-        </YStack>
 
-        {/* Tips Section */}
-        {reports.length > 0 && (
-          <YStack
-            margin="$4"
-            padding="$4"
-            backgroundColor="$purple2"
-            borderRadius="$4"
-            borderLeftWidth={4}
-            borderLeftColor="$purple9"
-          >
-            <H4 color="$purple11" fontWeight="bold" marginBottom="$2">
-              🗺️ Route Planning Tips
-            </H4>
-            <Paragraph color="$purple11">
-              • Use ↑↓ arrows to reorder stops by priority
-            </Paragraph>
-            <Paragraph color="$purple11">
-              • Map shows your route with numbered stops
-            </Paragraph>
-            <Paragraph color="$purple11">
-              • Open in Google Maps for turn-by-turn navigation
-            </Paragraph>
-            <Paragraph color="$purple11">
-              • Collect reports in order for optimal route
-            </Paragraph>
+          {/* Route Stops */}
+          <YStack paddingHorizontal={20} paddingBottom={100}>
+            <Text style={{ fontSize: 18, fontWeight: "bold", color: "#166534", marginBottom: 16 }}>
+              Route Stops ({reports.length})
+            </Text>
+
+            {reports.length === 0 ? (
+              <YStack
+                backgroundColor="white"
+                borderRadius={24}
+                padding={40}
+                alignItems="center"
+                style={{
+                  shadowColor: "#22c55e",
+                  shadowOffset: { width: 0, height: 4 },
+                  shadowOpacity: 0.15,
+                  shadowRadius: 12,
+                  elevation: 8,
+                }}
+              >
+                <Text style={{ fontSize: 48, marginBottom: 16 }}>🗺️</Text>
+                <Text style={{ fontSize: 16, color: "#6b7280", textAlign: "center" }}>
+                  No stops in your route yet.{"\n"}Add waste reports from the Reports tab.
+                </Text>
+              </YStack>
+            ) : (
+              [...reports]
+                .sort((a, b) => a.priority - b.priority)
+                .map((report, index) => (
+                  <Animated.View
+                    key={report.id}
+                    style={{
+                      marginBottom: 12,
+                    }}
+                  >
+                    <YStack
+                      backgroundColor="white"
+                      borderRadius={24}
+                      padding={16}
+                      style={{
+                        shadowColor: "#22c55e",
+                        shadowOffset: { width: 0, height: 4 },
+                        shadowOpacity: 0.1,
+                        shadowRadius: 8,
+                        elevation: 4,
+                      }}
+                    >
+                      <XStack justifyContent="space-between" alignItems="flex-start">
+                        <XStack flex={1} gap={12}>
+                          <YStack
+                            width={48}
+                            height={48}
+                            borderRadius={24}
+                            backgroundColor={getPriorityColor(report.priority)}
+                            alignItems="center"
+                            justifyContent="center"
+                          >
+                            <Text style={{ color: "white", fontWeight: "bold", fontSize: 18 }}>{report.priority}</Text>
+                          </YStack>
+
+                          <YStack flex={1}>
+                            <XStack alignItems="center" gap={8} marginBottom={4}>
+                              <YStack
+                                backgroundColor={getWasteTypeBgColor(report.wasteType)}
+                                paddingHorizontal={10}
+                                paddingVertical={4}
+                                borderRadius={12}
+                              >
+                                <Text
+                                  style={{
+                                    fontSize: 12,
+                                    fontWeight: "600",
+                                    color: getWasteTypeColor(report.wasteType),
+                                  }}
+                                >
+                                  {report.wasteType}
+                                </Text>
+                              </YStack>
+                              <Text style={{ fontSize: 12, color: "#6b7280" }}>{report.amount}</Text>
+                            </XStack>
+
+                            <Text
+                              style={{ fontSize: 14, color: "#374151", marginBottom: 4 }}
+                              numberOfLines={expandedCard === report.id ? undefined : 1}
+                            >
+                              {report.location}
+                            </Text>
+
+                            {currentLocation && (
+                              <Text style={{ fontSize: 12, color: "#22c55e", fontWeight: "500" }}>
+                                {formatDistance(
+                                  calculateDistance(
+                                    currentLocation.latitude,
+                                    currentLocation.longitude,
+                                    report.latitude,
+                                    report.longitude,
+                                  ),
+                                )}{" "}
+                                away
+                              </Text>
+                            )}
+                          </YStack>
+                        </XStack>
+
+                        <XStack gap={8}>
+                          <Button
+                            size="$3"
+                            circular
+                            backgroundColor="#dcfce7"
+                            pressStyle={{ backgroundColor: "#bbf7d0" }}
+                            onPress={() => movePriorityUp(report.id)}
+                            disabled={index === 0}
+                            opacity={index === 0 ? 0.3 : 1}
+                          >
+                            <ChevronUp size={16} color="#166534" />
+                          </Button>
+
+                          <Button
+                            size="$3"
+                            circular
+                            backgroundColor="#dcfce7"
+                            pressStyle={{ backgroundColor: "#bbf7d0" }}
+                            onPress={() => movePriorityDown(report.id)}
+                            disabled={index === reports.length - 1}
+                            opacity={index === reports.length - 1 ? 0.3 : 1}
+                          >
+                            <ChevronDown size={16} color="#166534" />
+                          </Button>
+
+                          <Button
+                            size="$3"
+                            circular
+                            backgroundColor="#fee2e2"
+                            pressStyle={{ backgroundColor: "#fecaca" }}
+                            onPress={() => handleRemoveFromRoute(report.id)}
+                          >
+                            <Trash2 size={16} color="#dc2626" />
+                          </Button>
+                        </XStack>
+                      </XStack>
+
+                      {expandedCard === report.id && (
+                        <YStack marginTop={16} paddingTop={16} borderTopWidth={1} borderTopColor="#e5e7eb">
+                          {report.imageUrl && (
+                            <Image
+                              source={{ uri: report.imageUrl }}
+                              style={{
+                                width: "100%",
+                                height: 150,
+                                borderRadius: 16,
+                                marginBottom: 12,
+                              }}
+                              resizeMode="cover"
+                            />
+                          )}
+
+                          <XStack justifyContent="space-between" marginBottom={8}>
+                            <Text style={{ fontSize: 12, color: "#6b7280" }}>Reported:</Text>
+                            <Text style={{ fontSize: 12, color: "#374151", fontWeight: "500" }}>
+                              {new Date(report.createdAt).toLocaleDateString()}
+                            </Text>
+                          </XStack>
+
+                          <XStack gap={8} marginTop={8}>
+                            <Button
+                              onPress={() => handleRemoveFromRoute(report.id)}
+                              backgroundColor="#dc2626"
+                              flex={1}
+                              size="$3"
+                              borderRadius={16}
+                              pressStyle={{ scale: 0.98, backgroundColor: "#b91c1c" }}
+                              animation="quick"
+                            >
+                              <XStack alignItems="center" gap={6}>
+                                <Trash2 size={14} color="white" />
+                                <Text style={{ color: "white", fontWeight: "600", fontSize: 13 }}>Remove</Text>
+                              </XStack>
+                            </Button>
+
+                            <Button
+                              onPress={() => handleCollectNow(report)}
+                              backgroundColor="#22c55e"
+                              flex={1}
+                              size="$3"
+                              borderRadius={16}
+                              pressStyle={{ scale: 0.98, backgroundColor: "#16a34a" }}
+                              animation="quick"
+                            >
+                              <Text style={{ color: "white", fontWeight: "600", fontSize: 13 }}>Collect Now</Text>
+                            </Button>
+                          </XStack>
+                        </YStack>
+                      )}
+                    </YStack>
+                  </Animated.View>
+                ))
+            )}
+
+            {/* Tips Section */}
+            {reports.length > 0 && (
+              <YStack
+                backgroundColor="white"
+                borderRadius={24}
+                padding={20}
+                marginTop={20}
+                borderLeftWidth={4}
+                borderLeftColor="#22c55e"
+                style={{
+                  shadowColor: "#22c55e",
+                  shadowOffset: { width: 0, height: 4 },
+                  shadowOpacity: 0.1,
+                  shadowRadius: 8,
+                  elevation: 4,
+                }}
+              >
+                <Text style={{ fontSize: 16, fontWeight: "bold", color: "#166534", marginBottom: 12 }}>
+                  🗺️ Route Planning Tips
+                </Text>
+                <YStack gap={8}>
+                  <Text style={{ fontSize: 13, color: "#374151", lineHeight: 20 }}>
+                    • Use ↑↓ arrows to reorder stops by priority
+                  </Text>
+                  <Text style={{ fontSize: 13, color: "#374151", lineHeight: 20 }}>
+                    • Map shows your route with numbered stops
+                  </Text>
+                  <Text style={{ fontSize: 13, color: "#374151", lineHeight: 20 }}>
+                    • Open in Google Maps for turn-by-turn navigation
+                  </Text>
+                  <Text style={{ fontSize: 13, color: "#374151", lineHeight: 20 }}>
+                    • Collect reports in order for optimal route
+                  </Text>
+                </YStack>
+              </YStack>
+            )}
           </YStack>
-        )}
-      </ScrollView>
+        </ScrollView>
+      </YStack>
     </Theme>
-  );
+  )
 }

@@ -1,113 +1,260 @@
-import * as React from "react";
-import { useUser } from "@clerk/clerk-expo";
-import { useRouter } from "expo-router";
-import * as ImagePicker from "expo-image-picker";
-import * as Location from "expo-location";
-import {
-  ScrollView,
-  YStack,
-  XStack,
-  Text,
-  Input,
-  Button,
-  H2,
-  H3,
-  H4,
-  Paragraph,
-  Theme,
-  Label,
-  Card,
-  Spinner,
-  Separator,
-} from "tamagui";
-import { Alert, Image as RNImage, ActivityIndicator } from "react-native";
-import {
-  analyzeWasteImage,
-  type WasteAnalysis,
-  type SmallWasteAnalysis,
-  type LargeWasteAnalysis,
-} from "@/services/geminiService";
-import { submitWasteReport } from "@/services/s3Service";
-import { saveWasteReport } from "@/services/storageService";
-import {
-  reverseGeocode,
-  formatLocation,
-  type LocationData,
-} from "@/services/locationService";
-import {
-  fetchUserProfile,
-  isProfileComplete,
-  getProfileCompletionMessage,
-} from "../services/userService";
-import { validateUserLocation } from "../utils/locationValidation";
+"use client"
 
-type ScreenState = "picker" | "analyzing" | "result" | "submitting" | "success";
+import * as React from "react"
+import { useUser } from "@clerk/clerk-expo"
+import { useRouter } from "expo-router"
+import * as ImagePicker from "expo-image-picker"
+import * as Location from "expo-location"
+import { ScrollView, YStack, XStack, Text, Button, Spinner } from "tamagui"
+import { Alert, Image as RNImage, Animated, Easing, Dimensions } from "react-native"
+import { analyzeWasteImage, type WasteAnalysis, type LargeWasteAnalysis } from "@/services/geminiService"
+import { submitWasteReport } from "@/services/s3Service"
+import { saveWasteReport } from "@/services/storageService"
+import { reverseGeocode, type LocationData } from "@/services/locationService"
+import { fetchUserProfile, isProfileComplete, getProfileCompletionMessage } from "../services/userService"
+import { validateUserLocation } from "../utils/locationValidation"
+
+type ScreenState = "picker" | "analyzing" | "result" | "submitting" | "success"
+
+const { width, height } = Dimensions.get("window")
+const NUM_PARTICLES = 12
+
+const FloatingParticle = ({ delay, startX }: { delay: number; startX: number }) => {
+  const translateY = React.useRef(new Animated.Value(height + 50)).current
+  const translateX = React.useRef(new Animated.Value(0)).current
+  const rotate = React.useRef(new Animated.Value(0)).current
+  const opacity = React.useRef(new Animated.Value(0)).current
+
+  React.useEffect(() => {
+    const animate = () => {
+      translateY.setValue(height + 50)
+      translateX.setValue(0)
+      rotate.setValue(0)
+      opacity.setValue(0)
+
+      Animated.parallel([
+        Animated.timing(translateY, {
+          toValue: -100,
+          duration: 8000 + Math.random() * 4000,
+          delay,
+          easing: Easing.linear,
+          useNativeDriver: true,
+        }),
+        Animated.sequence([
+          Animated.timing(opacity, {
+            toValue: 0.6,
+            duration: 1000,
+            delay,
+            useNativeDriver: true,
+          }),
+          Animated.timing(opacity, {
+            toValue: 0.6,
+            duration: 5000 + Math.random() * 3000,
+            useNativeDriver: true,
+          }),
+          Animated.timing(opacity, {
+            toValue: 0,
+            duration: 1500,
+            useNativeDriver: true,
+          }),
+        ]),
+        Animated.timing(translateX, {
+          toValue: Math.sin(delay) * 40,
+          duration: 8000 + Math.random() * 4000,
+          delay,
+          easing: Easing.inOut(Easing.sin),
+          useNativeDriver: true,
+        }),
+        Animated.timing(rotate, {
+          toValue: 1,
+          duration: 8000 + Math.random() * 4000,
+          delay,
+          easing: Easing.linear,
+          useNativeDriver: true,
+        }),
+      ]).start(() => animate())
+    }
+    animate()
+  }, [])
+
+  const spin = rotate.interpolate({
+    inputRange: [0, 1],
+    outputRange: ["0deg", "360deg"],
+  })
+
+  return (
+    <Animated.View
+      style={{
+        position: "absolute",
+        left: startX,
+        opacity,
+        transform: [{ translateY }, { translateX }, { rotate: spin }],
+      }}
+    >
+      <Text style={{ fontSize: 16 + Math.random() * 10, color: "#22c55e" }}>
+        {["♻️", "🌿", "🍃", "✦", "●"][Math.floor(Math.random() * 5)]}
+      </Text>
+    </Animated.View>
+  )
+}
 
 export default function ReportWasteScreen() {
-  const { user } = useUser();
-  const router = useRouter();
+  const { user } = useUser()
+  const router = useRouter()
 
-  const [state, setState] = React.useState<ScreenState>("picker");
-  const [imageUri, setImageUri] = React.useState<string | null>(null);
-  const [s3ImageUrl, setS3ImageUrl] = React.useState<string | null>(null);
-  const [s3ReportId, setS3ReportId] = React.useState<string | null>(null);
-  const [analysis, setAnalysis] = React.useState<WasteAnalysis | null>(null);
-  const [error, setError] = React.useState<string>("");
+  const [state, setState] = React.useState<ScreenState>("picker")
+  const [imageUri, setImageUri] = React.useState<string | null>(null)
+  const [s3ImageUrl, setS3ImageUrl] = React.useState<string | null>(null)
+  const [s3ReportId, setS3ReportId] = React.useState<string | null>(null)
+  const [analysis, setAnalysis] = React.useState<WasteAnalysis | null>(null)
+  const [error, setError] = React.useState<string>("")
 
-  // Editable fields
-  const [editedWasteType, setEditedWasteType] = React.useState<string>("");
-  const [editedSegregation, setEditedSegregation] = React.useState<
-    Array<{ label: string; count: number }>
-  >([]);
+  const [editedWasteType, setEditedWasteType] = React.useState<string>("")
+  const [editedSegregation, setEditedSegregation] = React.useState<Array<{ label: string; count: number }>>([])
 
-  // Location with full details
   const [location, setLocation] = React.useState<LocationData>({
     latitude: 0,
     longitude: 0,
-  });
-  const [loadingLocation, setLoadingLocation] = React.useState(false);
+  })
+  const [loadingLocation, setLoadingLocation] = React.useState(false)
 
-  // Request permissions on mount
+  // Animation refs
+  const fadeAnim = React.useRef(new Animated.Value(0)).current
+  const slideAnim = React.useRef(new Animated.Value(50)).current
+  const headerSlide = React.useRef(new Animated.Value(-100)).current
+  const headerOpacity = React.useRef(new Animated.Value(0)).current
+  const logoSpin = React.useRef(new Animated.Value(0)).current
+  const pulseAnim = React.useRef(new Animated.Value(1)).current
+  const buttonScale = React.useRef(new Animated.Value(1)).current
+  const successScale = React.useRef(new Animated.Value(0)).current
+  const statsSlide = React.useRef(new Animated.Value(50)).current
+  const statsOpacity = React.useRef(new Animated.Value(0)).current
+
   React.useEffect(() => {
-    (async () => {
-      const { status: cameraStatus } =
-        await ImagePicker.requestCameraPermissionsAsync();
-      const { status: mediaStatus } =
-        await ImagePicker.requestMediaLibraryPermissionsAsync();
-      const { status: locationStatus } =
-        await Location.requestForegroundPermissionsAsync();
+    // Header animation
+    Animated.parallel([
+      Animated.spring(headerSlide, {
+        toValue: 0,
+        tension: 50,
+        friction: 8,
+        useNativeDriver: true,
+      }),
+      Animated.timing(headerOpacity, {
+        toValue: 1,
+        duration: 600,
+        useNativeDriver: true,
+      }),
+    ]).start()
 
-      if (
-        cameraStatus !== "granted" ||
-        mediaStatus !== "granted" ||
-        locationStatus !== "granted"
-      ) {
+    // Content fade in and slide up
+    Animated.parallel([
+      Animated.timing(fadeAnim, {
+        toValue: 1,
+        duration: 600,
+        useNativeDriver: true,
+      }),
+      Animated.spring(slideAnim, {
+        toValue: 0,
+        tension: 50,
+        friction: 8,
+        useNativeDriver: true,
+      }),
+    ]).start()
+
+    // Logo spin entrance
+    Animated.timing(logoSpin, {
+      toValue: 1,
+      duration: 1000,
+      easing: Easing.out(Easing.back(1.5)),
+      useNativeDriver: true,
+    }).start()
+
+    // Continuous pulse
+    Animated.loop(
+      Animated.sequence([
+        Animated.timing(pulseAnim, {
+          toValue: 1.1,
+          duration: 1500,
+          easing: Easing.inOut(Easing.ease),
+          useNativeDriver: true,
+        }),
+        Animated.timing(pulseAnim, {
+          toValue: 1,
+          duration: 1500,
+          easing: Easing.inOut(Easing.ease),
+          useNativeDriver: true,
+        }),
+      ]),
+    ).start()
+
+    // Stats card animation
+    Animated.parallel([
+      Animated.spring(statsSlide, {
+        toValue: 0,
+        tension: 50,
+        friction: 8,
+        delay: 200,
+        useNativeDriver: true,
+      }),
+      Animated.timing(statsOpacity, {
+        toValue: 1,
+        duration: 500,
+        delay: 200,
+        useNativeDriver: true,
+      }),
+    ]).start()
+  }, [])
+
+  React.useEffect(() => {
+    if (state === "success") {
+      Animated.spring(successScale, {
+        toValue: 1,
+        tension: 50,
+        friction: 6,
+        useNativeDriver: true,
+      }).start()
+    } else {
+      successScale.setValue(0)
+    }
+  }, [state])
+
+  const spin = logoSpin.interpolate({
+    inputRange: [0, 1],
+    outputRange: ["0deg", "360deg"],
+  })
+
+  React.useEffect(() => {
+    ;(async () => {
+      const { status: cameraStatus } = await ImagePicker.requestCameraPermissionsAsync()
+      const { status: mediaStatus } = await ImagePicker.requestMediaLibraryPermissionsAsync()
+      const { status: locationStatus } = await Location.requestForegroundPermissionsAsync()
+
+      if (cameraStatus !== "granted" || mediaStatus !== "granted" || locationStatus !== "granted") {
         Alert.alert(
           "Permissions Required",
-          "Please grant camera, media library, and location permissions to report waste."
-        );
+          "Please grant camera, media library, and location permissions to report waste.",
+        )
       }
-    })();
-  }, []);
+    })()
+  }, [])
 
   const pickImageFromCamera = async () => {
-    // Check profile completion first
     if (user) {
       try {
-        const profile = await fetchUserProfile(user.id);
+        const profile = await fetchUserProfile(user.id)
         if (!isProfileComplete(profile)) {
           Alert.alert(
-            "Profile Incomplete ⚠️",
+            "Profile Incomplete",
             getProfileCompletionMessage(profile) +
               "\n\nPlease go to the Profile tab to complete your information before reporting waste.",
-            [{ text: "OK", onPress: () => router.push("/(tabs)/profile") }]
-          );
-          return;
+            [{ text: "OK", onPress: () => router.push("/(tabs)/profile") }],
+          )
+          return
         }
       } catch (error) {
-        console.error("Error checking profile:", error);
-        Alert.alert("Error", "Failed to verify profile. Please try again.");
-        return;
+        console.error("Error checking profile:", error)
+        Alert.alert("Error", "Failed to verify profile. Please try again.")
+        return
       }
     }
 
@@ -117,34 +264,33 @@ export default function ReportWasteScreen() {
         allowsEditing: true,
         aspect: [4, 3],
         quality: 0.8,
-      });
+      })
 
       if (!result.canceled && result.assets[0]) {
-        handleImageSelected(result.assets[0].uri);
+        handleImageSelected(result.assets[0].uri)
       }
     } catch (error) {
-      setError("Failed to capture image");
+      setError("Failed to capture image")
     }
-  };
+  }
 
   const pickImageFromGallery = async () => {
-    // Check profile completion first
     if (user) {
       try {
-        const profile = await fetchUserProfile(user.id);
+        const profile = await fetchUserProfile(user.id)
         if (!isProfileComplete(profile)) {
           Alert.alert(
-            "Profile Incomplete ⚠️",
+            "Profile Incomplete",
             getProfileCompletionMessage(profile) +
               "\n\nPlease go to the Profile tab to complete your information before reporting waste.",
-            [{ text: "OK", onPress: () => router.push("/(tabs)/profile") }]
-          );
-          return;
+            [{ text: "OK", onPress: () => router.push("/(tabs)/profile") }],
+          )
+          return
         }
       } catch (error) {
-        console.error("Error checking profile:", error);
-        Alert.alert("Error", "Failed to verify profile. Please try again.");
-        return;
+        console.error("Error checking profile:", error)
+        Alert.alert("Error", "Failed to verify profile. Please try again.")
+        return
       }
     }
 
@@ -154,64 +300,56 @@ export default function ReportWasteScreen() {
         allowsEditing: true,
         aspect: [4, 3],
         quality: 0.8,
-      });
+      })
 
       if (!result.canceled && result.assets[0]) {
-        handleImageSelected(result.assets[0].uri);
+        handleImageSelected(result.assets[0].uri)
       }
     } catch (error) {
-      setError("Failed to select image");
+      setError("Failed to select image")
     }
-  };
+  }
 
   const handleImageSelected = async (uri: string) => {
-    setImageUri(uri);
-    setError("");
+    setImageUri(uri)
+    setError("")
 
-    // Get current location with reverse geocoding
-    setLoadingLocation(true);
+    setLoadingLocation(true)
     try {
-      const loc = await Location.getCurrentPositionAsync({});
-      const { latitude, longitude } = loc.coords;
+      const loc = await Location.getCurrentPositionAsync({})
+      const { latitude, longitude } = loc.coords
 
-      // Validate location against user's profile state
       if (user) {
         try {
-          const profile = await fetchUserProfile(user.id);
+          const profile = await fetchUserProfile(user.id)
           if (profile.state && profile.country) {
-            const validation = validateUserLocation(
-              profile.state,
-              profile.country,
-              latitude,
-              longitude
-            );
+            const validation = validateUserLocation(profile.state, profile.country, latitude, longitude)
 
             if (!validation.isValid && validation.message) {
-              setLoadingLocation(false);
+              setLoadingLocation(false)
               Alert.alert("Location Mismatch", validation.message, [
                 {
                   text: "Cancel",
                   style: "cancel",
                   onPress: () => {
-                    setImageUri(null);
-                    setState("picker");
+                    setImageUri(null)
+                    setState("picker")
                   },
                 },
                 {
                   text: "Update Profile",
                   onPress: () => router.push("/(tabs)/profile"),
                 },
-              ]);
-              return;
+              ])
+              return
             }
           }
         } catch (error) {
-          console.error("Error validating location:", error);
+          console.error("Error validating location:", error)
         }
       }
 
-      // Get address details from coordinates
-      const geocoded = await reverseGeocode(latitude, longitude);
+      const geocoded = await reverseGeocode(latitude, longitude)
 
       setLocation({
         latitude,
@@ -220,670 +358,835 @@ export default function ReportWasteScreen() {
         city: geocoded.city,
         state: geocoded.state,
         country: geocoded.country,
-      });
+      })
 
-      console.log("📍 Location:", {
+      console.log("Location:", {
         city: geocoded.city,
         state: geocoded.state,
         address: geocoded.address,
-      });
+      })
     } catch (err) {
-      console.log("Location not available", err);
+      console.log("Location not available", err)
       setLocation({
         latitude: 0,
         longitude: 0,
         city: "Unknown",
         state: "Unknown",
         country: "India",
-      });
+      })
     } finally {
-      setLoadingLocation(false);
+      setLoadingLocation(false)
     }
-  };
+  }
 
   const analyzeImage = async () => {
-    if (!imageUri || !user) return;
+    if (!imageUri || !user) return
 
-    setState("analyzing");
-    setError("");
+    setState("analyzing")
+    setError("")
 
     try {
-      // Analyze with Gemini (no S3 upload yet)
-      const result = await analyzeWasteImage(imageUri);
-      setAnalysis(result);
+      const result = await analyzeWasteImage(imageUri)
+      setAnalysis(result)
 
-      // Set editable fields
-      setEditedWasteType(result.wasteType);
+      setEditedWasteType(result.wasteType)
       if (result.category === "small") {
-        setEditedSegregation([...result.segregation]);
+        setEditedSegregation([...result.segregation])
       }
 
-      setState("result");
+      setState("result")
     } catch (err: any) {
-      setError(err.message || "Analysis failed");
-      setState("picker");
+      setError(err.message || "Analysis failed")
+      setState("picker")
     }
-  };
+  }
 
   const handleVerifyAndReport = async () => {
-    if (!analysis || !imageUri || !user) return;
+    if (!analysis || !imageUri || !user) return
 
-    setState("submitting");
+    setState("submitting")
 
     try {
-      // Update analysis with edited values
       const finalAnalysis: WasteAnalysis = {
         ...analysis,
         wasteType: editedWasteType as any,
-        ...(analysis.category === "small"
-          ? { segregation: editedSegregation }
-          : {}),
-      } as WasteAnalysis;
+        ...(analysis.category === "small" ? { segregation: editedSegregation } : {}),
+      } as WasteAnalysis
 
-      // Submit to backend (uploads to S3 and saves to database)
       const result = await submitWasteReport({
         imageUri,
         userId: user.id,
         analysis: finalAnalysis,
         location,
-      });
+      })
 
-      // Save to local storage as well
       await saveWasteReport({
         userId: user.id,
         imageUrl: result.imageUrl,
         s3ReportId: result.reportId,
         analysis: finalAnalysis,
         location,
-      });
+      })
 
-      setS3ImageUrl(result.imageUrl);
-      setS3ReportId(result.reportId);
+      setS3ImageUrl(result.imageUrl)
+      setS3ReportId(result.reportId)
 
-      setState("success");
+      setState("success")
 
-      // Auto-reset after 3 seconds
       setTimeout(() => {
-        resetForm();
-      }, 3000);
+        resetForm()
+      }, 3000)
     } catch (err: any) {
-      setError(err.message || "Failed to save report");
-      setState("result");
+      setError(err.message || "Failed to save report")
+      setState("result")
     }
-  };
+  }
 
   const resetForm = () => {
-    setImageUri(null);
-    setS3ImageUrl(null);
-    setS3ReportId(null);
-    setAnalysis(null);
-    setEditedWasteType("");
-    setEditedSegregation([]);
+    setImageUri(null)
+    setS3ImageUrl(null)
+    setS3ReportId(null)
+    setAnalysis(null)
+    setEditedWasteType("")
+    setEditedSegregation([])
     setLocation({
       latitude: 0,
       longitude: 0,
-    });
-    setLoadingLocation(false);
-    setError("");
-    setState("picker");
-  };
+    })
+    setLoadingLocation(false)
+    setError("")
+    setState("picker")
+  }
 
-  const updateSegregationItem = (
-    index: number,
-    field: "label" | "count",
-    value: string | number
-  ) => {
-    const updated = [...editedSegregation];
+  const updateSegregationItem = (index: number, field: "label" | "count", value: string | number) => {
+    const updated = [...editedSegregation]
     if (field === "label") {
-      updated[index].label = value as string;
+      updated[index].label = value as string
     } else {
-      updated[index].count = Number(value);
+      updated[index].count = Number(value)
     }
-    setEditedSegregation(updated);
-  };
+    setEditedSegregation(updated)
+  }
 
   const addSegregationItem = () => {
-    setEditedSegregation([...editedSegregation, { label: "", count: 1 }]);
-  };
+    setEditedSegregation([...editedSegregation, { label: "", count: 1 }])
+  }
 
   const removeSegregationItem = (index: number) => {
-    setEditedSegregation(editedSegregation.filter((_, i) => i !== index));
-  };
+    setEditedSegregation(editedSegregation.filter((_, i) => i !== index))
+  }
 
-  // Render different screens based on state
+  const handlePressIn = () => {
+    Animated.spring(buttonScale, {
+      toValue: 0.95,
+      useNativeDriver: true,
+    }).start()
+  }
+
+  const handlePressOut = () => {
+    Animated.spring(buttonScale, {
+      toValue: 1,
+      useNativeDriver: true,
+    }).start()
+  }
+
+  // Render picker state
   if (state === "picker") {
     return (
-      <Theme name="light">
-        <ScrollView flex={1} backgroundColor="$background">
-          <YStack padding="$4" gap="$4">
-            {error ? (
-              <Card backgroundColor="$red2" padding="$3" borderRadius="$3">
-                <Text color="$red10">{error}</Text>
-              </Card>
-            ) : null}
+      <YStack flex={1} backgroundColor="#f0fdf4">
+        {/* Gradient Background */}
+        <YStack
+          position="absolute"
+          top={0}
+          left={0}
+          right={0}
+          bottom={0}
+          style={{
+            background: "linear-gradient(180deg, #f0fdf4 0%, #bbf7d0 100%)",
+          }}
+        />
 
-            {imageUri ? (
-              <Card padding="$0" borderRadius="$4" overflow="hidden">
-                <RNImage
-                  source={{ uri: imageUri }}
-                  style={{ width: "100%", height: 300 }}
-                  resizeMode="cover"
-                />
-              </Card>
-            ) : (
-              <Card
-                backgroundColor="$gray2"
-                padding="$6"
-                borderRadius="$4"
-                borderWidth={2}
-                borderColor="$gray5"
-                borderStyle="dashed"
+        {/* Floating Particles */}
+        {Array.from({ length: NUM_PARTICLES }).map((_, i) => (
+          <FloatingParticle key={i} delay={i * 600} startX={Math.random() * width} />
+        ))}
+
+        <ScrollView flex={1} showsVerticalScrollIndicator={false}>
+          <Animated.View
+            style={{
+              transform: [{ translateY: headerSlide }],
+              opacity: headerOpacity,
+              paddingTop: 60,
+              paddingBottom: 20,
+              alignItems: "center",
+            }}
+          >
+            {/* Logo with glow */}
+            <YStack alignItems="center" marginBottom={8}>
+              <YStack
+                position="absolute"
+                width={80}
+                height={80}
+                borderRadius={40}
+                backgroundColor="#22c55e"
+                opacity={0.2}
+                style={{ filter: "blur(20px)" }}
+              />
+              <Animated.View
+                style={{
+                  transform: [{ rotate: spin }, { scale: pulseAnim }],
+                }}
               >
-                <YStack alignItems="center" gap="$3">
-                  <Text fontSize="$8">📸</Text>
-                  <H4 color="$gray11">No image selected</H4>
-                  <Paragraph color="$gray10" textAlign="center">
-                    Capture or upload an image of waste
-                  </Paragraph>
+                <Text style={{ fontSize: 56 }}>♻️</Text>
+              </Animated.View>
+            </YStack>
+            <Text
+              style={{
+                fontSize: 28,
+                fontWeight: "bold",
+                color: "#15803d",
+                marginTop: 8,
+              }}
+            >
+              Report Waste
+            </Text>
+            <Text style={{ fontSize: 14, color: "#16a34a", marginTop: 4 }}>Help keep our planet clean</Text>
+          </Animated.View>
+
+          <Animated.View
+            style={{
+              transform: [{ translateY: statsSlide }],
+              opacity: statsOpacity,
+              marginHorizontal: 20,
+              marginBottom: 20,
+            }}
+          >
+            <YStack
+              backgroundColor="white"
+              borderRadius={24}
+              padding={20}
+              gap={16}
+              style={{
+                shadowColor: "#22c55e",
+                shadowOffset: { width: 0, height: 4 },
+                shadowOpacity: 0.15,
+                shadowRadius: 12,
+                elevation: 8,
+              }}
+            >
+              {error ? (
+                <YStack backgroundColor="#fef2f2" padding={12} borderRadius={16} borderWidth={1} borderColor="#fecaca">
+                  <Text color="#dc2626">{error}</Text>
                 </YStack>
-              </Card>
-            )}
+              ) : null}
 
-            <XStack gap="$3">
-              <Button
-                flex={1}
-                backgroundColor="$blue9"
-                onPress={pickImageFromCamera}
-                icon={<Text fontSize="$5">📷</Text>}
-              >
-                <Text color="white" fontWeight="600">
-                  Camera
-                </Text>
-              </Button>
-              <Button
-                flex={1}
-                backgroundColor="$purple9"
-                onPress={pickImageFromGallery}
-                icon={<Text fontSize="$5">🖼️</Text>}
-              >
-                <Text color="white" fontWeight="600">
-                  Gallery
-                </Text>
-              </Button>
-            </XStack>
+              {imageUri ? (
+                <YStack borderRadius={20} overflow="hidden">
+                  <RNImage source={{ uri: imageUri }} style={{ width: "100%", height: 220 }} resizeMode="cover" />
+                </YStack>
+              ) : (
+                <YStack
+                  backgroundColor="#f0fdf4"
+                  padding={32}
+                  borderRadius={20}
+                  borderWidth={2}
+                  borderColor="#86efac"
+                  borderStyle="dashed"
+                  alignItems="center"
+                  gap={12}
+                >
+                  <YStack
+                    width={60}
+                    height={60}
+                    borderRadius={30}
+                    backgroundColor="#dcfce7"
+                    alignItems="center"
+                    justifyContent="center"
+                  >
+                    <Text fontSize={30}>📸</Text>
+                  </YStack>
+                  <Text style={{ fontSize: 16, fontWeight: "600", color: "#15803d" }}>No image selected</Text>
+                  <Text style={{ fontSize: 14, color: "#16a34a", textAlign: "center" }}>
+                    Capture or upload an image of waste
+                  </Text>
+                </YStack>
+              )}
 
-            {imageUri && (
-              <>
-                {/* Location Display */}
-                {loadingLocation ? (
-                  <Card backgroundColor="$gray2" padding="$3" borderRadius="$3">
-                    <XStack gap="$2" alignItems="center">
-                      <Spinner size="small" color="$gray10" />
-                      <Text color="$gray10">Getting location...</Text>
-                    </XStack>
-                  </Card>
-                ) : location.city && location.city !== "Unknown" ? (
-                  <Card
-                    backgroundColor="$green2"
-                    padding="$3"
-                    borderRadius="$3"
-                    borderWidth={1}
-                    borderColor="$green7"
+              <XStack gap={12}>
+                <Animated.View style={{ flex: 1, transform: [{ scale: buttonScale }] }}>
+                  <Button
+                    flex={1}
+                    height="$5"
+                    backgroundColor="#3b82f6"
+                    onPress={pickImageFromCamera}
+                    onPressIn={handlePressIn}
+                    onPressOut={handlePressOut}
+                    borderRadius={16}
+                    shadowColor="#3b82f6"
+                    shadowOffset={{ width: 0, height: 4 }}
+                    shadowOpacity={0.3}
+                    shadowRadius={8}
+                    pressStyle={{ scale: 0.95 }}
                   >
-                    <XStack gap="$2" alignItems="center">
-                      <Text fontSize="$4">📍</Text>
-                      <YStack flex={1}>
-                        <Text color="$green11" fontWeight="600">
-                          {location.city}, {location.state}
-                        </Text>
-                        <Text color="$green10" fontSize="$2" numberOfLines={1}>
-                          {location.address}
-                        </Text>
-                      </YStack>
-                    </XStack>
-                  </Card>
-                ) : (
-                  <Card
-                    backgroundColor="$yellow2"
-                    padding="$3"
-                    borderRadius="$3"
-                  >
-                    <XStack gap="$2" alignItems="center">
-                      <Text fontSize="$4">⚠️</Text>
-                      <Text color="$yellow11" fontSize="$3">
-                        Location unavailable
+                    <XStack alignItems="center" gap="$2">
+                      <Text fontSize={18}>📷</Text>
+                      <Text color="white" fontWeight="bold">
+                        Camera
                       </Text>
                     </XStack>
-                  </Card>
-                )}
+                  </Button>
+                </Animated.View>
+                <Animated.View style={{ flex: 1, transform: [{ scale: buttonScale }] }}>
+                  <Button
+                    flex={1}
+                    height="$5"
+                    backgroundColor="#8b5cf6"
+                    onPress={pickImageFromGallery}
+                    onPressIn={handlePressIn}
+                    onPressOut={handlePressOut}
+                    borderRadius={16}
+                    shadowColor="#8b5cf6"
+                    shadowOffset={{ width: 0, height: 4 }}
+                    shadowOpacity={0.3}
+                    shadowRadius={8}
+                    pressStyle={{ scale: 0.95 }}
+                  >
+                    <XStack alignItems="center" gap="$2">
+                      <Text fontSize={18}>🖼️</Text>
+                      <Text color="white" fontWeight="bold">
+                        Gallery
+                      </Text>
+                    </XStack>
+                  </Button>
+                </Animated.View>
+              </XStack>
 
-                <Button
-                  backgroundColor="$green9"
-                  size="$5"
-                  onPress={analyzeImage}
-                  marginTop="$4"
-                >
-                  <Text color="white" fontWeight="bold" fontSize="$4">
-                    🔍 Analyze Waste
-                  </Text>
-                </Button>
+              {imageUri && (
+                <>
+                  {loadingLocation ? (
+                    <YStack backgroundColor="#f0fdf4" padding={16} borderRadius={16} alignItems="center">
+                      <XStack gap={12} alignItems="center">
+                        <Spinner size="small" color="#22c55e" />
+                        <Text color="#6b7280">Getting location...</Text>
+                      </XStack>
+                    </YStack>
+                  ) : location.city && location.city !== "Unknown" ? (
+                    <YStack backgroundColor="#f0fdf4" padding={16} borderRadius={16} gap={8}>
+                      <XStack alignItems="center" gap={8}>
+                        <YStack
+                          width={36}
+                          height={36}
+                          borderRadius={18}
+                          backgroundColor="#dcfce7"
+                          alignItems="center"
+                          justifyContent="center"
+                        >
+                          <Text fontSize={16}>📍</Text>
+                        </YStack>
+                        <Text style={{ fontSize: 14, fontWeight: "600", color: "#15803d" }}>Location Detected</Text>
+                      </XStack>
+                      <Text style={{ fontSize: 13, color: "#6b7280", marginLeft: 44 }}>
+                        {location.city}, {location.state}
+                      </Text>
+                    </YStack>
+                  ) : null}
 
-                <Button chromeless color="$gray11" onPress={resetForm}>
-                  Cancel
-                </Button>
-              </>
-            )}
-          </YStack>
+                  <Button
+                    backgroundColor="#22c55e"
+                    height="$5"
+                    borderRadius={16}
+                    onPress={analyzeImage}
+                    shadowColor="#22c55e"
+                    shadowOffset={{ width: 0, height: 4 }}
+                    shadowOpacity={0.3}
+                    shadowRadius={8}
+                    pressStyle={{ scale: 0.95 }}
+                  >
+                    <XStack alignItems="center" gap="$2">
+                      <Text fontSize={18}>🔍</Text>
+                      <Text color="white" fontWeight="bold" fontSize="$4">
+                        Analyze Image
+                      </Text>
+                    </XStack>
+                  </Button>
+                </>
+              )}
+            </YStack>
+          </Animated.View>
 
-          <YStack
-            margin="$4"
-            padding="$4"
-            backgroundColor="$blue2"
-            borderRadius="$4"
-            borderLeftWidth={4}
-            borderLeftColor="$blue9"
+          {/* Tips Card */}
+          <Animated.View
+            style={{
+              opacity: fadeAnim,
+              transform: [{ translateY: slideAnim }],
+              marginHorizontal: 20,
+              marginBottom: 40,
+            }}
           >
-            <H4 color="$blue11" fontWeight="bold" marginBottom="$2">
-              💡 How it works
-            </H4>
-            <Paragraph color="$blue11">• Capture/upload waste image</Paragraph>
-            <Paragraph color="$blue11">
-              • AI analyzes waste type & details
-            </Paragraph>
-            <Paragraph color="$blue11">• Review and edit if needed</Paragraph>
-            <Paragraph color="$blue11">
-              • Submit report for collection
-            </Paragraph>
-          </YStack>
+            <YStack
+              backgroundColor="white"
+              borderRadius={24}
+              padding={20}
+              style={{
+                shadowColor: "#22c55e",
+                shadowOffset: { width: 0, height: 4 },
+                shadowOpacity: 0.1,
+                shadowRadius: 12,
+                elevation: 4,
+              }}
+            >
+              <XStack alignItems="center" gap={8} marginBottom={12}>
+                <YStack
+                  width={36}
+                  height={36}
+                  borderRadius={18}
+                  backgroundColor="#fef3c7"
+                  alignItems="center"
+                  justifyContent="center"
+                >
+                  <Text fontSize={16}>💡</Text>
+                </YStack>
+                <Text style={{ fontSize: 16, fontWeight: "bold", color: "#1f2937" }}>Tips for Better Reports</Text>
+              </XStack>
+              <YStack gap={8}>
+                <XStack alignItems="center" gap={8}>
+                  <Text style={{ color: "#22c55e" }}>•</Text>
+                  <Text style={{ fontSize: 13, color: "#6b7280", flex: 1 }}>
+                    Take clear, well-lit photos of the waste
+                  </Text>
+                </XStack>
+                <XStack alignItems="center" gap={8}>
+                  <Text style={{ color: "#22c55e" }}>•</Text>
+                  <Text style={{ fontSize: 13, color: "#6b7280", flex: 1 }}>Include the full pile in the frame</Text>
+                </XStack>
+                <XStack alignItems="center" gap={8}>
+                  <Text style={{ color: "#22c55e" }}>•</Text>
+                  <Text style={{ fontSize: 13, color: "#6b7280", flex: 1 }}>Enable location for accurate mapping</Text>
+                </XStack>
+              </YStack>
+            </YStack>
+          </Animated.View>
         </ScrollView>
-      </Theme>
-    );
+      </YStack>
+    )
   }
 
+  // Render analyzing state
   if (state === "analyzing") {
     return (
-      <Theme name="light">
+      <YStack flex={1} backgroundColor="#f0fdf4">
         <YStack
-          flex={1}
-          backgroundColor="$background"
-          justifyContent="center"
-          alignItems="center"
-          padding="$4"
-        >
-          <Spinner size="large" color="$green9" />
-          <H3 color="$gray12" marginTop="$4">
-            Analyzing waste...
-          </H3>
-          <Paragraph color="$gray10" textAlign="center" marginTop="$2">
-            AI is processing your image
-          </Paragraph>
+          position="absolute"
+          top={0}
+          left={0}
+          right={0}
+          bottom={0}
+          style={{
+            background: "linear-gradient(180deg, #f0fdf4 0%, #bbf7d0 100%)",
+          }}
+        />
+        {Array.from({ length: NUM_PARTICLES }).map((_, i) => (
+          <FloatingParticle key={i} delay={i * 600} startX={Math.random() * width} />
+        ))}
+        <YStack flex={1} alignItems="center" justifyContent="center" padding={20}>
+          <YStack
+            backgroundColor="white"
+            borderRadius={24}
+            padding={40}
+            alignItems="center"
+            style={{
+              shadowColor: "#22c55e",
+              shadowOffset: { width: 0, height: 4 },
+              shadowOpacity: 0.15,
+              shadowRadius: 12,
+              elevation: 8,
+            }}
+          >
+            <Animated.View style={{ transform: [{ scale: pulseAnim }] }}>
+              <YStack
+                width={80}
+                height={80}
+                borderRadius={40}
+                backgroundColor="#dcfce7"
+                alignItems="center"
+                justifyContent="center"
+                marginBottom={20}
+              >
+                <Text style={{ fontSize: 40 }}>🔍</Text>
+              </YStack>
+            </Animated.View>
+            <Spinner size="large" color="#22c55e" />
+            <Text style={{ fontSize: 18, fontWeight: "bold", color: "#15803d", marginTop: 20 }}>Analyzing Image</Text>
+            <Text style={{ fontSize: 14, color: "#16a34a", marginTop: 8, textAlign: "center" }}>
+              Our AI is identifying the waste type...
+            </Text>
+          </YStack>
         </YStack>
-      </Theme>
-    );
+      </YStack>
+    )
   }
 
-  if (state === "result" && analysis) {
-    const isSmall = analysis.category === "small";
-    const smallAnalysis = isSmall ? (analysis as SmallWasteAnalysis) : null;
-    const largeAnalysis = !isSmall ? (analysis as LargeWasteAnalysis) : null;
-
-    return (
-      <Theme name="light">
-        <ScrollView flex={1} backgroundColor="$background">
-          <YStack backgroundColor="$green9" padding="$5" paddingTop="$10">
-            <H2 color="white" fontWeight="bold">
-              Analysis Results
-            </H2>
-            <Paragraph color="white" opacity={0.9} marginTop="$1">
-              {isSmall ? "Small/Medium Waste" : "Large/Bulk Waste"}
-            </Paragraph>
-          </YStack>
-
-          <YStack padding="$4" gap="$4">
-            {/* Image Preview */}
-            <Card padding="$0" borderRadius="$4" overflow="hidden">
-              <RNImage
-                source={{ uri: imageUri! }}
-                style={{ width: "100%", height: 200 }}
-                resizeMode="cover"
-              />
-            </Card>
-
-            {/* Location Info */}
-            {location.city && location.city !== "Unknown" && (
-              <Card
-                backgroundColor="$blue2"
-                padding="$4"
-                borderRadius="$4"
-                borderLeftWidth={4}
-                borderLeftColor="$blue9"
-              >
-                <XStack gap="$2" alignItems="flex-start">
-                  <Text fontSize="$5">📍</Text>
-                  <YStack flex={1}>
-                    <Text color="$blue11" fontWeight="600" fontSize="$4">
-                      {location.city}, {location.state}
-                    </Text>
-                    <Text color="$blue10" fontSize="$2" marginTop="$1">
-                      {location.address}
-                    </Text>
-                  </YStack>
-                </XStack>
-              </Card>
-            )}
-
-            {/* Confidence */}
-            <Card backgroundColor="white" padding="$4" borderRadius="$4">
-              <XStack justifyContent="space-between" alignItems="center">
-                <Text color="$gray11">AI Confidence</Text>
-                <Text color="$green10" fontWeight="bold" fontSize="$5">
-                  {analysis.confidence}%
-                </Text>
-              </XStack>
-            </Card>
-
-            {/* Editable: Waste Type */}
-            <YStack gap="$2">
-              <Label color="$gray12" fontWeight="600">
-                Waste Type (Editable)
-              </Label>
-              <XStack flexWrap="wrap" gap="$2">
-                {[
-                  "plastic",
-                  "organic",
-                  "metal",
-                  "e-waste",
-                  "hazardous",
-                  "mixed",
-                ].map((type) => (
-                  <Button
-                    key={type}
-                    size="$3"
-                    onPress={() => setEditedWasteType(type)}
-                    backgroundColor={
-                      editedWasteType === type ? "$green9" : "white"
-                    }
-                    borderColor={
-                      editedWasteType === type ? "$green9" : "$gray5"
-                    }
-                    borderWidth={1}
-                  >
-                    <Text
-                      color={editedWasteType === type ? "white" : "$gray10"}
-                      textTransform="capitalize"
-                    >
-                      {type}
-                    </Text>
-                  </Button>
-                ))}
-              </XStack>
-            </YStack>
-
-            {/* Small Waste Details */}
-            {isSmall && smallAnalysis && (
-              <>
-                {/* Editable: Segregation */}
-                <YStack gap="$2">
-                  <XStack justifyContent="space-between" alignItems="center">
-                    <Label color="$gray12" fontWeight="600">
-                      Segregation (Editable)
-                    </Label>
-                    <Button
-                      size="$2"
-                      onPress={addSegregationItem}
-                      backgroundColor="$green9"
-                    >
-                      <Text color="white" fontSize="$2">
-                        + Add Item
-                      </Text>
-                    </Button>
-                  </XStack>
-
-                  {editedSegregation.map((item, index) => (
-                    <Card
-                      key={index}
-                      backgroundColor="white"
-                      padding="$3"
-                      borderRadius="$3"
-                    >
-                      <XStack gap="$2" alignItems="center">
-                        <Input
-                          flex={2}
-                          value={item.label}
-                          onChangeText={(val) =>
-                            updateSegregationItem(index, "label", val)
-                          }
-                          placeholder="Item name"
-                          backgroundColor="$gray2"
-                        />
-                        <Input
-                          flex={1}
-                          value={String(item.count)}
-                          onChangeText={(val) =>
-                            updateSegregationItem(index, "count", val)
-                          }
-                          placeholder="Count"
-                          keyboardType="number-pad"
-                          backgroundColor="$gray2"
-                        />
-                        <Button
-                          size="$2"
-                          onPress={() => removeSegregationItem(index)}
-                          backgroundColor="$red9"
-                        >
-                          <Text color="white">×</Text>
-                        </Button>
-                      </XStack>
-                    </Card>
-                  ))}
-                </YStack>
-
-                {/* Non-editable fields */}
-                <Card backgroundColor="white" padding="$4" borderRadius="$4">
-                  <YStack gap="$3">
-                    <XStack justifyContent="space-between">
-                      <Text color="$gray11">Estimated Weight</Text>
-                      <Text fontWeight="bold">
-                        {smallAnalysis.estimatedWeightKg} kg
-                      </Text>
-                    </XStack>
-                    <Separator />
-                    <XStack justifyContent="space-between">
-                      <Text color="$gray11">Recyclability</Text>
-                      <Text fontWeight="bold" color="$green10">
-                        {smallAnalysis.recyclabilityPercent}%
-                      </Text>
-                    </XStack>
-                    <Separator />
-                    <XStack justifyContent="space-between">
-                      <Text color="$gray11">Contamination</Text>
-                      <Text fontWeight="bold" textTransform="capitalize">
-                        {smallAnalysis.contaminationLevel}
-                      </Text>
-                    </XStack>
-                    <Separator />
-                    <XStack justifyContent="space-between">
-                      <Text color="$gray11">Hazardous</Text>
-                      <Text
-                        fontWeight="bold"
-                        color={smallAnalysis.hazardous ? "$red10" : "$green10"}
-                      >
-                        {smallAnalysis.hazardous ? "Yes" : "No"}
-                      </Text>
-                    </XStack>
-                  </YStack>
-                </Card>
-              </>
-            )}
-
-            {/* Large Waste Details */}
-            {!isSmall && largeAnalysis && (
-              <Card backgroundColor="white" padding="$4" borderRadius="$4">
-                <YStack gap="$3">
-                  <XStack justifyContent="space-between">
-                    <Text color="$gray11">Estimated Weight</Text>
-                    <Text fontWeight="bold">
-                      {largeAnalysis.estimatedWeightKg} kg
-                    </Text>
-                  </XStack>
-                  <Separator />
-                  <XStack justifyContent="space-between">
-                    <Text color="$gray11">Overflow Level</Text>
-                    <Text fontWeight="bold" textTransform="capitalize">
-                      {largeAnalysis.overflowLevel}
-                    </Text>
-                  </XStack>
-                  <Separator />
-                  <XStack justifyContent="space-between">
-                    <Text color="$gray11">Urgency</Text>
-                    <Text
-                      fontWeight="bold"
-                      textTransform="capitalize"
-                      color={
-                        largeAnalysis.urgencyLevel === "critical"
-                          ? "$red10"
-                          : largeAnalysis.urgencyLevel === "urgent"
-                          ? "$orange10"
-                          : "$green10"
-                      }
-                    >
-                      {largeAnalysis.urgencyLevel}
-                    </Text>
-                  </XStack>
-                  <Separator />
-                  <XStack justifyContent="space-between">
-                    <Text color="$gray11">Hazard Level</Text>
-                    <Text fontWeight="bold" textTransform="capitalize">
-                      {largeAnalysis.hazardLevel}
-                    </Text>
-                  </XStack>
-                  <Separator />
-                  <XStack justifyContent="space-between">
-                    <Text color="$gray11">Illegal Dumping</Text>
-                    <Text
-                      fontWeight="bold"
-                      color={
-                        largeAnalysis.illegalDumping ? "$red10" : "$green10"
-                      }
-                    >
-                      {largeAnalysis.illegalDumping ? "Yes" : "No"}
-                    </Text>
-                  </XStack>
-                </YStack>
-              </Card>
-            )}
-
-            {/* AI Notes */}
-            {analysis.notes && (
-              <Card
-                backgroundColor="$yellow2"
-                padding="$4"
-                borderRadius="$4"
-                borderLeftWidth={4}
-                borderLeftColor="$yellow9"
-              >
-                <Label color="$yellow11" fontWeight="bold" marginBottom="$2">
-                  AI Notes
-                </Label>
-                <Paragraph color="$yellow11">{analysis.notes}</Paragraph>
-              </Card>
-            )}
-
-            {/* Action Buttons */}
-            <Button
-              backgroundColor="$green9"
-              size="$5"
-              onPress={handleVerifyAndReport}
-              marginTop="$2"
-            >
-              <Text color="white" fontWeight="bold" fontSize="$4">
-                ✓ Verify & Report
-              </Text>
-            </Button>
-
-            <Button chromeless color="$gray11" onPress={resetForm}>
-              Cancel & Start Over
-            </Button>
-          </YStack>
-        </ScrollView>
-      </Theme>
-    );
-  }
-
+  // Render submitting state
   if (state === "submitting") {
     return (
-      <Theme name="light">
+      <YStack flex={1} backgroundColor="#f0fdf4">
         <YStack
-          flex={1}
-          backgroundColor="$background"
-          justifyContent="center"
-          alignItems="center"
-          padding="$4"
-        >
-          <Spinner size="large" color="$green9" />
-          <H3 color="$gray12" marginTop="$4">
-            Submitting report...
-          </H3>
-          <Paragraph color="$gray10" textAlign="center" marginTop="$2">
-            Saving your waste report
-          </Paragraph>
+          position="absolute"
+          top={0}
+          left={0}
+          right={0}
+          bottom={0}
+          style={{
+            background: "linear-gradient(180deg, #f0fdf4 0%, #bbf7d0 100%)",
+          }}
+        />
+        {Array.from({ length: NUM_PARTICLES }).map((_, i) => (
+          <FloatingParticle key={i} delay={i * 600} startX={Math.random() * width} />
+        ))}
+        <YStack flex={1} alignItems="center" justifyContent="center" padding={20}>
+          <YStack
+            backgroundColor="white"
+            borderRadius={24}
+            padding={40}
+            alignItems="center"
+            style={{
+              shadowColor: "#22c55e",
+              shadowOffset: { width: 0, height: 4 },
+              shadowOpacity: 0.15,
+              shadowRadius: 12,
+              elevation: 8,
+            }}
+          >
+            <Animated.View style={{ transform: [{ scale: pulseAnim }] }}>
+              <YStack
+                width={80}
+                height={80}
+                borderRadius={40}
+                backgroundColor="#dcfce7"
+                alignItems="center"
+                justifyContent="center"
+                marginBottom={20}
+              >
+                <Text style={{ fontSize: 40 }}>📤</Text>
+              </YStack>
+            </Animated.View>
+            <Spinner size="large" color="#22c55e" />
+            <Text style={{ fontSize: 18, fontWeight: "bold", color: "#15803d", marginTop: 20 }}>Submitting Report</Text>
+            <Text style={{ fontSize: 14, color: "#16a34a", marginTop: 8, textAlign: "center" }}>
+              Uploading your report...
+            </Text>
+          </YStack>
         </YStack>
-      </Theme>
-    );
+      </YStack>
+    )
   }
 
-  if (state === "success" && analysis) {
+  // Render success state
+  if (state === "success") {
     return (
-      <Theme name="light">
+      <YStack flex={1} backgroundColor="#f0fdf4">
         <YStack
-          flex={1}
-          backgroundColor="$background"
-          justifyContent="center"
-          alignItems="center"
-          padding="$4"
-        >
-          <Text fontSize={80}>✅</Text>
-          <H2 color="$green10" marginTop="$4" textAlign="center">
-            Report Submitted!
-          </H2>
-          <Paragraph color="$gray10" textAlign="center" marginTop="$2">
-            Your waste report has been saved locally
-          </Paragraph>
+          position="absolute"
+          top={0}
+          left={0}
+          right={0}
+          bottom={0}
+          style={{
+            background: "linear-gradient(180deg, #f0fdf4 0%, #bbf7d0 100%)",
+          }}
+        />
+        {Array.from({ length: NUM_PARTICLES }).map((_, i) => (
+          <FloatingParticle key={i} delay={i * 600} startX={Math.random() * width} />
+        ))}
+        <YStack flex={1} alignItems="center" justifyContent="center" padding={20}>
+          <Animated.View style={{ transform: [{ scale: successScale }] }}>
+            <YStack
+              backgroundColor="white"
+              borderRadius={24}
+              padding={40}
+              alignItems="center"
+              style={{
+                shadowColor: "#22c55e",
+                shadowOffset: { width: 0, height: 4 },
+                shadowOpacity: 0.15,
+                shadowRadius: 12,
+                elevation: 8,
+              }}
+            >
+              <YStack
+                width={80}
+                height={80}
+                borderRadius={40}
+                backgroundColor="#dcfce7"
+                alignItems="center"
+                justifyContent="center"
+                marginBottom={20}
+              >
+                <Text style={{ fontSize: 40 }}>✅</Text>
+              </YStack>
+              <Text style={{ fontSize: 24, fontWeight: "bold", color: "#15803d" }}>Report Submitted!</Text>
+              <Text style={{ fontSize: 14, color: "#16a34a", marginTop: 8, textAlign: "center" }}>
+                Thank you for helping keep our planet clean
+              </Text>
+              <YStack
+                backgroundColor="#dcfce7"
+                paddingHorizontal={16}
+                paddingVertical={8}
+                borderRadius={16}
+                marginTop={16}
+              >
+                <Text style={{ color: "#15803d", fontWeight: "600" }}>+10 Points Earned!</Text>
+              </YStack>
+            </YStack>
+          </Animated.View>
+        </YStack>
+      </YStack>
+    )
+  }
 
-          <Card
-            backgroundColor="white"
-            padding="$4"
-            borderRadius="$4"
-            marginTop="$6"
-            width="100%"
+  // Render result state
+  return (
+    <YStack flex={1} backgroundColor="#f0fdf4">
+      <YStack
+        position="absolute"
+        top={0}
+        left={0}
+        right={0}
+        bottom={0}
+        style={{
+          background: "linear-gradient(180deg, #f0fdf4 0%, #bbf7d0 100%)",
+        }}
+      />
+      {Array.from({ length: NUM_PARTICLES }).map((_, i) => (
+        <FloatingParticle key={i} delay={i * 600} startX={Math.random() * width} />
+      ))}
+
+      <ScrollView flex={1} showsVerticalScrollIndicator={false}>
+        {/* Header */}
+        <Animated.View
+          style={{
+            transform: [{ translateY: headerSlide }],
+            opacity: headerOpacity,
+            paddingTop: 60,
+            paddingBottom: 20,
+            alignItems: "center",
+          }}
+        >
+          <YStack alignItems="center" marginBottom={8}>
+            <YStack
+              position="absolute"
+              width={80}
+              height={80}
+              borderRadius={40}
+              backgroundColor="#22c55e"
+              opacity={0.2}
+              style={{ filter: "blur(20px)" }}
+            />
+            <Animated.View
+              style={{
+                transform: [{ rotate: spin }, { scale: pulseAnim }],
+              }}
+            >
+              <Text style={{ fontSize: 56 }}>♻️</Text>
+            </Animated.View>
+          </YStack>
+          <Text
+            style={{
+              fontSize: 28,
+              fontWeight: "bold",
+              color: "#15803d",
+              marginTop: 8,
+            }}
           >
-            <YStack gap="$2">
-              <XStack justifyContent="space-between">
-                <Text color="$gray11">Category</Text>
-                <Text fontWeight="bold" textTransform="capitalize">
-                  {analysis.category}
-                </Text>
-              </XStack>
-              <XStack justifyContent="space-between">
-                <Text color="$gray11">Type</Text>
-                <Text fontWeight="bold" textTransform="capitalize">
-                  {editedWasteType}
-                </Text>
-              </XStack>
-              <XStack justifyContent="space-between">
-                <Text color="$gray11">Weight</Text>
-                <Text fontWeight="bold">{analysis.estimatedWeightKg} kg</Text>
+            Analysis Result
+          </Text>
+          <Text style={{ fontSize: 14, color: "#16a34a", marginTop: 4 }}>Review and confirm your report</Text>
+        </Animated.View>
+
+        {/* Results Card */}
+        <YStack paddingHorizontal={20} gap={16} paddingBottom={40}>
+          {/* Image Preview */}
+          {imageUri && (
+            <YStack
+              backgroundColor="white"
+              borderRadius={24}
+              overflow="hidden"
+              style={{
+                shadowColor: "#22c55e",
+                shadowOffset: { width: 0, height: 4 },
+                shadowOpacity: 0.15,
+                shadowRadius: 12,
+                elevation: 8,
+              }}
+            >
+              <RNImage source={{ uri: imageUri }} style={{ width: "100%", height: 200 }} resizeMode="cover" />
+            </YStack>
+          )}
+
+          {/* Analysis Details */}
+          <YStack
+            backgroundColor="white"
+            borderRadius={24}
+            padding={20}
+            gap={16}
+            style={{
+              shadowColor: "#22c55e",
+              shadowOffset: { width: 0, height: 4 },
+              shadowOpacity: 0.15,
+              shadowRadius: 12,
+              elevation: 8,
+            }}
+          >
+            <XStack alignItems="center" gap={8}>
+              <YStack
+                width={36}
+                height={36}
+                borderRadius={18}
+                backgroundColor="#dcfce7"
+                alignItems="center"
+                justifyContent="center"
+              >
+                <Text fontSize={16}>📊</Text>
+              </YStack>
+              <Text style={{ fontSize: 16, fontWeight: "bold", color: "#1f2937" }}>Analysis Details</Text>
+            </XStack>
+
+            {analysis && (
+              <YStack gap={12}>
+                <YStack gap={8}>
+                  <Text style={{ fontSize: 13, color: "#6b7280", fontWeight: "600" }}>Waste Type</Text>
+                  <YStack backgroundColor="#f0fdf4" padding={12} borderRadius={12}>
+                    <Text style={{ fontSize: 15, color: "#15803d", fontWeight: "600" }}>{editedWasteType}</Text>
+                  </YStack>
+                </YStack>
+
+                <YStack gap={8}>
+                  <Text style={{ fontSize: 13, color: "#6b7280", fontWeight: "600" }}>Category</Text>
+                  <YStack backgroundColor="#f0fdf4" padding={12} borderRadius={12}>
+                    <Text style={{ fontSize: 15, color: "#15803d", fontWeight: "600" }}>
+                      {analysis.category === "small" ? "Small Waste" : "Large Waste"}
+                    </Text>
+                  </YStack>
+                </YStack>
+
+                {analysis.category === "large" && (
+                  <YStack gap={8}>
+                    <Text style={{ fontSize: 13, color: "#6b7280", fontWeight: "600" }}>Urgency</Text>
+                    <YStack
+                      backgroundColor={(analysis as LargeWasteAnalysis).urgency === "high" ? "#fef2f2" : "#f0fdf4"}
+                      padding={12}
+                      borderRadius={12}
+                    >
+                      <Text
+                        style={{
+                          fontSize: 15,
+                          color: (analysis as LargeWasteAnalysis).urgency === "high" ? "#dc2626" : "#15803d",
+                          fontWeight: "600",
+                        }}
+                      >
+                        {(analysis as LargeWasteAnalysis).urgency.toUpperCase()}
+                      </Text>
+                    </YStack>
+                  </YStack>
+                )}
+
+                {analysis.category === "small" && editedSegregation.length > 0 && (
+                  <YStack gap={8}>
+                    <Text style={{ fontSize: 13, color: "#6b7280", fontWeight: "600" }}>Items Found</Text>
+                    <YStack gap={8}>
+                      {editedSegregation.map((item, index) => (
+                        <XStack
+                          key={index}
+                          backgroundColor="#f0fdf4"
+                          padding={12}
+                          borderRadius={12}
+                          justifyContent="space-between"
+                          alignItems="center"
+                        >
+                          <Text style={{ fontSize: 14, color: "#15803d" }}>{item.label}</Text>
+                          <YStack backgroundColor="#dcfce7" paddingHorizontal={10} paddingVertical={4} borderRadius={8}>
+                            <Text style={{ fontSize: 13, color: "#15803d", fontWeight: "600" }}>{item.count}</Text>
+                          </YStack>
+                        </XStack>
+                      ))}
+                    </YStack>
+                  </YStack>
+                )}
+              </YStack>
+            )}
+          </YStack>
+
+          {/* Location Card */}
+          {location.city && location.city !== "Unknown" && (
+            <YStack
+              backgroundColor="white"
+              borderRadius={24}
+              padding={20}
+              style={{
+                shadowColor: "#22c55e",
+                shadowOffset: { width: 0, height: 4 },
+                shadowOpacity: 0.1,
+                shadowRadius: 12,
+                elevation: 4,
+              }}
+            >
+              <XStack alignItems="center" gap={8}>
+                <YStack
+                  width={36}
+                  height={36}
+                  borderRadius={18}
+                  backgroundColor="#dbeafe"
+                  alignItems="center"
+                  justifyContent="center"
+                >
+                  <Text fontSize={16}>📍</Text>
+                </YStack>
+                <YStack flex={1}>
+                  <Text style={{ fontSize: 14, fontWeight: "600", color: "#1f2937" }}>Location</Text>
+                  <Text style={{ fontSize: 13, color: "#6b7280" }}>
+                    {location.city}, {location.state}
+                  </Text>
+                </YStack>
               </XStack>
             </YStack>
-          </Card>
+          )}
 
-          <Paragraph color="$gray9" fontSize="$2" marginTop="$4">
-            Redirecting to home screen...
-          </Paragraph>
+          {/* Action Buttons */}
+          <XStack gap={12}>
+            <Button
+              flex={1}
+              height="$5"
+              backgroundColor="#f3f4f6"
+              borderRadius={16}
+              onPress={resetForm}
+              pressStyle={{ scale: 0.95 }}
+            >
+              <Text color="#6b7280" fontWeight="bold">
+                Cancel
+              </Text>
+            </Button>
+            <Button
+              flex={1}
+              height="$5"
+              backgroundColor="#22c55e"
+              borderRadius={16}
+              onPress={handleVerifyAndReport}
+              shadowColor="#22c55e"
+              shadowOffset={{ width: 0, height: 4 }}
+              shadowOpacity={0.3}
+              shadowRadius={8}
+              pressStyle={{ scale: 0.95 }}
+            >
+              <XStack alignItems="center" gap="$2">
+                <Text fontSize={16}>✓</Text>
+                <Text color="white" fontWeight="bold">
+                  Submit Report
+                </Text>
+              </XStack>
+            </Button>
+          </XStack>
         </YStack>
-      </Theme>
-    );
-  }
-
-  return null;
+      </ScrollView>
+    </YStack>
+  )
 }
