@@ -1,4 +1,4 @@
-# 🌍 WasteMan: AI-Powered Smart Waste Management Ecosystem
+# 🌍 EcoFlow: AI-Powered Smart Waste Management Ecosystem
 
 [![Hackathon](https://img.shields.io/badge/Hackathon-PKP%20Mumbai-orange.svg)](https://github.com/Prg-Yash/pkpsc02-waste-management)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
