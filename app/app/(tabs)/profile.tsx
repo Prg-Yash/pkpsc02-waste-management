@@ -439,6 +439,47 @@ export default function ProfileScreen() {
                 </Button>
               )}
             </XStack>
+          {/* Marketplace Quick Actions */}
+          <YStack gap="$2" marginTop="$3">
+            <XStack gap="$3">
+              <Button
+                flex={1}
+                onPress={() => router.push("/(marketplace)/create" as any)}
+                backgroundColor="$green9"
+                color="white"
+                fontWeight="600"
+                icon={<Text fontSize={18}>➕</Text>}
+              >
+                Create Listing
+              </Button>
+              <Button
+                flex={1}
+                onPress={() => router.push("/(tabs)/marketplace" as any)}
+                backgroundColor="$blue9"
+                color="white"
+                fontWeight="600"
+                icon={<Text fontSize={18}>🛒</Text>}
+              >
+                Browse Market
+              </Button>
+            </XStack>
+            <Button
+              onPress={() => router.push("/(marketplace)/my-listings" as any)}
+              backgroundColor="$purple9"
+              color="white"
+              fontWeight="600"
+              icon={<Text fontSize={18}>📋</Text>}
+            >
+              My Listings
+            </Button>
+          </YStack>
+
+          {/* Edit Profile Section */}
+          {isEditing ? (
+            <YStack gap="$3">
+              <Text color="$gray11" fontWeight="600" fontSize="$3">
+                Edit Profile Information
+              </Text>
 
             {isEditing ? (
               <YStack gap="$3">

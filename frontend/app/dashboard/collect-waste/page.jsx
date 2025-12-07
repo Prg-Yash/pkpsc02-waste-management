@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { useUser } from '@clerk/nextjs';
 import { useRouter } from 'next/navigation';
-import { Trash2, MapPin, CheckCircle, Clock, Upload, Loader, Calendar, Weight, Search, X, Award, TrendingUp, AlertCircle } from 'lucide-react';
+import { Trash2, MapPin, CheckCircle, Clock, Upload, Loader, Calendar, Weight, Search, X, Award, TrendingUp, AlertCircle, Shield, ArrowRight } from 'lucide-react';
 import { API_CONFIG } from '@/lib/api-config';
 
 
@@ -21,6 +21,11 @@ const CollectPage = () => {
   const [currentPage, setCurrentPage] = useState(1);
   const [selectedTask, setSelectedTask] = useState(null);
   const [verificationImage, setVerificationImage] = useState(null);
+  const [beforeImage, setBeforeImage] = useState(null);
+  const [afterImage, setAfterImage] = useState(null);
+  const [collectionStep, setCollectionStep] = useState('before'); // 'before' or 'after'
+  const [beforeVerified, setBeforeVerified] = useState(false);
+  const [beforeVerificationData, setBeforeVerificationData] = useState(null);
   const [verificationStatus, setVerificationStatus] = useState('idle');
   const [verificationResult, setVerificationResult] = useState(null);
   const [reward, setReward] = useState(null);
@@ -270,13 +275,19 @@ const CollectPage = () => {
     }
   };
 
-  const handleImageUpload = (e) => {
+  const handleImageUpload = (e, imageType = 'legacy') => {
     const file = e.target.files?.[0];
     if (file) {
       const reader = new FileReader();
       reader.onloadend = () => {
         // Store the complete data URL for preview
-        setVerificationImage(reader.result);
+        if (imageType === 'before') {
+          setBeforeImage(reader.result);
+        } else if (imageType === 'after') {
+          setAfterImage(reader.result);
+        } else {
+          setVerificationImage(reader.result);
+        }
       };
       reader.readAsDataURL(file);
     }
@@ -301,6 +312,261 @@ const CollectPage = () => {
         console.error('Location error:', error);
       }
     );
+  };
+
+  // Step 1: Verify before image only
+  const handleVerifyBeforeImage = async () => {
+    if (!selectedTask || !beforeImage) return;
+
+    setVerificationStatus('verifying');
+    setGeminiAnalysis(null);
+    
+    try {
+      // Get current location
+      if (!currentLocation) {
+        await new Promise((resolve, reject) => {
+          navigator.geolocation.getCurrentPosition(
+            (position) => {
+              const location = {
+                latitude: position.coords.latitude,
+                longitude: position.coords.longitude,
+              };
+              setCurrentLocation(location);
+              resolve(location);
+            },
+            (error) => {
+              setLocationError('Location required for verification');
+              reject(error);
+            }
+          );
+        });
+      }
+
+      // Call Gemini API for before-only verification
+      const response = await fetch('/api/verify-waste', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          reportedImage: selectedTask.reportedImage,
+          beforeImage: beforeImage,
+          verificationType: 'before',
+          reportedLocation: selectedTask.reportedLocation,
+          collectorLocation: currentLocation
+        }),
+      });
+
+      const data = await response.json();
+      console.log('Step 1 - Before Image Verification Result:', data);
+
+      setVerificationResult(data);
+
+      // Check if before image is valid
+      const beforeValid = data.beforeVerification?.isValid === true && 
+                         data.beforeVerification?.confidence >= 0.6;
+      const locationValid = !data.locationVerification || 
+                           data.locationVerification?.isValid === true;
+      const step1Pass = beforeValid && locationValid && (data.success === true);
+
+      console.log('Step 1 Validation:', {
+        beforeValid,
+        locationValid,
+        step1Pass,
+        beforeConfidence: data.beforeVerification?.confidence,
+        beforeChecks: data.beforeVerification
+      });
+
+      if (step1Pass) {
+        // Step 1 passed - store data and move to step 2
+        setBeforeVerified(true);
+        setBeforeVerificationData(data);
+        setCollectionStep('after');
+        setVerificationStatus('step1-complete');
+        alert('✅ Step 1 Complete! Before image verified successfully. Now upload the after collection photo.');
+      } else {
+        // Step 1 failed
+        setVerificationStatus('verified-failed');
+        const failureReasons = [];
+        if (!beforeValid) {
+          if (data.beforeVerification?.confidence < 0.6) {
+            failureReasons.push(`Before image confidence too low: ${(data.beforeVerification?.confidence * 100).toFixed(0)}%`);
+          } else {
+            failureReasons.push('Before image does not match reported waste');
+          }
+        }
+        if (!locationValid) {
+          failureReasons.push('Location verification failed');
+        }
+        
+        data.failureReason = failureReasons.join('; ');
+        data.allChecksPass = false;
+        setVerificationResult(data);
+        alert(`❌ Step 1 Failed: ${data.failureReason}\n\nPlease take a clear photo at the exact reported location showing the same waste.`);
+      }
+    } catch (error) {
+      console.error('Step 1 verification error:', error);
+      setVerificationStatus('error');
+      alert(`Error during step 1 verification: ${error.message}`);
+    }
+  };
+
+  // Step 2: Verify after image and complete collection
+  const handleVerifyAfterImage = async () => {
+    if (!selectedTask || !beforeImage || !afterImage || !beforeVerificationData) return;
+
+    setVerificationStatus('verifying');
+    setGeminiAnalysis(null);
+    
+    try {
+      // Get current location
+      if (!currentLocation) {
+        await new Promise((resolve, reject) => {
+          navigator.geolocation.getCurrentPosition(
+            (position) => {
+              const location = {
+                latitude: position.coords.latitude,
+                longitude: position.coords.longitude,
+              };
+              setCurrentLocation(location);
+              resolve(location);
+            },
+            (error) => {
+              setLocationError('Location required for verification');
+              reject(error);
+            }
+          );
+        });
+      }
+
+      // Call Gemini API for complete before-after verification
+      const response = await fetch('/api/verify-waste', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          verificationType: 'before-after',
+          reportedImage: selectedTask.reportedImage,
+          beforeImage: beforeImage,
+          afterImage: afterImage,
+          location: currentLocation,
+          reportedLocation: selectedTask.reportedLocation,
+          aiAnalysis: selectedTask.aiAnalysis,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        const errorMsg = data.details || data.error || 'Verification failed';
+        throw new Error(errorMsg);
+      }
+
+      setVerificationResult(data);
+      
+      // STRICT VALIDATION: Both before and after verification must pass with AI approval
+      const beforeValid = data.beforeVerification?.isValid === true && data.beforeVerification?.confidence >= 0.6;
+      const afterValid = data.afterVerification?.isValid === true && data.afterVerification?.confidence >= 0.6;
+      const locationValid = !data.locationVerification || data.locationVerification?.isValid === true;
+      
+      const allChecksPass = beforeValid && afterValid && locationValid && (data.success === true);
+      
+      console.log('🔍 Verification Checks:', {
+        beforeValid,
+        afterValid,
+        locationValid,
+        allChecksPass,
+        dataSuccess: data.success
+      });
+
+      // Only proceed if ALL checks pass
+      if (allChecksPass) {
+        // Convert base64 to blob for API submission (use after image)
+        const base64Response = await fetch(afterImage);
+        const blob = await base64Response.blob();
+        const file = new File([blob], 'collection-proof.jpg', { type: 'image/jpeg' });
+
+        // Submit collection to backend API via proxy
+        const formData = new FormData();
+        formData.append('userId', user.id);
+        formData.append('collectorImage', file);
+        formData.append('latitude', currentLocation.latitude.toString());
+        formData.append('longitude', currentLocation.longitude.toString());
+
+        const collectResponse = await fetch(`${API_CONFIG.BASE_URL}/api/waste/${selectedTask.id}/collect`, {
+          method: 'POST',
+          headers: {
+            'x-user-id': user.id,
+          },
+          body: formData,
+        });
+
+        if (!collectResponse.ok) {
+          const errorData = await collectResponse.json();
+          setVerificationStatus('verified-failed');
+          setVerificationResult({
+            ...data,
+            backendError: errorData.error || 'Failed to submit collection',
+            showBackendError: true
+          });
+          return;
+        }
+
+        const collectData = await collectResponse.json();
+        console.log('✅ Collection submitted and approved:', collectData);
+        
+        setVerificationStatus('success');
+        
+        // Calculate reward based on both confidences
+        const baseReward = parseInt(selectedTask.amount) * 2;
+        const avgConfidence = (data.beforeVerification.confidence + data.afterVerification.confidence) / 2;
+        const earnedReward = Math.floor(baseReward * avgConfidence);
+        setReward(earnedReward);
+
+        await fetchWasteReports();
+        
+        setTimeout(() => {
+          setSelectedTask(null);
+          setBeforeImage(null);
+          setAfterImage(null);
+          setVerificationImage(null);
+          setVerificationResult(null);
+          setCollectionStep('before');
+          setBeforeVerified(false);
+          setBeforeVerificationData(null);
+        }, 3000);
+      } else {
+        // Verification failed - show detailed failure reasons
+        console.log('❌ Verification failed:', {
+          beforeValid,
+          afterValid,
+          locationValid,
+          beforeReason: !beforeValid ? 'Before image verification failed or confidence too low' : 'OK',
+          afterReason: !afterValid ? 'After image verification failed or confidence too low' : 'OK',
+          locationReason: !locationValid ? 'Location verification failed' : 'OK'
+        });
+        
+        setVerificationStatus('verified-failed');
+        setVerificationResult({
+          ...data,
+          allChecksPass: false,
+          failureReason: !beforeValid 
+            ? 'Before image verification failed. Please ensure you are at the correct location with the same waste.'
+            : !afterValid 
+            ? 'After image verification failed. Please ensure waste is completely removed and area is clean.'
+            : !locationValid
+            ? 'Location verification failed. You must be within 10km of the reported location.'
+            : 'Verification requirements not met.'
+        });
+      }
+    } catch (error) {
+      console.error('Verification error:', error);
+      setVerificationStatus('failure');
+      setVerificationResult({
+        error: error.message || 'Verification failed. Please try again.'
+      });
+    }
   };
 
   const handleVerify = async () => {
@@ -330,13 +596,14 @@ const CollectPage = () => {
         });
       }
 
-      // Call Gemini API for verification
+      // Call Gemini API for verification (legacy single-step)
       const response = await fetch('/api/verify-waste', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
+          verificationType: 'legacy',
           collectedImage: verificationImage,
           reportedImage: selectedTask.reportedImage,
           location: currentLocation,
@@ -360,8 +627,25 @@ const CollectPage = () => {
       setVerificationResult(result);
       setGeminiAnalysis(result.notes || data.analysis);
       
-      // Check if verification passed (both image and location)
-      if (result.overallMatch || result.success) {
+      // STRICT VALIDATION: AI must approve with minimum confidence
+      const imageValid = result.sameWaste === true && result.matchConfidence >= 60;
+      const locationValid = result.locationMatch === true;
+      const overallValid = result.validation?.isValid === true;
+      
+      const allChecksPass = imageValid && locationValid && overallValid && (result.overallMatch === true || result.success === true);
+      
+      console.log('🔍 Legacy Verification Checks:', {
+        imageValid,
+        locationValid,
+        overallValid,
+        allChecksPass,
+        sameWaste: result.sameWaste,
+        matchConfidence: result.matchConfidence,
+        locationMatch: result.locationMatch
+      });
+      
+      // Only proceed if ALL checks pass and AI approves
+      if (allChecksPass) {
         // Convert base64 to blob for API submission
         const base64Response = await fetch(verificationImage);
         const blob = await base64Response.blob();
@@ -396,7 +680,7 @@ const CollectPage = () => {
         }
 
         const collectData = await collectResponse.json();
-        console.log('Collection submitted:', collectData);
+        console.log('✅ Collection submitted and approved:', collectData);
         
         setVerificationStatus('success');
         
@@ -416,8 +700,26 @@ const CollectPage = () => {
           setVerificationResult(null);
         }, 3000);
       } else {
-        // Verification failed but we have results to show
+        // Verification failed - show detailed failure reasons
+        console.log('❌ Legacy verification failed:', {
+          imageValid,
+          locationValid,
+          overallValid,
+          imageReason: !imageValid ? 'Image verification failed or confidence too low (<60%)' : 'OK',
+          locationReason: !locationValid ? 'Location mismatch' : 'OK',
+          overallReason: !overallValid ? 'Overall validation failed' : 'OK'
+        });
+        
         setVerificationStatus('verified-failed');
+        setVerificationResult({
+          ...result,
+          allChecksPass: false,
+          failureReason: !imageValid 
+            ? `Image verification failed. AI confidence: ${result.matchConfidence}% (minimum 60% required)`
+            : !locationValid 
+            ? 'Location verification failed. You must be at the reported location.'
+            : 'Verification requirements not met. Please try again.'
+        });
       }
     } catch (error) {
       console.error('Verification error:', error);
@@ -964,7 +1266,16 @@ const CollectPage = () => {
                 <div className="flex items-center justify-between mb-6">
                   <h3 className="text-2xl font-bold text-gray-800">Verify Collection</h3>
                   <button 
-                    onClick={() => setSelectedTask(null)}
+                    onClick={() => {
+                      setSelectedTask(null);
+                      setBeforeImage(null);
+                      setAfterImage(null);
+                      setBeforeVerified(false);
+                      setBeforeVerificationData(null);
+                      setCollectionStep('before');
+                      setVerificationStatus('idle');
+                      setVerificationResult(null);
+                    }}
                     className="p-2 hover:bg-gray-100 rounded-lg transition-colors duration-200"
                   >
                     <X className="w-6 h-6 text-gray-500" />
@@ -1054,51 +1365,375 @@ const CollectPage = () => {
                   </div>
                 </div>
 
-                <div className="mb-6">
-                  <label className="flex items-center gap-2 text-sm font-semibold text-gray-700 mb-3">
-                    <Upload className="w-5 h-5 text-gray-600" />
-                    Upload Your Collection Image (will be compared with reported image above)
-                  </label>
-                  <div className="border-2 border-dashed border-gray-300 rounded-xl p-8 text-center hover:border-emerald-500 transition-colors duration-300 bg-gray-50">
-                    <Upload className="mx-auto h-12 w-12 text-gray-400 mb-3" />
-                    <label className="cursor-pointer">
-                      <span className="text-emerald-600 font-semibold hover:text-emerald-700">Upload a file</span>
-                      <input 
-                        type="file" 
-                        className="hidden" 
-                        onChange={handleImageUpload} 
-                        accept="image/*" 
-                      />
-                    </label>
-                    <p className="text-xs text-gray-500 mt-2">PNG, JPG, GIF up to 10MB</p>
+                {/* Workflow Selection */}
+                {/* Two-Step Verification Process Header */}
+                <div className="mb-6 p-5 bg-linear-to-r from-blue-500 via-purple-500 to-emerald-500 rounded-xl text-white shadow-lg">
+                  <div className="flex items-center gap-3 mb-3">
+                    <Shield className="w-6 h-6" />
+                    <h3 className="text-xl font-bold">Secure Two-Step Verification</h3>
+                  </div>
+                  <p className="text-sm opacity-95 mb-4">
+                    Complete both steps to verify waste collection and earn points
+                  </p>
+                  <div className="flex items-center gap-3">
+                    <div className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-all ${
+                      collectionStep === 'before' && !beforeVerified ? 'bg-white/30 border-2 border-white' : 'bg-white/10'
+                    }`}>
+                      <div className={`w-7 h-7 rounded-full flex items-center justify-center font-bold text-sm ${
+                        beforeVerified ? 'bg-emerald-400 text-emerald-900' : 'bg-white text-blue-600'
+                      }`}>
+                        {beforeVerified ? '✓' : '1'}
+                      </div>
+                      <span className="text-sm font-semibold">Before Collection</span>
+                    </div>
+                    <ArrowRight className="w-5 h-5" />
+                    <div className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-all ${
+                      collectionStep === 'after' ? 'bg-white/30 border-2 border-white' : 'bg-white/10'
+                    }`}>
+                      <div className={`w-7 h-7 rounded-full flex items-center justify-center font-bold text-sm ${
+                        beforeVerified ? 'bg-white text-emerald-600' : 'bg-white/50 text-gray-300'
+                      }`}>
+                        2
+                      </div>
+                      <span className={`text-sm font-semibold ${!beforeVerified ? 'opacity-50' : ''}`}>After Collection</span>
+                    </div>
                   </div>
                 </div>
 
-                {verificationImage && (
-                  <div className="mb-6">
-                    <img 
-                      src={verificationImage} 
-                      alt="Verification" 
-                      className="rounded-xl w-full shadow-lg border border-gray-200" 
-                    />
-                  </div>
+                {/* Step 1: Before Image Upload (Always visible first) */}
+                {collectionStep === 'before' && (
+                  <>
+                    {/* Before/After Two-Step Upload */}
+                    <div className="space-y-6 mb-6">
+                      {/* Before Image */}
+                      <div className={`border-2 rounded-xl p-5 transition-all ${
+                        collectionStep === 'before' 
+                          ? 'border-blue-500 bg-blue-50' 
+                          : beforeImage 
+                          ? 'border-green-500 bg-green-50' 
+                          : 'border-gray-300 bg-gray-50'
+                      }`}>
+                        <div className="flex items-center justify-between mb-3">
+                          <label className="flex items-center gap-2 text-sm font-bold text-gray-800">
+                            <span className="w-6 h-6 rounded-full bg-blue-500 text-white flex items-center justify-center text-xs">1</span>
+                            BEFORE Collection Image
+                          </label>
+                          {beforeImage && <CheckCircle className="w-5 h-5 text-green-600" />}
+                        </div>
+                        <p className="text-xs text-gray-600 mb-3">Take a photo of the waste BEFORE you start collecting</p>
+                        
+                        {!beforeImage ? (
+                          <div className="border-2 border-dashed border-blue-300 rounded-lg p-6 text-center hover:border-blue-500 transition-colors bg-white">
+                            <Upload className="mx-auto h-10 w-10 text-blue-400 mb-2" />
+                            <label className="cursor-pointer">
+                              <span className="text-blue-600 font-semibold hover:text-blue-700">Upload Before Image</span>
+                              <input 
+                                type="file" 
+                                className="hidden" 
+                                onChange={(e) => handleImageUpload(e, 'before')} 
+                                accept="image/*" 
+                              />
+                            </label>
+                          </div>
+                        ) : (
+                          <div className="relative">
+                            <img 
+                              src={beforeImage} 
+                              alt="Before collection" 
+                              className="rounded-lg w-full shadow-md border-2 border-blue-300" 
+                            />
+                            <button
+                              onClick={() => setBeforeImage(null)}
+                              className="absolute top-2 right-2 p-1 bg-red-500 text-white rounded-full hover:bg-red-600"
+                            >
+                              <X className="w-4 h-4" />
+                            </button>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* After Image */}
+                      <div className={`border-2 rounded-xl p-5 transition-all ${
+                        collectionStep === 'after' 
+                          ? 'border-emerald-500 bg-emerald-50' 
+                          : afterImage 
+                          ? 'border-green-500 bg-green-50' 
+                          : beforeImage
+                          ? 'border-gray-300 bg-gray-50'
+                          : 'border-gray-200 bg-gray-100 opacity-60'
+                      }`}>
+                        <div className="flex items-center justify-between mb-3">
+                          <label className="flex items-center gap-2 text-sm font-bold text-gray-800">
+                            <span className="w-6 h-6 rounded-full bg-emerald-500 text-white flex items-center justify-center text-xs">2</span>
+                            AFTER Collection Image
+                          </label>
+                          {afterImage && <CheckCircle className="w-5 h-5 text-green-600" />}
+                        </div>
+                        <p className="text-xs text-gray-600 mb-3">Take a photo AFTER collecting - area should be clean</p>
+                        
+                        {!afterImage ? (
+                          <div className={`border-2 border-dashed rounded-lg p-6 text-center transition-colors ${
+                            beforeImage 
+                              ? 'border-emerald-300 bg-white hover:border-emerald-500 cursor-pointer' 
+                              : 'border-gray-300 bg-gray-50 cursor-not-allowed'
+                          }`}>
+                            <Upload className={`mx-auto h-10 w-10 mb-2 ${beforeImage ? 'text-emerald-400' : 'text-gray-300'}`} />
+                            <label className={beforeImage ? 'cursor-pointer' : 'cursor-not-allowed'}>
+                              <span className={`font-semibold ${beforeImage ? 'text-emerald-600 hover:text-emerald-700' : 'text-gray-400'}`}>
+                                Upload After Image
+                              </span>
+                              <input 
+                                type="file" 
+                                className="hidden" 
+                                onChange={(e) => handleImageUpload(e, 'after')} 
+                                accept="image/*"
+                                disabled={!beforeImage}
+                              />
+                            </label>
+                            {!beforeImage && <p className="text-xs text-gray-500 mt-2">Upload before image first</p>}
+                          </div>
+                        ) : (
+                          <div className="relative">
+                            <img 
+                              src={afterImage} 
+                              alt="After collection" 
+                              className="rounded-lg w-full shadow-md border-2 border-emerald-300" 
+                            />
+                            <button
+                              onClick={() => setAfterImage(null)}
+                              className="absolute top-2 right-2 p-1 bg-red-500 text-white rounded-full hover:bg-red-600"
+                            >
+                              <X className="w-4 h-4" />
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Step 1 Button: Verify Before Image */}
+                    <button
+                      onClick={handleVerifyBeforeImage}
+                      disabled={!beforeImage || verificationStatus === 'verifying'}
+                      className="w-full py-4 bg-linear-to-r from-blue-500 to-purple-600 text-white rounded-xl font-bold hover:from-blue-600 hover:to-purple-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-300 transform hover:scale-105 shadow-lg hover:shadow-xl flex items-center justify-center gap-2"
+                    >
+                      {verificationStatus === 'verifying' ? (
+                        <>
+                          <Loader className="animate-spin h-5 w-5" />
+                          Verifying Step 1...
+                        </>
+                      ) : !beforeImage ? (
+                        'Upload Before Image First'
+                      ) : (
+                        <>
+                          <Shield className="w-5 h-5" />
+                          Verify Step 1 - Before Image
+                        </>
+                      )}
+                    </button>
+                  </>
                 )}
 
-                <button
-                  onClick={handleVerify}
-                  disabled={!verificationImage || verificationStatus === 'verifying'}
-                  className="w-full py-4 bg-linear-to-r from-emerald-500 to-teal-600 text-white rounded-xl font-semibold hover:from-emerald-600 hover:to-teal-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-300 transform hover:scale-105 shadow-lg hover:shadow-xl flex items-center justify-center gap-2"
-                >
-                  {verificationStatus === 'verifying' ? (
-                    <>
-                      <Loader className="animate-spin h-5 w-5" />
-                      Verifying...
-                    </>
-                  ) : 'Verify Collection'}
-                </button>
+                {/* Step 2: After Image Upload (Only shown after Step 1 passes) */}
+                {collectionStep === 'after' && beforeVerified && (
+                  <>
+                    <div className="mb-6 p-4 bg-emerald-100 border-l-4 border-emerald-500 rounded">
+                      <p className="text-sm text-emerald-800 font-bold flex items-center gap-2">
+                        <CheckCircle className="w-5 h-5" />
+                        Step 1 Completed - Before image verified successfully!
+                      </p>
+                      <p className="text-xs text-emerald-700 mt-1">
+                        Now upload the after collection photo to complete verification
+                      </p>
+                    </div>
+
+                    {/* After Image Upload */}
+                    <div className="border-2 border-emerald-400 rounded-xl p-5 bg-emerald-50 mb-6">
+                      <div className="flex items-center justify-between mb-3">
+                        <label className="flex items-center gap-2 text-sm font-bold text-gray-800">
+                          <span className="w-7 h-7 rounded-full bg-emerald-500 text-white flex items-center justify-center text-sm">2</span>
+                          AFTER Collection Image
+                        </label>
+                        {afterImage && <CheckCircle className="w-5 h-5 text-green-600" />}
+                      </div>
+                      <p className="text-xs text-gray-600 mb-3">Take a photo AFTER collecting - area must be clean and waste removed</p>
+                      
+                      {!afterImage ? (
+                        <div className="border-2 border-dashed border-emerald-300 rounded-lg p-6 text-center hover:border-emerald-500 transition-colors bg-white">
+                          <Upload className="mx-auto h-10 w-10 text-emerald-400 mb-2" />
+                          <label className="cursor-pointer">
+                            <span className="text-emerald-600 font-semibold hover:text-emerald-700">Upload After Image</span>
+                            <input 
+                              type="file" 
+                              className="hidden" 
+                              onChange={(e) => handleImageUpload(e, 'after')} 
+                              accept="image/*"
+                            />
+                          </label>
+                        </div>
+                      ) : (
+                        <div className="relative">
+                          <img 
+                            src={afterImage} 
+                            alt="After collection" 
+                            className="rounded-lg w-full shadow-md border-2 border-emerald-300" 
+                          />
+                          <button
+                            onClick={() => setAfterImage(null)}
+                            className="absolute top-2 right-2 p-1 bg-red-500 text-white rounded-full hover:bg-red-600"
+                          >
+                            <X className="w-4 h-4" />
+                          </button>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Step 2 Button: Verify After Image and Complete */}
+                    <button
+                      onClick={handleVerifyAfterImage}
+                      disabled={!afterImage || verificationStatus === 'verifying'}
+                      className="w-full py-5 bg-linear-to-r from-emerald-500 to-teal-600 text-white rounded-xl font-bold hover:from-emerald-600 hover:to-teal-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-300 transform hover:scale-105 shadow-lg hover:shadow-xl flex items-center justify-center gap-2"
+                    >
+                      {verificationStatus === 'verifying' ? (
+                        <>
+                          <Loader className="animate-spin h-5 w-5" />
+                          Verifying Step 2 & Completing...
+                        </>
+                      ) : !afterImage ? (
+                        'Upload After Image to Complete'
+                      ) : (
+                        <>
+                          <Award className="w-5 h-5" />
+                          Verify Step 2 & Complete Collection
+                        </>
+                      )}
+                    </button>
+                  </>
+                )}
 
                 {(verificationStatus === 'success' || verificationStatus === 'verified-failed') && verificationResult && (
                   <div className="mt-6 space-y-4">
+                    {/* Before/After Verification Results */}
+                    {verificationResult.verificationType === 'before-after' && (
+                      <>
+                        {/* Before Image Verification */}
+                        {verificationResult.beforeVerification && (
+                          <div className={`p-5 rounded-xl border ${
+                            verificationResult.beforeVerification.isValid 
+                              ? 'bg-blue-50 border-blue-200' 
+                              : 'bg-red-50 border-red-200'
+                          }`}>
+                            <div className="flex items-center gap-2 mb-3">
+                              <span className="w-6 h-6 rounded-full bg-blue-500 text-white flex items-center justify-center text-xs font-bold">1</span>
+                              <h5 className="font-bold text-blue-900">Before Image Verification</h5>
+                              {verificationResult.beforeVerification.isValid ? (
+                                <CheckCircle className="w-5 h-5 text-green-600 ml-auto" />
+                              ) : (
+                                <X className="w-5 h-5 text-red-600 ml-auto" />
+                              )}
+                            </div>
+                            <div className="space-y-2 text-sm">
+                              <div className="flex justify-between">
+                                <span className="text-gray-700">Location Match:</span>
+                                <span className={`font-bold ${verificationResult.beforeVerification.locationMatch ? 'text-green-600' : 'text-red-600'}`}>
+                                  {verificationResult.beforeVerification.locationMatch ? '✓' : '✗'}
+                                </span>
+                              </div>
+                              <div className="flex justify-between">
+                                <span className="text-gray-700">Waste Match:</span>
+                                <span className={`font-bold ${verificationResult.beforeVerification.wasteMatch ? 'text-green-600' : 'text-red-600'}`}>
+                                  {verificationResult.beforeVerification.wasteMatch ? '✓' : '✗'}
+                                </span>
+                              </div>
+                              <div className="flex justify-between">
+                                <span className="text-gray-700">Landmarks Match:</span>
+                                <span className={`font-bold ${verificationResult.beforeVerification.landmarksMatch ? 'text-green-600' : 'text-red-600'}`}>
+                                  {verificationResult.beforeVerification.landmarksMatch ? '✓' : '✗'}
+                                </span>
+                              </div>
+                              <div className="flex justify-between">
+                                <span className="text-gray-700">Confidence:</span>
+                                <span className="font-bold text-blue-600">{(verificationResult.beforeVerification.confidence * 100).toFixed(0)}%</span>
+                              </div>
+                              <p className="text-xs text-blue-800 bg-blue-100 p-2 rounded mt-2">
+                                {verificationResult.beforeVerification.message}
+                              </p>
+                            </div>
+                          </div>
+                        )}
+
+                        {/* After Image Verification */}
+                        {verificationResult.afterVerification && (
+                          <div className={`p-5 rounded-xl border ${
+                            verificationResult.afterVerification.isValid 
+                              ? 'bg-emerald-50 border-emerald-200' 
+                              : 'bg-red-50 border-red-200'
+                          }`}>
+                            <div className="flex items-center gap-2 mb-3">
+                              <span className="w-6 h-6 rounded-full bg-emerald-500 text-white flex items-center justify-center text-xs font-bold">2</span>
+                              <h5 className="font-bold text-emerald-900">After Image Verification</h5>
+                              {verificationResult.afterVerification.isValid ? (
+                                <CheckCircle className="w-5 h-5 text-green-600 ml-auto" />
+                              ) : (
+                                <X className="w-5 h-5 text-red-600 ml-auto" />
+                              )}
+                            </div>
+                            <div className="space-y-2 text-sm">
+                              <div className="flex justify-between">
+                                <span className="text-gray-700">Waste Removed:</span>
+                                <span className={`font-bold ${verificationResult.afterVerification.wasteRemoved ? 'text-green-600' : 'text-red-600'}`}>
+                                  {verificationResult.afterVerification.wasteRemoved ? '✓' : '✗'}
+                                </span>
+                              </div>
+                              <div className="flex justify-between">
+                                <span className="text-gray-700">Ground Clean:</span>
+                                <span className={`font-bold ${verificationResult.afterVerification.groundClean ? 'text-green-600' : 'text-red-600'}`}>
+                                  {verificationResult.afterVerification.groundClean ? '✓' : '✗'}
+                                </span>
+                              </div>
+                              <div className="flex justify-between">
+                                <span className="text-gray-700">Same Location:</span>
+                                <span className={`font-bold ${verificationResult.afterVerification.sameLocation ? 'text-green-600' : 'text-red-600'}`}>
+                                  {verificationResult.afterVerification.sameLocation ? '✓' : '✗'}
+                                </span>
+                              </div>
+                              <div className="flex justify-between">
+                                <span className="text-gray-700">Image Fresh:</span>
+                                <span className={`font-bold ${verificationResult.afterVerification.imageFresh ? 'text-green-600' : 'text-red-600'}`}>
+                                  {verificationResult.afterVerification.imageFresh ? '✓' : '✗'}
+                                </span>
+                              </div>
+                              <div className="flex justify-between">
+                                <span className="text-gray-700">Confidence:</span>
+                                <span className="font-bold text-emerald-600">{(verificationResult.afterVerification.confidence * 100).toFixed(0)}%</span>
+                              </div>
+                              <p className="text-xs text-emerald-800 bg-emerald-100 p-2 rounded mt-2">
+                                {verificationResult.afterVerification.message}
+                              </p>
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Location Verification */}
+                        {verificationResult.locationVerification && (
+                          <div className={`p-4 rounded-lg border ${
+                            verificationResult.locationVerification.isValid 
+                              ? 'bg-green-50 border-green-200' 
+                              : 'bg-yellow-50 border-yellow-200'
+                          }`}>
+                            <div className="flex items-center gap-2 text-sm">
+                              <MapPin className="w-4 h-4" />
+                              <span className="font-semibold">Location:</span>
+                              <span className={verificationResult.locationVerification.isValid ? 'text-green-700' : 'text-yellow-700'}>
+                                {verificationResult.locationVerification.reason}
+                              </span>
+                            </div>
+                          </div>
+                        )}
+                      </>
+                    )}
+
+                    {/* Legacy Verification Results */}
+                    {(!verificationResult.verificationType || verificationResult.verificationType === 'legacy') && (
                     <div className={`p-6 rounded-xl border ${
                       verificationStatus === 'success' 
                         ? 'bg-emerald-50 border-emerald-200' 
@@ -1190,8 +1825,9 @@ const CollectPage = () => {
                         )}
                       </div>
                     </div>
+                    )}
 
-                    {reward && verificationResult.overallMatch && (
+                    {reward && (verificationResult.overallMatch || verificationResult.success) && (
                       <div className="p-4 bg-linear-to-r from-emerald-500 to-teal-600 text-white rounded-xl flex items-center justify-between shadow-lg">
                         <span className="font-semibold">🎉 Reward Earned:</span>
                         <span className="text-2xl font-bold flex items-center gap-2">
@@ -1221,35 +1857,114 @@ const CollectPage = () => {
                       </div>
                     )}
 
-                    {!verificationResult.overallMatch && verificationStatus === 'verified-failed' && !verificationResult.showBackendError && (
-                      <div className="p-4 bg-red-50 border border-red-200 rounded-xl">
-                        <p className="text-sm font-semibold text-red-800 mb-3">
-                          ❌ Collection Cannot Be Verified
-                        </p>
+                    {verificationStatus === 'verified-failed' && !verificationResult.showBackendError && verificationResult.allChecksPass === false && (
+                      <div className="p-5 bg-red-50 border-2 border-red-300 rounded-xl">
+                        <div className="flex items-start gap-3 mb-4">
+                          <X className="w-6 h-6 text-red-600 mt-0.5 shrink-0" />
+                          <div className="flex-1">
+                            <p className="text-base font-bold text-red-800 mb-2">
+                              ❌ Verification Failed - No Points Awarded
+                            </p>
+                            <p className="text-sm text-red-700 mb-3">
+                              AI verification requirements were not met. Collection was NOT submitted and status remains unchanged.
+                            </p>
+                          </div>
+                        </div>
                         
                         {/* Show main reason */}
-                        <div className="mb-3 p-3 bg-white rounded-lg border border-red-200">
-                          <p className="text-sm font-semibold text-red-700">
-                            {verificationResult.validation?.reason || 'Verification requirements not met'}
+                        <div className="mb-4 p-3 bg-white rounded-lg border-2 border-red-300">
+                          <p className="text-sm font-bold text-red-800 mb-1">Main Issue:</p>
+                          <p className="text-sm text-red-700">
+                            {verificationResult.failureReason || verificationResult.validation?.reason || 'Verification requirements not met'}
                           </p>
                         </div>
 
-                        {/* Show what needs to be fixed */}
-                        <p className="text-xs font-semibold text-red-800 mb-2">Required Actions:</p>
-                        <ul className="text-xs text-red-700 ml-4 list-disc space-y-1">
-                          {!verificationResult.sameWaste && (
-                            <li>Upload image of the exact same waste shown in the report</li>
-                          )}
-                          {verificationResult.sameWaste && verificationResult.matchConfidence < 60 && (
-                            <li>Take a clearer photo with better lighting (current confidence: {verificationResult.matchConfidence}%)</li>
-                          )}
-                          {!verificationResult.locationMatch && verificationResult.locationDistance && (
-                            <li>Go to the reported location (you are {(verificationResult.locationDistance * 1000).toFixed(0)}m away, maximum 10000m allowed)</li>
-                          )}
-                          {!verificationResult.locationMatch && !verificationResult.locationDistance && (
-                            <li>Enable location services and ensure GPS is accurate</li>
-                          )}
-                        </ul>
+                        {/* Show what needs to be fixed for before-after */}
+                        {verificationResult.verificationType === 'before-after' && (
+                          <div className="space-y-3">
+                            <p className="text-xs font-bold text-red-800">Requirements for Approval:</p>
+                            
+                            {verificationResult.beforeVerification && (
+                              <div className="bg-white p-3 rounded border border-red-200">
+                                <p className="text-xs font-semibold text-gray-700 mb-2">
+                                  <span className="w-5 h-5 inline-flex items-center justify-center rounded-full bg-blue-500 text-white text-xs mr-1">1</span>
+                                  Before Image:
+                                </p>
+                                <ul className="text-xs text-red-700 ml-6 space-y-1">
+                                  {!verificationResult.beforeVerification.isValid && (
+                                    <li>✗ Must match reported waste location</li>
+                                  )}
+                                  {verificationResult.beforeVerification.confidence < 0.6 && (
+                                    <li>✗ Confidence too low: {(verificationResult.beforeVerification.confidence * 100).toFixed(0)}% (minimum 60% required)</li>
+                                  )}
+                                  {!verificationResult.beforeVerification.locationMatch && (
+                                    <li>✗ Location landmarks must match</li>
+                                  )}
+                                  {!verificationResult.beforeVerification.wasteMatch && (
+                                    <li>✗ Waste items must be the same as reported</li>
+                                  )}
+                                </ul>
+                              </div>
+                            )}
+
+                            {verificationResult.afterVerification && (
+                              <div className="bg-white p-3 rounded border border-red-200">
+                                <p className="text-xs font-semibold text-gray-700 mb-2">
+                                  <span className="w-5 h-5 inline-flex items-center justify-center rounded-full bg-emerald-500 text-white text-xs mr-1">2</span>
+                                  After Image:
+                                </p>
+                                <ul className="text-xs text-red-700 ml-6 space-y-1">
+                                  {!verificationResult.afterVerification.isValid && (
+                                    <li>✗ Waste removal verification failed</li>
+                                  )}
+                                  {verificationResult.afterVerification.confidence < 0.6 && (
+                                    <li>✗ Confidence too low: {(verificationResult.afterVerification.confidence * 100).toFixed(0)}% (minimum 60% required)</li>
+                                  )}
+                                  {!verificationResult.afterVerification.wasteRemoved && (
+                                    <li>✗ Waste must be completely removed</li>
+                                  )}
+                                  {!verificationResult.afterVerification.groundClean && (
+                                    <li>✗ Area must be clean (no debris)</li>
+                                  )}
+                                  {!verificationResult.afterVerification.sameLocation && (
+                                    <li>✗ Must be the same location as before image</li>
+                                  )}
+                                  {!verificationResult.afterVerification.imageFresh && (
+                                    <li>✗ Image appears reused or not fresh</li>
+                                  )}
+                                </ul>
+                              </div>
+                            )}
+                          </div>
+                        )}
+
+                        {/* Show what needs to be fixed for legacy */}
+                        {(!verificationResult.verificationType || verificationResult.verificationType === 'legacy') && (
+                          <>
+                            <p className="text-xs font-bold text-red-800 mb-2">Required Actions:</p>
+                            <ul className="text-xs text-red-700 ml-4 list-disc space-y-1">
+                              {!verificationResult.sameWaste && (
+                                <li>Upload image of the exact same waste shown in the report</li>
+                              )}
+                              {verificationResult.sameWaste && verificationResult.matchConfidence < 60 && (
+                                <li>Take a clearer photo with better lighting (current confidence: {verificationResult.matchConfidence}%)</li>
+                              )}
+                              {!verificationResult.locationMatch && verificationResult.locationDistance && (
+                                <li>Go to the reported location (you are {(verificationResult.locationDistance * 1000).toFixed(0)}m away, maximum 10000m allowed)</li>
+                              )}
+                              {!verificationResult.locationMatch && !verificationResult.locationDistance && (
+                                <li>Enable location services and ensure GPS is accurate</li>
+                              )}
+                            </ul>
+                          </>
+                        )}
+
+                        <div className="mt-4 p-3 bg-red-100 border border-red-300 rounded-lg">
+                          <p className="text-xs font-bold text-red-900 mb-1">⚠️ Important:</p>
+                          <p className="text-xs text-red-800">
+                            Until ALL verification checks pass with AI approval, no points will be awarded and the waste collection status will not change to completed.
+                          </p>
+                        </div>
                       </div>
                     )}
                   </div>

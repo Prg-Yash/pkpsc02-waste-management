@@ -94,6 +94,15 @@ export default function TabLayout() {
           }}
         />
         <Tabs.Screen
+          name="marketplace"
+          options={{
+            title: "Market",
+            tabBarIcon: ({ color }) => (
+              <IconSymbol size={24} name="cart.fill" color={color} />
+            ),
+          }}
+        />
+        <Tabs.Screen
           name="leaderboard"
           options={{
             title: "Leaderboard",
@@ -105,10 +114,7 @@ export default function TabLayout() {
         <Tabs.Screen
           name="profile"
           options={{
-            title: "Profile",
-            tabBarIcon: ({ color }) => (
-              <IconSymbol size={24} name="person.fill" color={color} />
-            ),
+            href: null, // Hide from tabs - accessible from header
           }}
         />
         <Tabs.Screen
